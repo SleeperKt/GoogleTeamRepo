@@ -1,0 +1,43 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build results
+bin/
+obj/
+
+# Logs
+*.log
+
+# NuGet
+*.nupkg
+packages/
+
+# Rider
+.idea/
+
+# User-specific files
+*.rsuser
+*.sln.ide
+
+# Others
+*.dbmdl
+
+# Windows thumbnail cache files
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# JetBrains Rider
+.idea/
+
+# Ignore publish output
+publish/
+
+# DotEnv files
+.env

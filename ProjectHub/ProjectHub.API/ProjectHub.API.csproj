@@ -8,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ProjectHub.Core\ProjectHub.Core.csproj" />
-    <ProjectReference Include="..\ProjectHub.Infrastructure\ProjectHub.Infrastructure.csproj" />
+    <ProjectReference Include="..\\ProjectHub.Core\\ProjectHub.Core.csproj" />
+    <ProjectReference Include="..\\ProjectHub.Infrastructure\\ProjectHub.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

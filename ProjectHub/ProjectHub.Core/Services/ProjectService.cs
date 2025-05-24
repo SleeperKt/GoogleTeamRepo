@@ -9,10 +9,12 @@ namespace ProjectHub.Core.Services
     public class ProjectService : IProjectService
     {
         private readonly IProjectRepository _projectRepository;
+        private readonly IProjectParticipantRepository _participantRepository;
 
-        public ProjectService(IProjectRepository projectRepository)
+        public ProjectService(IProjectRepository projectRepository, IProjectParticipantRepository participantRepository)
         {
             _projectRepository = projectRepository;
+            _participantRepository = participantRepository;
         }
 
         public async Task<Project> GetProjectByIdAsync(int id)
@@ -29,6 +31,17 @@ namespace ProjectHub.Core.Services
         {
             project.OwnerId = ownerId;
             await _projectRepository.AddAsync(project);
+            
+            // Add owner as a participant with Owner role
+            var ownerParticipant = new ProjectParticipant
+            {
+                ProjectId = project.Id,
+                UserId = Guid.Parse(ownerId),
+                Role = ParticipantRole.Owner,
+                JoinedAt = DateTime.UtcNow
+            };
+            await _participantRepository.AddAsync(ownerParticipant);
+            
             return project; 
         }
 
@@ -40,7 +53,10 @@ namespace ProjectHub.Core.Services
                 throw new Exception("Project not found.");
             }
 
-            if (existingProject.OwnerId != currentUserId)
+            // Check if user is the owner through participant role
+            var userGuid = Guid.Parse(currentUserId);
+            var userRole = await _participantRepository.GetUserRoleInProjectAsync(project.Id, userGuid);
+            if (userRole != ParticipantRole.Owner)
             {
                 throw new UnauthorizedAccessException("User is not authorized to update this project.");
             }
@@ -59,7 +75,10 @@ namespace ProjectHub.Core.Services
                 throw new Exception("Project not found.");
             }
 
-            if (existingProject.OwnerId != currentUserId)
+            // Check if user is the owner through participant role
+            var userGuid = Guid.Parse(currentUserId);
+            var userRole = await _participantRepository.GetUserRoleInProjectAsync(id, userGuid);
+            if (userRole != ParticipantRole.Owner)
             {
                 throw new UnauthorizedAccessException("User is not authorized to delete this project.");
             }

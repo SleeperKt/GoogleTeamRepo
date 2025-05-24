@@ -25,5 +25,8 @@ namespace ProjectHub.Core.Entities
         public Guid? OAuthId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        
+        // Navigation property
+        public ICollection<ProjectParticipant> ProjectParticipations { get; set; } = new List<ProjectParticipant>();
     }
 }

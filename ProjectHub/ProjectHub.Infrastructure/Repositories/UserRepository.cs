@@ -14,6 +14,11 @@ namespace ProjectHub.Infrastructure.Repositories
     {
         private readonly ApplicationDbContext context = context;
 
+        public async Task<User?> GetByIdAsync(Guid userId)
+        {
+            return await context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+        }
+
         public async Task<User?> GetByUsernameAsync(string username)
         {
             return await context.Users.FirstOrDefaultAsync(u => u.UserName == username);

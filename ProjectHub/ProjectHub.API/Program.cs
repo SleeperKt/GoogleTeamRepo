@@ -25,6 +25,10 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 
+// Регистрация сервисов и репозиториев для участников проектов
+builder.Services.AddScoped<IProjectParticipantRepository, ProjectParticipantRepository>();
+builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService>();
+
 builder.Services.AddControllers();
 
 builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>();

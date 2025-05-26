@@ -5,6 +5,7 @@ using ProjectHub.API.Middlewares;
 using ProjectHub.API.Validator;
 using ProjectHub.Core.Data_Transfer_Objects;
 using ProjectHub.Core.Interfaces;
+using ProjectHub.Core.Services;
 using ProjectHub.Infrastructure.Data;
 using ProjectHub.Infrastructure.Repositories;
 using ProjectHub.Infrastructure.Services;
@@ -12,13 +13,17 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// DbContext � SQLite
+// DbContext и SQLite
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<PasswordService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+// Регистрация сервисов и репозиториев для проектов
+builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
+builder.Services.AddScoped<IProjectService, ProjectService>();
 
 builder.Services.AddControllers();
 
@@ -84,7 +89,7 @@ app.UseSwaggerUI(c =>
 });
 app.UseRouting();
 
-// ��������� ����� Middlewares
+// ��������� ����� Middlewares
 app.UseWhen(context =>
     context.Request.Path.StartsWithSegments("/api/auth/register") &&
     context.Request.Method == "POST",

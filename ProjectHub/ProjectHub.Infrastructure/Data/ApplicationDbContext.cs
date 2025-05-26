@@ -11,5 +11,6 @@ namespace ProjectHub.Infrastructure.Data
         }
 
         public DbSet<User> Users { get; set; } = null!;
+        public DbSet<Project> Projects { get; set; } = null!;
     }
 }

@@ -41,5 +41,3 @@ publish/
 
 # DotEnv files
 .env
-
-*.db

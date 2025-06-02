@@ -10,11 +10,13 @@ namespace ProjectHub.Core.Services
     {
         private readonly IProjectRepository _projectRepository;
         private readonly IProjectParticipantRepository _participantRepository;
+        private readonly IUserRepository _userRepository;
 
-        public ProjectService(IProjectRepository projectRepository, IProjectParticipantRepository participantRepository)
+        public ProjectService(IProjectRepository projectRepository, IProjectParticipantRepository participantRepository, IUserRepository userRepository)
         {
             _projectRepository = projectRepository;
             _participantRepository = participantRepository;
+            _userRepository = userRepository;
         }
 
         public async Task<Project> GetProjectByIdAsync(int id)
@@ -29,6 +31,19 @@ namespace ProjectHub.Core.Services
 
         public async Task<Project> CreateProjectAsync(Project project, string ownerId)
         {
+            // Fetch the user by email
+            var ownerUser = await _userRepository.GetByEmailAsync(ownerId);
+            if (ownerUser == null)
+            {
+                throw new Exception($"User with email '{ownerId}' not found.");
+            }
+            
+            // Ensure UserId from ownerUser is a valid Guid before using it.
+            if (!Guid.TryParse(ownerUser.UserId.ToString(), out _))
+            {
+                throw new FormatException($"User's UserId '{ownerUser.UserId}' is not a valid GUID.");
+            }
+
             project.OwnerId = ownerId;
             await _projectRepository.AddAsync(project);
             
@@ -36,7 +51,7 @@ namespace ProjectHub.Core.Services
             var ownerParticipant = new ProjectParticipant
             {
                 ProjectId = project.Id,
-                UserId = Guid.Parse(ownerId),
+                UserId = ownerUser.UserId, 
                 Role = ParticipantRole.Owner,
                 JoinedAt = DateTime.UtcNow
             };

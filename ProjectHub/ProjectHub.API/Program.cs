@@ -10,6 +10,7 @@ using ProjectHub.Infrastructure.Data;
 using ProjectHub.Infrastructure.Repositories;
 using ProjectHub.Infrastructure.Services;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,7 +30,10 @@ builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IProjectParticipantRepository, ProjectParticipantRepository>();
 builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService>();
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
+});
 
 builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>();
 builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();

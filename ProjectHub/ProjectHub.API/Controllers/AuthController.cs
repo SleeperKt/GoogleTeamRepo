@@ -54,7 +54,7 @@ namespace ProjectHub.API.Controllers
             if (string.IsNullOrWhiteSpace(user.Email))
                 return BadRequest("User has no associated email for token generation");
 
-            var token = jwtTokenService.GenerateToken(user.Email);
+            var token = jwtTokenService.GenerateToken(user);
             return Ok(new { Token = token });
         }
     }

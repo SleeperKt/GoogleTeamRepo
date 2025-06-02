@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using ProjectHub.Core.Entities;
 using ProjectHub.Core.Interfaces;
 using System;
 using System.IdentityModel.Tokens.Jwt;
@@ -27,17 +28,17 @@ namespace ProjectHub.Infrastructure.Services
             this.expiryMinutes = int.Parse(config["Jwt:TokenExpirationInMinutes"] ?? "60");
         }
 
-        public string GenerateToken(string email)
+        public string GenerateToken(User user)
         {
-            if (string.IsNullOrWhiteSpace(email))
-                throw new ArgumentException("Email must be provided to generate token.");
+            if (user == null)
+                throw new ArgumentNullException(nameof(user));
 
             var claims = new[]
             {
-                new Claim(JwtRegisteredClaimNames.Sub, email),
-                new Claim(JwtRegisteredClaimNames.Email, email),
-                new Claim(ClaimTypes.NameIdentifier, email),
-                new Claim(ClaimTypes.Name, email),
+                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+                new Claim(JwtRegisteredClaimNames.Email, user.Email),
+                new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+                new Claim(ClaimTypes.Name, user.UserName),
                 new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
             };
 
@@ -54,9 +55,9 @@ namespace ProjectHub.Infrastructure.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        public bool ValidateToken(string token, out string? email)
+        public bool ValidateToken(string token, out string? userId)
         {
-            email = null;
+            userId = null;
 
             var tokenHandler = new JwtSecurityTokenHandler();
             var key = Encoding.UTF8.GetBytes(secret);
@@ -76,7 +77,7 @@ namespace ProjectHub.Infrastructure.Services
 
                 var principal = tokenHandler.ValidateToken(token, validationParams, out SecurityToken validatedToken);
 
-                email = principal.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier)?.Value;
+                userId = principal.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier)?.Value;
                 return true;
             }
             catch

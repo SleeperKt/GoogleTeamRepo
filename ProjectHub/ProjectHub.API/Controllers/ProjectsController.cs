@@ -18,10 +18,9 @@ namespace ProjectHub.API.Controllers
         {
             _projectService = projectService;
         }
-
         private string GetCurrentUserId()
         {
-            return User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         }
 
         [HttpGet("{id}")]
@@ -33,7 +32,6 @@ namespace ProjectHub.API.Controllers
                 return NotFound();
             }
             // можно проверить, имеет ли текущий пользователь доступ к этому проекту,
-            // если проекты не должны быть видны всем мужикам.
             return Ok(project);
         }
 

@@ -20,11 +20,9 @@ namespace ProjectHub.API.Controllers
         public ProjectParticipantsController(IProjectParticipantService participantService)
         {
             _participantService = participantService;
-        }
-
-        private string GetCurrentUserId()
+        }        private string GetCurrentUserId()
         {
-            return User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         }
 
         [HttpGet]
@@ -79,12 +77,20 @@ namespace ProjectHub.API.Controllers
         }
 
         [HttpDelete("{participantUserId}")]
-        public async Task<IActionResult> RemoveParticipant(int projectId, Guid participantUserId)
+        public async Task<IActionResult> RemoveParticipant(int projectId, string participantUserId)
         {
             var userId = GetCurrentUserId();
             try
             {
-                await _participantService.RemoveParticipantAsync(projectId, participantUserId, userId);
+                // Try to convert participantUserId to Guid if it's a valid Guid
+                if (Guid.TryParse(participantUserId, out Guid guidUserId))
+                {
+                    await _participantService.RemoveParticipantAsync(projectId, guidUserId, userId);
+                }
+                else
+                {
+                    return BadRequest("Invalid participant user ID format.");
+                }
                 return NoContent();
             }
             catch (UnauthorizedAccessException ex)
@@ -102,7 +108,7 @@ namespace ProjectHub.API.Controllers
         }
 
         [HttpPut("{participantUserId}/role")]
-        public async Task<IActionResult> UpdateParticipantRole(int projectId, Guid participantUserId, [FromBody] UpdateParticipantRoleRequest request)
+        public async Task<IActionResult> UpdateParticipantRole(int projectId, string participantUserId, [FromBody] UpdateParticipantRoleRequest request)
         {
             if (!ModelState.IsValid)
             {
@@ -112,7 +118,15 @@ namespace ProjectHub.API.Controllers
             var userId = GetCurrentUserId();
             try
             {
-                await _participantService.UpdateParticipantRoleAsync(projectId, participantUserId, request.NewRole, userId);
+                // Try to convert participantUserId to Guid if it's a valid Guid
+                if (Guid.TryParse(participantUserId, out Guid guidUserId))
+                {
+                    await _participantService.UpdateParticipantRoleAsync(projectId, guidUserId, request.NewRole, userId);
+                }
+                else
+                {
+                    return BadRequest("Invalid participant user ID format.");
+                }
                 return NoContent();
             }
             catch (UnauthorizedAccessException ex)

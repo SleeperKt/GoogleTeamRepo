@@ -68,9 +68,20 @@ namespace ProjectHub.Core.Services
                 throw new Exception("Project not found.");
             }
 
+            // Get the user by email or ID
+            var user = await _userRepository.GetByEmailAsync(currentUserId);
+            if (user == null && Guid.TryParse(currentUserId, out Guid userId))
+            {
+                user = await _userRepository.GetByIdAsync(userId);
+            }
+
+            if (user == null)
+            {
+                throw new Exception($"User with ID or email '{currentUserId}' not found.");
+            }
+
             // Check if user is the owner through participant role
-            var userGuid = Guid.Parse(currentUserId);
-            var userRole = await _participantRepository.GetUserRoleInProjectAsync(project.Id, userGuid);
+            var userRole = await _participantRepository.GetUserRoleInProjectAsync(project.Id, user.UserId);
             if (userRole != ParticipantRole.Owner)
             {
                 throw new UnauthorizedAccessException("User is not authorized to update this project.");
@@ -78,7 +89,7 @@ namespace ProjectHub.Core.Services
 
             existingProject.Name = project.Name;
             existingProject.Description = project.Description;
-            
+
             await _projectRepository.UpdateAsync(existingProject);
         }
 
@@ -90,9 +101,20 @@ namespace ProjectHub.Core.Services
                 throw new Exception("Project not found.");
             }
 
+            // Get the user by email or ID
+            var user = await _userRepository.GetByEmailAsync(currentUserId);
+            if (user == null && Guid.TryParse(currentUserId, out Guid userId))
+            {
+                user = await _userRepository.GetByIdAsync(userId);
+            }
+
+            if (user == null)
+            {
+                throw new Exception($"User with ID or email '{currentUserId}' not found.");
+            }
+
             // Check if user is the owner through participant role
-            var userGuid = Guid.Parse(currentUserId);
-            var userRole = await _participantRepository.GetUserRoleInProjectAsync(id, userGuid);
+            var userRole = await _participantRepository.GetUserRoleInProjectAsync(id, user.UserId);
             if (userRole != ParticipantRole.Owner)
             {
                 throw new UnauthorizedAccessException("User is not authorized to delete this project.");

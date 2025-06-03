@@ -27,7 +27,6 @@ namespace ProjectHub.Infrastructure.Repositories
         public async Task<IEnumerable<ProjectParticipant>> GetProjectParticipantsAsync(int projectId)
         {
             return await _context.ProjectParticipants
-                .Include(pp => pp.User)
                 .Where(pp => pp.ProjectId == projectId)
                 .OrderBy(pp => pp.JoinedAt)
                 .ToListAsync();
@@ -36,7 +35,6 @@ namespace ProjectHub.Infrastructure.Repositories
         public async Task<IEnumerable<ProjectParticipant>> GetUserProjectsAsync(Guid userId)
         {
             return await _context.ProjectParticipants
-                .Include(pp => pp.Project)
                 .Where(pp => pp.UserId == userId)
                 .OrderBy(pp => pp.JoinedAt)
                 .ToListAsync();
@@ -45,8 +43,6 @@ namespace ProjectHub.Infrastructure.Repositories
         public async Task<ProjectParticipant?> GetParticipantWithDetailsAsync(int projectId, Guid userId)
         {
             return await _context.ProjectParticipants
-                .Include(pp => pp.User)
-                .Include(pp => pp.Project)
                 .FirstOrDefaultAsync(pp => pp.ProjectId == projectId && pp.UserId == userId);
         }
 

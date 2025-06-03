@@ -31,12 +31,11 @@ namespace ProjectHub.API.Controllers
             var userId = GetCurrentUserId();
             try
             {
-                var participants = await _participantService.GetProjectParticipantsAsync(projectId, userId);
-                var participantResponses = participants.Select(p => new ParticipantResponse
+                var participantDetails = await _participantService.GetProjectParticipantDetailsAsync(projectId, userId);
+                var participantResponses = participantDetails.Select(p => new ParticipantResponse
                 {
-                    UserId = p.User.UserId,
-                    UserName = p.User.UserName,
-                    Email = p.User.Email,
+                    UserId = p.UserId,
+                    UserName = p.UserName,
                     Role = p.Role,
                     JoinedAt = p.JoinedAt
                 });
@@ -141,21 +140,11 @@ namespace ProjectHub.API.Controllers
             {
                 return BadRequest(ex.Message);
             }
-        }
-
-        [HttpGet("~/api/users/{userId}/projects")]
+        }        [HttpGet("~/api/users/{userId}/projects")]
         public async Task<IActionResult> GetUserProjects(Guid userId)
         {
-            var userProjects = await _participantService.GetUserProjectsAsync(userId);
-            var projectResponses = userProjects.Select(pp => new
-            {
-                pp.Project.Id,
-                pp.Project.Name,
-                pp.Project.Description,
-                pp.Role,
-                pp.JoinedAt
-            });
-            return Ok(projectResponses);
+            var projectDetails = await _participantService.GetUserProjectDetailsAsync(userId);
+            return Ok(projectDetails);
         }
     }
-} 
+}

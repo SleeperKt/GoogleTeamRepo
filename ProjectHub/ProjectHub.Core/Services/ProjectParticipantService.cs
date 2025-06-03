@@ -1,8 +1,7 @@
+using ProjectHub.Core.DataTransferObjects;
 using ProjectHub.Core.Entities;
 using ProjectHub.Core.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+
 
 namespace ProjectHub.Core.Services
 {
@@ -95,20 +94,23 @@ namespace ProjectHub.Core.Services
             }
 
             await _participantRepository.RemoveAsync(participant);
-        }public async Task<IEnumerable<ProjectParticipant>> GetProjectParticipantsAsync(int projectId, string requestingUserId)
+        }
+        public async Task<IEnumerable<ProjectParticipant>> GetProjectParticipantsAsync(int projectId, string requestingUserId)
         {
             var user = await FindUserByIdOrEmailAsync(requestingUserId);
             if (user == null)
             {
                 throw new ArgumentException($"User not found with ID or email: {requestingUserId}", nameof(requestingUserId));
             }
-            
+
             if (!await _participantRepository.IsUserInProjectAsync(projectId, user.UserId))
             {
                 throw new UnauthorizedAccessException("User is not a participant in this project.");
             }
 
-            return await _participantRepository.GetProjectParticipantsAsync(projectId);
+            // Get participants with user details
+            var participants = await _participantRepository.GetProjectParticipantsAsync(projectId);
+            return participants;
         }
 
         public async Task<IEnumerable<ProjectParticipant>> GetUserProjectsAsync(Guid userId)
@@ -160,6 +162,65 @@ namespace ProjectHub.Core.Services
 
             participant.Role = newRole;
             await _participantRepository.UpdateAsync(participant);
+        }
+
+        public async Task<IEnumerable<ParticipantDetails>> GetProjectParticipantDetailsAsync(int projectId, string requestingUserId)
+        {
+            var user = await FindUserByIdOrEmailAsync(requestingUserId);
+            if (user == null)
+            {
+                throw new ArgumentException($"User not found with ID or email: {requestingUserId}", nameof(requestingUserId));
+            }
+            
+            if (!await _participantRepository.IsUserInProjectAsync(projectId, user.UserId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            var participants = await _participantRepository.GetProjectParticipantsAsync(projectId);
+            var details = new List<ParticipantDetails>();
+            
+            foreach (var participant in participants)
+            {
+                var participantUser = await _userRepository.GetByIdAsync(participant.UserId);
+                if (participantUser != null)
+                {
+                    details.Add(new ParticipantDetails
+                    {
+                        ParticipantId = participant.Id,
+                        UserId = participantUser.UserId,
+                        UserName = participantUser.UserName,
+                        Role = participant.Role,
+                        JoinedAt = participant.JoinedAt
+                    });
+                }
+            }
+            
+            return details;
+        }
+
+        public async Task<IEnumerable<UserProjectResponse>> GetUserProjectDetailsAsync(Guid userId)
+        {
+            var participations = await _participantRepository.GetUserProjectsAsync(userId);
+            var projectDetails = new List<UserProjectResponse>();
+            
+            foreach (var participation in participations)
+            {
+                var project = await _projectRepository.GetByIdAsync(participation.ProjectId);
+                if (project != null)
+                {
+                    projectDetails.Add(new UserProjectResponse
+                    {
+                        ProjectId = project.Id,
+                        ProjectName = project.Name,
+                        ProjectDescription = project.Description,
+                        Role = participation.Role,
+                        JoinedAt = participation.JoinedAt
+                    });
+                }
+            }
+            
+            return projectDetails;
         }
     }
 }

@@ -1,16 +1,21 @@
 using System;
-using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace ProjectHub.Core.Entities
 {
     public class Project
     {
         public int Id { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public string? OwnerId { get; set; }
         
-        // Navigation property
-        public ICollection<ProjectParticipant> Participants { get; set; } = new List<ProjectParticipant>();
+        [Required, MaxLength(100)]
+        public string Name { get; set; } = string.Empty;
+        
+        [MaxLength(500)]
+        public string Description { get; set; } = string.Empty;
+        
+        [Required]
+        public string OwnerId { get; set; } = string.Empty;
+        
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
-} 
+}

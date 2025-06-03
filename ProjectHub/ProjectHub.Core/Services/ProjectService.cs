@@ -19,7 +19,7 @@ namespace ProjectHub.Core.Services
             _userRepository = userRepository;
         }
 
-        public async Task<Project> GetProjectByIdAsync(int id)
+        public async Task<Project?> GetProjectByIdAsync(int id)
         {
             return await _projectRepository.GetByIdAsync(id);
         }
@@ -35,16 +35,25 @@ namespace ProjectHub.Core.Services
             var ownerUser = await _userRepository.GetByEmailAsync(ownerId);
             if (ownerUser == null)
             {
-                throw new Exception($"User with email '{ownerId}' not found.");
+                throw new ArgumentException($"User with email '{ownerId}' not found.");
             }
             
-            // Ensure UserId from ownerUser is a valid Guid before using it.
+            // Ensure UserId from ownerUser is a valid Guid
             if (!Guid.TryParse(ownerUser.UserId.ToString(), out _))
             {
                 throw new FormatException($"User's UserId '{ownerUser.UserId}' is not a valid GUID.");
             }
 
+            // Set required properties
             project.OwnerId = ownerId;
+            project.CreatedAt = DateTime.UtcNow;
+            
+            // Validate required fields
+            if (string.IsNullOrEmpty(project.Name))
+            {
+                throw new ArgumentException("Project name cannot be empty");
+            }
+            
             await _projectRepository.AddAsync(project);
             
             // Add owner as a participant with Owner role
@@ -65,7 +74,7 @@ namespace ProjectHub.Core.Services
             var existingProject = await _projectRepository.GetByIdAsync(project.Id);
             if (existingProject == null)
             {
-                throw new Exception("Project not found.");
+                throw new ArgumentException("Project not found.");
             }
 
             // Get the user by email or ID
@@ -77,7 +86,7 @@ namespace ProjectHub.Core.Services
 
             if (user == null)
             {
-                throw new Exception($"User with ID or email '{currentUserId}' not found.");
+                throw new ArgumentException($"User with ID or email '{currentUserId}' not found.");
             }
 
             // Check if user is the owner through participant role
@@ -87,6 +96,7 @@ namespace ProjectHub.Core.Services
                 throw new UnauthorizedAccessException("User is not authorized to update this project.");
             }
 
+            // Update only allowed fields
             existingProject.Name = project.Name;
             existingProject.Description = project.Description;
 
@@ -98,7 +108,7 @@ namespace ProjectHub.Core.Services
             var existingProject = await _projectRepository.GetByIdAsync(id);
             if (existingProject == null)
             {
-                throw new Exception("Project not found.");
+                throw new ArgumentException("Project not found.");
             }
 
             // Get the user by email or ID
@@ -110,7 +120,7 @@ namespace ProjectHub.Core.Services
 
             if (user == null)
             {
-                throw new Exception($"User with ID or email '{currentUserId}' not found.");
+                throw new ArgumentException($"User with ID or email '{currentUserId}' not found.");
             }
 
             // Check if user is the owner through participant role
@@ -123,4 +133,4 @@ namespace ProjectHub.Core.Services
             await _projectRepository.DeleteAsync(id);
         }
     }
-} 
+}

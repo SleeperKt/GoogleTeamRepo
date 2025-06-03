@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace ProjectHub.Core.Entities
 {
@@ -11,22 +7,15 @@ namespace ProjectHub.Core.Entities
     {
         public Guid UserId { get; set; }
 
-        [Required]
+        [Required, MaxLength(50)]
         public string UserName { get; set; } = string.Empty;
 
-        [Required, EmailAddress]
+        [Required, EmailAddress, MaxLength(100)]
         public string Email { get; set; } = string.Empty;
 
         [Required]
         public string PasswordHash { get; set; } = string.Empty;
 
-        public string? OAuthProvider { get; set; }
-
-        public Guid? OAuthId { get; set; }
-
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        
-        // Navigation property
-        public ICollection<ProjectParticipant> ProjectParticipations { get; set; } = new List<ProjectParticipant>();
     }
 }

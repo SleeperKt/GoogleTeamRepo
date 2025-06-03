@@ -18,18 +18,46 @@ namespace ProjectHub.Infrastructure.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            // Configure User entity
+            modelBuilder.Entity<User>()
+                .HasKey(u => u.UserId);
+
+            modelBuilder.Entity<User>()
+                .Property(u => u.UserName)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            modelBuilder.Entity<User>()
+                .Property(u => u.Email)
+                .HasMaxLength(100)
+                .IsRequired();            // Configure Project entity
+            modelBuilder.Entity<Project>()
+                .HasKey(p => p.Id);
+
+            modelBuilder.Entity<Project>()
+                .Property(p => p.Name)
+                .HasMaxLength(100)
+                .IsRequired();
+
+            modelBuilder.Entity<Project>()
+                .Property(p => p.Description)
+                .HasMaxLength(500);
+
+            modelBuilder.Entity<Project>()
+                .Property(p => p.OwnerId)
+                .IsRequired();
+
             // Configure ProjectParticipant relationships
             modelBuilder.Entity<ProjectParticipant>()
-                .HasOne(pp => pp.Project)
-                .WithMany(p => p.Participants)
-                .HasForeignKey(pp => pp.ProjectId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasKey(pp => pp.Id);
 
             modelBuilder.Entity<ProjectParticipant>()
-                .HasOne(pp => pp.User)
-                .WithMany(u => u.ProjectParticipations)
-                .HasForeignKey(pp => pp.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .Property(pp => pp.ProjectId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectParticipant>()
+                .Property(pp => pp.UserId)
+                .IsRequired();
 
             // Create unique index to prevent duplicate participants
             modelBuilder.Entity<ProjectParticipant>()

@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ProjectHub.Core.Data_Transfer_Objects;
+using ProjectHub.Core.DataTransferObjects;
 using ProjectHub.Core.Entities;
 using ProjectHub.Core.Interfaces;
 using ProjectHub.Infrastructure.Services;

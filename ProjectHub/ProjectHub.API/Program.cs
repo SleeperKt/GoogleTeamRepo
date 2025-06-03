@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ProjectHub.API.Middlewares;
 using ProjectHub.API.Validator;
-using ProjectHub.Core.Data_Transfer_Objects;
+using ProjectHub.Core.DataTransferObjects;
 using ProjectHub.Core.Interfaces;
 using ProjectHub.Core.Services;
 using ProjectHub.Infrastructure.Data;
@@ -97,7 +97,7 @@ app.UseSwaggerUI(c =>
 });
 app.UseRouting();
 
-// ��������� ����� Middlewares
+// Use Middlewares
 app.UseWhen(context =>
     context.Request.Path.StartsWithSegments("/api/auth/register") &&
     context.Request.Method == "POST",

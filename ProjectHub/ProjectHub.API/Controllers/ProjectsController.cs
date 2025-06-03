@@ -45,11 +45,13 @@ namespace ProjectHub.API.Controllers
 
         [HttpPost]
         public async Task<IActionResult> CreateProject([FromBody] Project project)
-        {
-            if (!ModelState.IsValid)
+        {            if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
+            
+            // No need to clear participants as the navigation property has been removed
+            
             var userId = GetCurrentUserId();
             var createdProject = await _projectService.CreateProjectAsync(project, userId);
             return CreatedAtAction(nameof(GetProject), new { id = createdProject.Id }, createdProject);

@@ -8,21 +8,24 @@ namespace ProjectHub.API.Controllers
     [Route("api/user")]
     public class UserController(IUserRepository userRepository) : ControllerBase
     {
-        private readonly IUserRepository userRepository = userRepository;
-
-        [Authorize]
+        private readonly IUserRepository userRepository = userRepository;        [Authorize]
         [HttpGet("me")]
         public async Task<IActionResult> GetCurrentUser()
         {
-            var username = User.Identity?.Name;
+            var emailClaim = User.FindFirst("sub")?.Value;
+            
+            var username = emailClaim ?? User.Identity?.Name;
 
             if (string.IsNullOrEmpty(username))
                 return Unauthorized("No valid user identity in token.");
 
             var user = await this.userRepository.GetByEmailAsync(username);
+            
+            if (user is null)
+                user = await this.userRepository.GetByUsernameAsync(username);
 
             if (user is null)
-                return NotFound("User not found.");
+                return NotFound($"User not found with email: {username}");
 
             return Ok(new
             {

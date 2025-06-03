@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ProjectHub.Core.Data_Transfer_Objects;
+using ProjectHub.Core.DataTransferObjects;
 using ProjectHub.Core.Entities;
 using ProjectHub.Core.Interfaces;
 using ProjectHub.Infrastructure.Services;
@@ -54,7 +54,7 @@ namespace ProjectHub.API.Controllers
             if (string.IsNullOrWhiteSpace(user.Email))
                 return BadRequest("User has no associated email for token generation");
 
-            var token = jwtTokenService.GenerateToken(user.Email);
+            var token = jwtTokenService.GenerateToken(user);
             return Ok(new { Token = token });
         }
     }

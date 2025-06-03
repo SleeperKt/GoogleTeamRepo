@@ -16,20 +16,29 @@ namespace ProjectHub.Infrastructure.Repositories
         {
             _context = context;
         }
-
-        public async Task<Project> GetByIdAsync(int id)
+        
+        public async Task<Project?> GetByIdAsync(int id)
         {
-            return await _context.Projects.FindAsync(id);
+            return await _context.Projects
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == id);
         }
 
         public async Task<IEnumerable<Project>> GetAllAsync()
         {
-            return await _context.Projects.ToListAsync();
+            return await _context.Projects
+                .AsNoTracking()
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<Project>> GetByOwnerIdAsync(string ownerId)
         {
-            return await _context.Projects.Where(p => p.OwnerId == ownerId).ToListAsync();
+            return await _context.Projects
+                .AsNoTracking()
+                .Where(p => p.OwnerId == ownerId)
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
         }
 
         public async Task AddAsync(Project project)
@@ -38,15 +47,10 @@ namespace ProjectHub.Infrastructure.Repositories
             await _context.SaveChangesAsync();
         }
 
-        public async Task UpdateAsync(Project projectToUpdate)
+        public async Task UpdateAsync(Project project)
         {
-            var existingProject = await _context.Projects.FindAsync(projectToUpdate.Id);
-            if (existingProject != null)
-            {
-                existingProject.Name = projectToUpdate.Name;
-                existingProject.Description = projectToUpdate.Description;
-                await _context.SaveChangesAsync();
-            }
+            _context.Entry(project).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
         }
 
         public async Task DeleteAsync(int id)
@@ -59,4 +63,4 @@ namespace ProjectHub.Infrastructure.Repositories
             }
         }
     }
-} 
+}

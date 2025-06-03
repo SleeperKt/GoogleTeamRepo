@@ -1,5 +1,5 @@
 ﻿using FluentValidation;
-using ProjectHub.Core.Data_Transfer_Objects;
+using ProjectHub.Core.DataTransferObjects;
 
 namespace ProjectHub.API.Validator
 {

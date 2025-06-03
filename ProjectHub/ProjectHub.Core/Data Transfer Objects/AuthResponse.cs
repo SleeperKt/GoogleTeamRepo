@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace ProjectHub.Core.Data_Transfer_Objects
+﻿namespace ProjectHub.Core.DataTransferObjects
 {
     public class AuthResponse
     {

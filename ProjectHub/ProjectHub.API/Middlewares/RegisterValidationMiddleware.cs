@@ -1,5 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
-using ProjectHub.Core.Data_Transfer_Objects;
+using ProjectHub.Core.DataTransferObjects;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;

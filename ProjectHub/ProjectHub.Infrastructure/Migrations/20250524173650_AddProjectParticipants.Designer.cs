@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectHub.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using ProjectHub.Infrastructure.Data;
 namespace ProjectHub.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250524173650_AddProjectParticipants")]
+    partial class AddProjectParticipants
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.5");
@@ -23,17 +26,12 @@ namespace ProjectHub.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OwnerId")
@@ -65,6 +63,8 @@ namespace ProjectHub.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("UserId");
+
                     b.HasIndex("ProjectId", "UserId")
                         .IsUnique();
 
@@ -82,7 +82,12 @@ namespace ProjectHub.Infrastructure.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("OAuthId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OAuthProvider")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PasswordHash")
@@ -91,12 +96,40 @@ namespace ProjectHub.Infrastructure.Migrations
 
                     b.Property<string>("UserName")
                         .IsRequired()
-                        .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
                     b.HasKey("UserId");
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("ProjectHub.Core.Entities.ProjectParticipant", b =>
+                {
+                    b.HasOne("ProjectHub.Core.Entities.Project", "Project")
+                        .WithMany("Participants")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProjectHub.Core.Entities.User", "User")
+                        .WithMany("ProjectParticipations")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ProjectHub.Core.Entities.Project", b =>
+                {
+                    b.Navigation("Participants");
+                });
+
+            modelBuilder.Entity("ProjectHub.Core.Entities.User", b =>
+                {
+                    b.Navigation("ProjectParticipations");
                 });
 #pragma warning restore 612, 618
         }

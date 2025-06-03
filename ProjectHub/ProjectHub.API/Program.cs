@@ -3,13 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ProjectHub.API.Middlewares;
 using ProjectHub.API.Validator;
-using ProjectHub.Core.Data_Transfer_Objects;
+using ProjectHub.Core.DataTransferObjects;
 using ProjectHub.Core.Interfaces;
 using ProjectHub.Core.Services;
 using ProjectHub.Infrastructure.Data;
 using ProjectHub.Infrastructure.Repositories;
 using ProjectHub.Infrastructure.Services;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +26,14 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 
-builder.Services.AddControllers();
+// Регистрация сервисов и репозиториев для участников проектов
+builder.Services.AddScoped<IProjectParticipantRepository, ProjectParticipantRepository>();
+builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService>();
+
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
+});
 
 builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>();
 builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
@@ -89,7 +97,7 @@ app.UseSwaggerUI(c =>
 });
 app.UseRouting();
 
-// ��������� ����� Middlewares
+// Use Middlewares
 app.UseWhen(context =>
     context.Request.Path.StartsWithSegments("/api/auth/register") &&
     context.Request.Method == "POST",

@@ -9,3 +9,63 @@ GET {{ProjectHub.API_HostAddress}}/todos/1
 Accept: application/json
 
 ###
+
+### Register a new user
+POST https://localhost:7000/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "email": "test@example.com",
+  "password": "TestPassword123!"
+}
+
+### Login
+POST https://localhost:7000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "TestPassword123!"
+}
+
+### Create a project (requires authentication)
+POST https://localhost:7000/api/projects
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Test Project",
+  "description": "A test project for participant management"
+}
+
+### Get project participants
+GET https://localhost:7000/api/projects/1/participants
+Authorization: Bearer {{token}}
+
+### Add a participant to project
+POST https://localhost:7000/api/projects/1/participants
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "userId": "{{participantUserId}}",
+  "role": 2
+}
+
+### Remove a participant from project
+DELETE https://localhost:7000/api/projects/1/participants/{{participantUserId}}
+Authorization: Bearer {{token}}
+
+### Update participant role
+PUT https://localhost:7000/api/projects/1/participants/{{participantUserId}}/role
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newRole": 1
+}
+
+### Get user's projects
+GET https://localhost:7000/api/users/{{userId}}/projects
+Authorization: Bearer {{token}}

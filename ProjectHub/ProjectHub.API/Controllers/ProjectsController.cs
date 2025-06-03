@@ -18,10 +18,9 @@ namespace ProjectHub.API.Controllers
         {
             _projectService = projectService;
         }
-
         private string GetCurrentUserId()
         {
-            return User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         }
 
         [HttpGet("{id}")]
@@ -33,7 +32,6 @@ namespace ProjectHub.API.Controllers
                 return NotFound();
             }
             // можно проверить, имеет ли текущий пользователь доступ к этому проекту,
-            // если проекты не должны быть видны всем мужикам.
             return Ok(project);
         }
 
@@ -47,11 +45,13 @@ namespace ProjectHub.API.Controllers
 
         [HttpPost]
         public async Task<IActionResult> CreateProject([FromBody] Project project)
-        {
-            if (!ModelState.IsValid)
+        {            if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
+            
+            // No need to clear participants as the navigation property has been removed
+            
             var userId = GetCurrentUserId();
             var createdProject = await _projectService.CreateProjectAsync(project, userId);
             return CreatedAtAction(nameof(GetProject), new { id = createdProject.Id }, createdProject);

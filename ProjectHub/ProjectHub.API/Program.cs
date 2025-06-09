@@ -30,6 +30,10 @@ builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IProjectParticipantRepository, ProjectParticipantRepository>();
 builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService>();
 
+// Регистрация сервисов и репозиториев для задач
+builder.Services.AddScoped<ITaskRepository, TaskRepository>();
+builder.Services.AddScoped<ITaskService, TaskService>();
+
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
@@ -37,6 +41,8 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 
 builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>();
 builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
+builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
 
 builder.Services.AddEndpointsApiExplorer();
 var jwtKey = builder.Configuration["Jwt:Key"];
@@ -53,7 +59,7 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Enter JWT token : }"
+        Description = "Enter JWT token :"
     });
 
     c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement

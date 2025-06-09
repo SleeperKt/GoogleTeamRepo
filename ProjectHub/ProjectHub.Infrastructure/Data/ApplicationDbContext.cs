@@ -13,6 +13,7 @@ namespace ProjectHub.Infrastructure.Data
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<Project> Projects { get; set; } = null!;
         public DbSet<ProjectParticipant> ProjectParticipants { get; set; } = null!;
+        public DbSet<ProjectTask> Tasks { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -63,6 +64,35 @@ namespace ProjectHub.Infrastructure.Data
             modelBuilder.Entity<ProjectParticipant>()
                 .HasIndex(pp => new { pp.ProjectId, pp.UserId })
                 .IsUnique();
+
+            // Configure Task entity
+            modelBuilder.Entity<ProjectTask>()
+                .HasKey(t => t.Id);
+
+            modelBuilder.Entity<ProjectTask>()
+                .Property(t => t.Title)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectTask>()
+                .Property(t => t.Description)
+                .HasMaxLength(1000);
+
+            modelBuilder.Entity<ProjectTask>()
+                .Property(t => t.ProjectId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectTask>()
+                .Property(t => t.Status)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectTask>()
+                .Property(t => t.Stage)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectTask>()
+                .Property(t => t.CreatedById)
+                .IsRequired();
         }
     }
 }

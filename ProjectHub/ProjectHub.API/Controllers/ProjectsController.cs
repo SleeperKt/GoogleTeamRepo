@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ProjectHub.Core.Entities;
 using ProjectHub.Core.Interfaces;
+using ProjectHub.Core.DataTransferObjects;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
@@ -44,15 +45,20 @@ namespace ProjectHub.API.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CreateProject([FromBody] Project project)
+        public async Task<IActionResult> CreateProject([FromBody] CreateProjectRequest request)
         {            if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
             
-            // No need to clear participants as the navigation property has been removed
-            
             var userId = GetCurrentUserId();
+            
+            var project = new Project
+            {
+                Name = request.Name,
+                Description = request.Description
+            };
+            
             var createdProject = await _projectService.CreateProjectAsync(project, userId);
             return CreatedAtAction(nameof(GetProject), new { id = createdProject.Id }, createdProject);
         }

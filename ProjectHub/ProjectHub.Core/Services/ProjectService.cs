@@ -149,5 +149,15 @@ namespace ProjectHub.Core.Services
             var role = await _participantRepository.GetUserRoleInProjectAsync(projectId, user.UserId);
             return role != null;
         }
+
+        public async Task<Project?> GetProjectByPublicIdAsync(Guid publicId)
+        {
+            return await _projectRepository.GetByPublicIdAsync(publicId);
+        }
+
+        public async Task<int?> GetInternalIdByPublicIdAsync(Guid publicId)
+        {
+            return await _projectRepository.GetInternalIdByPublicIdAsync(publicId);
+        }
     }
 }

@@ -12,5 +12,7 @@ namespace ProjectHub.Core.Interfaces
         Task AddAsync(Project project);
         Task UpdateAsync(Project project);
         Task DeleteAsync(int id);
+        Task<Project?> GetByPublicIdAsync(Guid publicId);
+        Task<int?> GetInternalIdByPublicIdAsync(Guid publicId);
     }
 }

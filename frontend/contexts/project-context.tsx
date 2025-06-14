@@ -3,102 +3,111 @@
 import type React from "react"
 
 import { createContext, useContext, useState, useEffect } from "react"
-
-// Sample projects data
-const SAMPLE_PROJECTS = [
-  {
-    id: "testproject-dev",
-    name: "TestProject-Dev",
-    description: "Development project for the TestProject platform",
-    status: "Active",
-    lastUpdated: "1 hour ago",
-    currentSprint: "Sprint 4 (May 15 - May 29)",
-    avatar: "TP",
-    color: "bg-violet-100 text-violet-600",
-  },
-  {
-    id: "marketing-website",
-    name: "Marketing Website",
-    description: "Company marketing website redesign",
-    status: "On Hold",
-    lastUpdated: "2 days ago",
-    currentSprint: null,
-    avatar: "MW",
-    color: "bg-blue-100 text-blue-600",
-  },
-  {
-    id: "mobile-app",
-    name: "Mobile App",
-    description: "iOS and Android mobile application",
-    status: "Active",
-    lastUpdated: "30 minutes ago",
-    currentSprint: "Sprint 2 (May 20 - June 3)",
-    avatar: "MA",
-    color: "bg-green-100 text-green-600",
-  },
-  {
-    id: "api-redesign",
-    name: "API Redesign",
-    description: "Backend API architecture overhaul",
-    status: "Planning",
-    lastUpdated: "1 day ago",
-    currentSprint: null,
-    avatar: "AR",
-    color: "bg-orange-100 text-orange-600",
-  },
-]
+import { useAuth } from "@/contexts/auth-context"
+import { API_BASE_URL } from "@/lib/api"
 
 interface Project {
-  id: string
+  id: number
   name: string
   description: string
-  status: string
-  lastUpdated: string
-  currentSprint: string | null
-  avatar: string
-  color: string
+  status?: string
+  lastUpdated?: string
+  currentSprint?: string | null
+  avatar?: string
+  color?: string
 }
 
 interface ProjectContextType {
   currentProject: Project | null
   projects: Project[]
   setCurrentProject: (project: Project) => void
-  switchProject: (projectId: string) => void
+  switchProject: (projectId: number) => void
+  refreshProjects: () => void
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined)
 
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
+  const { token } = useAuth()
   const [currentProject, setCurrentProjectState] = useState<Project | null>(null)
-  const [projects] = useState<Project[]>(SAMPLE_PROJECTS)
+  const [projects, setProjects] = useState<Project[]>([])
 
-  // Load saved project from localStorage on mount
+  // Fetch projects from API
+  const fetchProjects = async () => {
+    if (token) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/Projects`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const json = await res.json()
+          const projectsData = Array.isArray(json)
+            ? json
+            : Array.isArray(json.$values)
+            ? json.$values
+            : []
+          
+          // Transform API data
+          const transformedProjects = projectsData.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            status: "Active",
+            lastUpdated: new Date(p.createdAt ?? Date.now()).toLocaleDateString(),
+            currentSprint: null,
+            avatar: p.name.substring(0, 2).toUpperCase(),
+            color: "bg-violet-100 text-violet-600",
+          }))
+          
+          setProjects(transformedProjects)
+        } else {
+          console.error("Failed to fetch projects")
+          setProjects([])
+        }
+      } catch (error) {
+        console.error("Error fetching projects:", error)
+        setProjects([])
+      }
+    }
+  }
+
   useEffect(() => {
-    const savedProjectId = localStorage.getItem("currentProjectId")
-    if (savedProjectId) {
-      const project = projects.find((p) => p.id === savedProjectId)
-      if (project) {
-        setCurrentProjectState(project)
+    fetchProjects()
+  }, [token])
+
+  // Load saved project from localStorage on mount or set first project as default
+  useEffect(() => {
+    if (projects.length > 0) {
+      const savedProjectId = localStorage.getItem("currentProjectId")
+      if (savedProjectId) {
+        const project = projects.find((p) => p.id.toString() === savedProjectId)
+        if (project) {
+          setCurrentProjectState(project)
+        } else {
+          // Fallback to first project if saved project not found
+          setCurrentProjectState(projects[0])
+        }
       } else {
-        // Fallback to first project if saved project not found
+        // Default to first project
         setCurrentProjectState(projects[0])
       }
-    } else {
-      // Default to first project
-      setCurrentProjectState(projects[0])
     }
   }, [projects])
 
   const setCurrentProject = (project: Project) => {
     setCurrentProjectState(project)
-    localStorage.setItem("currentProjectId", project.id)
+    localStorage.setItem("currentProjectId", project.id.toString())
   }
 
-  const switchProject = (projectId: string) => {
+  const switchProject = (projectId: number) => {
     const project = projects.find((p) => p.id === projectId)
     if (project) {
       setCurrentProject(project)
     }
+  }
+
+  const refreshProjects = () => {
+    fetchProjects()
   }
 
   return (
@@ -108,6 +117,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         projects,
         setCurrentProject,
         switchProject,
+        refreshProjects,
       }}
     >
       {children}

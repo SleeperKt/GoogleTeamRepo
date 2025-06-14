@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ProjectSelector } from "@/components/project-selector"
 import { useAuth } from "@/contexts/auth-context"
+import { useProject } from "@/contexts/project-context"
 import { API_BASE_URL } from "@/lib/api"
 
 interface Project {
@@ -102,7 +103,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   })
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
   const [notifications, setNotifications] = useState([
     {
       id: 1,
@@ -127,28 +127,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     },
   ])
   const { user, logout, token } = useAuth()
-
-  useEffect(() => {
-    const fetchProjects = async () => {
-      if (token) {
-        try {
-          const res = await fetch(`${API_BASE_URL}/api/Projects`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-          if (res.ok) {
-            const data = await res.json()
-            setProjects(data)
-          } else {
-            console.error("Failed to fetch projects")
-          }
-        } catch (error) {
-          console.error("Error fetching projects:", error)
-        }
-      }
-    }
-
-    fetchProjects()
-  }, [token])
+  const { projects, refreshProjects } = useProject()
 
   const navItems: NavItem[] = [
     {
@@ -276,7 +255,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                         </Button>
 
                         {/* Create Project Button */}
-                        <Dialog open={createProjectOpen} onOpenChange={setCreateProjectOpen}>
+                        {/* <Dialog open={createProjectOpen} onOpenChange={setCreateProjectOpen}>
                           <DialogTrigger asChild>
                             <Button
                               variant="ghost"
@@ -315,7 +294,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                               </DialogFooter>
                             </form>
                           </DialogContent>
-                        </Dialog>
+                        </Dialog> */}
                       </div>
 
                       {/* Expanded content */}

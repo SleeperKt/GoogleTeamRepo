@@ -37,6 +37,7 @@ import {
 import { useRouter } from "next/navigation"
 import { apiRequest } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
+import { useProject } from "@/contexts/project-context"
 
 // Initially empty; will be filled from backend
 
@@ -62,25 +63,25 @@ export default function ProjectsPage() {
   const [projectList, setProjectList] = useState<any[]>([])
 
   const { token } = useAuth()
+  const { refreshProjects } = useProject()
 
   useEffect(() => {
     async function loadProjects() {
       try {
-        const data = await apiRequest<any[]>("/api/projects")
-        if (Array.isArray(data)) {
-          setProjectList(
-            data.map((p) => ({
-              id: p.id,
-              name: p.name,
-              description: p.description ?? "",
-              status: "Active",
-              lastUpdated: new Date(p.createdAt).toLocaleDateString(),
-              owner: "Me",
-              initials: p.name.slice(0, 2).toUpperCase(),
-              starred: false,
-            }))
-          )
-        }
+        const json = await apiRequest<any>("/api/projects") as any;
+        const arr = Array.isArray(json) ? json : Array.isArray(json.$values) ? json.$values : [];
+        setProjectList(
+          arr.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description ?? "",
+            status: "Active",
+            lastUpdated: new Date(p.createdAt).toLocaleDateString(),
+            owner: "Me",
+            initials: p.name.slice(0, 2).toUpperCase(),
+            starred: false,
+          })),
+        );
       } catch (err) {
         console.error("Failed to load projects", err)
       }
@@ -320,6 +321,8 @@ export default function ProjectsPage() {
                 }
                 setProjectList((prev) => [...prev, mapped])
                 setCreateProjectDialogOpen(false)
+                // Refresh projects in all contexts
+                refreshProjects()
               } catch (err: any) {
                 console.error(err)
                 alert(err.message ?? "Failed to create project")

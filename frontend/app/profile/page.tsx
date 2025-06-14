@@ -7,17 +7,27 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function ProfilePage() {
+  const { user } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
-    firstName: "Alex",
-    lastName: "Kim",
-    email: "alex@example.com",
-    phone: "+1 (555) 123-4567",
+    username: "",
+    email: "",
     bio: "Senior Developer with 5+ years of experience in web application development. Specialized in React, Next.js, and TypeScript.",
   })
+
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        username: user.username || "",
+        email: user.email || "",
+        bio: formData.bio, // Keep existing bio or fetch from a future endpoint
+      })
+    }
+  }, [user])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -53,49 +63,26 @@ export default function ProfilePage() {
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="firstName"
-                name="firstName"
-                value={formData.firstName}
+                id="username"
+                name="username"
+                value={formData.username}
                 onChange={handleInputChange}
-                placeholder="Alex"
+                placeholder="Your username"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
+              <Label htmlFor="email">Email Address</Label>
               <Input
-                id="lastName"
-                name="lastName"
-                value={formData.lastName}
+                id="email"
+                name="email"
+                type="email"
+                value={formData.email}
                 onChange={handleInputChange}
-                placeholder="Kim"
+                placeholder="your.email@example.com"
               />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="email">Email Address</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="alex@example.com"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone Number</Label>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              value={formData.phone}
-              onChange={handleInputChange}
-              placeholder="+1 (555) 123-4567"
-            />
           </div>
 
           <div className="space-y-2">

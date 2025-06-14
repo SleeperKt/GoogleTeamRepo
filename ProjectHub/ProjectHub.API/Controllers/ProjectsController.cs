@@ -5,6 +5,7 @@ using ProjectHub.Core.Interfaces;
 using ProjectHub.Core.DataTransferObjects;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace ProjectHub.API.Controllers
 {
@@ -23,6 +24,11 @@ namespace ProjectHub.API.Controllers
         {
             return User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         }
+        
+        private string GetCurrentUserEmail()
+        {
+            return User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue(JwtRegisteredClaimNames.Email) ?? string.Empty;
+        }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetProject(int id)
@@ -35,31 +41,31 @@ namespace ProjectHub.API.Controllers
             // можно проверить, имеет ли текущий пользователь доступ к этому проекту,
             return Ok(project);
         }
-
         [HttpGet]
         public async Task<IActionResult> GetProjects()
         {
-            var userId = GetCurrentUserId();
-            var projects = await _projectService.GetProjectsByOwnerAsync(userId);
+            var userEmail = GetCurrentUserEmail();
+            var projects = await _projectService.GetProjectsByOwnerAsync(userEmail);
             return Ok(projects);
         }
 
         [HttpPost]
         public async Task<IActionResult> CreateProject([FromBody] CreateProjectRequest request)
-        {            if (!ModelState.IsValid)
+        {            
+            if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
             
-            var userId = GetCurrentUserId();
-            
+            // Create Project entity from the request
             var project = new Project
             {
                 Name = request.Name,
                 Description = request.Description
             };
             
-            var createdProject = await _projectService.CreateProjectAsync(project, userId);
+            var userEmail = GetCurrentUserEmail();
+            var createdProject = await _projectService.CreateProjectAsync(project, userEmail);
             return CreatedAtAction(nameof(GetProject), new { id = createdProject.Id }, createdProject);
         }
 
@@ -76,10 +82,10 @@ namespace ProjectHub.API.Controllers
                 return BadRequest(ModelState);
             }
 
-            var userId = GetCurrentUserId();
+            var userEmail = GetCurrentUserEmail();
             try
             {
-                await _projectService.UpdateProjectAsync(project, userId);
+                await _projectService.UpdateProjectAsync(project, userEmail);
             }
             catch (UnauthorizedAccessException)
             {
@@ -96,10 +102,10 @@ namespace ProjectHub.API.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteProject(int id)
         {
-            var userId = GetCurrentUserId();
+            var userEmail = GetCurrentUserEmail();
             try
             {
-                await _projectService.DeleteProjectAsync(id, userId);
+                await _projectService.DeleteProjectAsync(id, userEmail);
             }
             catch (UnauthorizedAccessException)
             {

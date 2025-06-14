@@ -1,0 +1,1211 @@
+"use client"
+
+import { useState, useEffect, useRef } from "react"
+import {
+  ArrowLeft,
+  Calendar,
+  Check,
+  ChevronsUpDown,
+  Clock,
+  Loader2,
+  Sparkles,
+  X,
+  MessageSquare,
+  Paperclip,
+  FileText,
+  ArrowRight,
+  Trash,
+  Tag,
+} from "lucide-react"
+import { format } from "date-fns"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
+// Sample data for the form
+const teamMembers = [
+  {
+    id: 1,
+    name: "Alex Kim",
+    email: "alex@example.com",
+    avatar: "/placeholder.svg?height=32&width=32",
+    initials: "AK",
+  },
+  {
+    id: 2,
+    name: "Sarah Lee",
+    email: "sarah@example.com",
+    avatar: "/placeholder.svg?height=32&width=32",
+    initials: "SL",
+  },
+  {
+    id: 3,
+    name: "Michael Johnson",
+    email: "michael@example.com",
+    avatar: "/placeholder.svg?height=32&width=32",
+    initials: "MJ",
+  },
+  {
+    id: 4,
+    name: "Jessica Taylor",
+    email: "jessica@example.com",
+    avatar: "/placeholder.svg?height=32&width=32",
+    initials: "JT",
+  },
+]
+
+const labels = [
+  { id: 1, name: "Frontend", color: "#93c5fd" },
+  { id: 2, name: "Backend", color: "#86efac" },
+  { id: 3, name: "Bug", color: "#fca5a5" },
+  { id: 4, name: "Feature", color: "#c4b5fd" },
+  { id: 5, name: "Documentation", color: "#fcd34d" },
+]
+
+const priorities = [
+  { value: "high", label: "High", color: "text-red-500" },
+  { value: "medium", label: "Medium", color: "text-yellow-500" },
+  { value: "low", label: "Low", color: "text-blue-500" },
+]
+
+const stages = [
+  { id: 1, name: "To Do" },
+  { id: 2, name: "In Progress" },
+  { id: 3, name: "Review" },
+  { id: 4, name: "Done" },
+]
+
+// Sample activity data
+const sampleActivities = [
+  {
+    id: 1,
+    type: "status_change",
+    user: teamMembers[0],
+    oldValue: "To Do",
+    newValue: "In Progress",
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
+  },
+  {
+    id: 2,
+    type: "comment",
+    user: teamMembers[1],
+    content: "I've started working on this. Will update the design files soon.",
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1), // 1 hour ago
+  },
+  {
+    id: 3,
+    type: "assignee_change",
+    user: teamMembers[0],
+    oldValue: null,
+    newValue: teamMembers[1].name,
+    timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
+  },
+]
+
+// Sample comments
+const sampleComments = [
+  {
+    id: 1,
+    user: teamMembers[1],
+    content: "I've started working on this. Will update the design files soon.",
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1), // 1 hour ago
+  },
+  {
+    id: 2,
+    user: teamMembers[2],
+    content: "Let me know if you need any help with the API integration part.",
+    timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
+  },
+]
+
+// Sample attachments
+const sampleAttachments = [
+  {
+    id: 1,
+    name: "design-mockup.png",
+    size: "2.4 MB",
+    type: "image",
+    uploadedBy: teamMembers[1],
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3), // 3 hours ago
+  },
+  {
+    id: 2,
+    name: "api-documentation.pdf",
+    size: "1.2 MB",
+    type: "document",
+    uploadedBy: teamMembers[2],
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
+  },
+]
+
+interface TaskDetailViewProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  task: any
+  onTaskUpdated?: (updatedTask: any) => void
+  onTaskDeleted?: (taskId: string | number) => void
+}
+
+export function TaskDetailView({
+  open,
+  onOpenChange,
+  task: initialTask,
+  onTaskUpdated,
+  onTaskDeleted,
+}: TaskDetailViewProps) {
+  // Task state
+  const [task, setTask] = useState(initialTask)
+  const [title, setTitle] = useState(initialTask?.title || "")
+  const [description, setDescription] = useState(initialTask?.description || "")
+  const [assignee, setAssignee] = useState<number | null>(initialTask?.assignee?.id || null)
+  const [selectedLabels, setSelectedLabels] = useState<number[]>(
+    initialTask?.labels
+      ?.map((label: string) => {
+        const foundLabel = labels.find((l) => l.name === label)
+        return foundLabel?.id
+      })
+      .filter(Boolean) || [],
+  )
+  const [dueDate, setDueDate] = useState<Date | undefined>(initialTask?.dueDate || undefined)
+  const [priority, setPriority] = useState<string | undefined>(initialTask?.priority || undefined)
+  const [stage, setStage] = useState(initialTask?.status || "To Do")
+  const [estimate, setEstimate] = useState<number | undefined>(initialTask?.estimate || undefined)
+
+  // UI state
+  const [assigneeOpen, setAssigneeOpen] = useState(false)
+  const [labelsOpen, setLabelsOpen] = useState(false)
+  const [dateOpen, setDateOpen] = useState(false)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
+  const [newComment, setNewComment] = useState("")
+  const [comments, setComments] = useState(sampleComments)
+  const [activities, setActivities] = useState(sampleActivities)
+  const [attachments, setAttachments] = useState(sampleAttachments)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<string[]>(["description", "details", "ai"])
+
+  // Refs
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Reset form when task changes
+  useEffect(() => {
+    if (initialTask) {
+      setTitle(initialTask.title || "")
+      setDescription(initialTask.description || "")
+      setAssignee(initialTask.assignee?.id || null)
+      setSelectedLabels(
+        initialTask.labels
+          ?.map((label: string) => {
+            const foundLabel = labels.find((l) => l.name === label)
+            return foundLabel?.id
+          })
+          .filter(Boolean) || [],
+      )
+      setDueDate(initialTask.dueDate || undefined)
+      setPriority(initialTask.priority || undefined)
+      setStage(initialTask.status || "To Do")
+      setEstimate(initialTask.estimate || undefined)
+      setHasUnsavedChanges(false)
+    }
+  }, [initialTask])
+
+  // Focus on title input when sidebar opens
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => {
+        titleInputRef.current?.focus()
+      }, 100)
+    }
+  }, [open])
+
+  // Mark changes as unsaved when any field changes
+  useEffect(() => {
+    if (
+      title !== initialTask?.title ||
+      description !== initialTask?.description ||
+      assignee !== initialTask?.assignee?.id ||
+      dueDate !== initialTask?.dueDate ||
+      priority !== initialTask?.priority ||
+      stage !== initialTask?.status ||
+      estimate !== initialTask?.estimate ||
+      !arraysEqual(
+        selectedLabels,
+        initialTask?.labels
+          ?.map((label: string) => {
+            const foundLabel = labels.find((l) => l.name === label)
+            return foundLabel?.id
+          })
+          .filter(Boolean) || [],
+      )
+    ) {
+      setHasUnsavedChanges(true)
+    } else {
+      setHasUnsavedChanges(false)
+    }
+  }, [title, description, assignee, selectedLabels, dueDate, priority, stage, estimate, initialTask])
+
+  // Helper function to compare arrays
+  const arraysEqual = (a: any[], b: any[]) => {
+    if (a.length !== b.length) return false
+    const sortedA = [...a].sort()
+    const sortedB = [...b].sort()
+    return sortedA.every((val, idx) => val === sortedB[idx])
+  }
+
+  // Save changes
+  const saveChanges = () => {
+    setIsSaving(true)
+
+    // Create updated task object
+    const updatedTask = {
+      ...initialTask,
+      title,
+      description,
+      assignee: assignee ? teamMembers.find((member) => member.id === assignee) : null,
+      labels: selectedLabels.map((id) => {
+        const label = labels.find((l) => l.id === id)
+        return label?.name
+      }),
+      dueDate,
+      priority,
+      status: stage,
+      estimate,
+    }
+
+    // Simulate API call
+    setTimeout(() => {
+      // Call onTaskUpdated callback with updated task
+      if (onTaskUpdated) {
+        onTaskUpdated(updatedTask)
+      }
+
+      // Update local task state
+      setTask(updatedTask)
+      setHasUnsavedChanges(false)
+      setIsSaving(false)
+
+      // Add activity for status change if it changed
+      if (initialTask.status !== stage) {
+        const newActivity = {
+          id: activities.length + 1,
+          type: "status_change",
+          user: teamMembers[0], // Current user (hardcoded for demo)
+          oldValue: initialTask.status,
+          newValue: stage,
+          timestamp: new Date(),
+        }
+        setActivities([newActivity, ...activities])
+      }
+
+      // Add activity for assignee change if it changed
+      if (initialTask.assignee?.id !== assignee) {
+        const newActivity = {
+          id: activities.length + 1,
+          type: "assignee_change",
+          user: teamMembers[0], // Current user (hardcoded for demo)
+          oldValue: initialTask.assignee?.name || null,
+          newValue: assignee ? teamMembers.find((member) => member.id === assignee)?.name : null,
+          timestamp: new Date(),
+        }
+        setActivities([newActivity, ...activities])
+      }
+    }, 500)
+  }
+
+  // Handle delete task
+  const handleDeleteTask = () => {
+    // Simulate API call
+    setTimeout(() => {
+      // Call onTaskDeleted callback
+      if (onTaskDeleted) {
+        onTaskDeleted(initialTask.id)
+      }
+
+      // Close sidebar
+      onOpenChange(false)
+      setDeleteDialogOpen(false)
+    }, 500)
+  }
+
+  // Handle add comment
+  const handleAddComment = () => {
+    if (!newComment.trim()) return
+
+    const comment = {
+      id: comments.length + 1,
+      user: teamMembers[0], // Current user (hardcoded for demo)
+      content: newComment,
+      timestamp: new Date(),
+    }
+
+    setComments([...comments, comment])
+    setNewComment("")
+
+    // Add to activities
+    const activity = {
+      id: activities.length + 1,
+      type: "comment",
+      user: teamMembers[0],
+      content: newComment,
+      timestamp: new Date(),
+    }
+    setActivities([activity, ...activities])
+
+    // Focus back on comment input
+    setTimeout(() => {
+      commentInputRef.current?.focus()
+    }, 100)
+  }
+
+  // Get assignee name
+  const getAssigneeName = () => {
+    if (!assignee) return "Unassigned"
+    const member = teamMembers.find((member) => member.id === assignee)
+    return member ? member.name : "Unassigned"
+  }
+
+  // Toggle label selection
+  const toggleLabel = (id: number) => {
+    setSelectedLabels((prev) => (prev.includes(id) ? prev.filter((labelId) => labelId !== id) : [...prev, id]))
+  }
+
+  // Format timestamp
+  const formatTimestamp = (date: Date) => {
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    if (diffMins < 60) {
+      return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`
+    } else if (diffHours < 24) {
+      return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`
+    } else {
+      return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`
+    }
+  }
+
+  // Toggle section expansion
+  const toggleSection = (section: string) => {
+    setExpandedSections((prev) => (prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]))
+  }
+
+  // Generate AI description
+  const generateAIDescription = () => {
+    setIsGeneratingAI(true)
+
+    // Simulate AI generation
+    setTimeout(() => {
+      // Generate description based on title and stage
+      let aiDesc = ""
+
+      if (title.toLowerCase().includes("authentication")) {
+        aiDesc = `Implement a secure user authentication flow that includes:
+
+1. Login form with email/username and password fields
+2. Registration process with email verification
+3. Password reset functionality
+4. OAuth integration with Google and GitHub
+5. Session management with JWT tokens
+6. Rate limiting to prevent brute force attacks
+
+This task is critical for system security and should follow OWASP security best practices.`
+      } else if (title.toLowerCase().includes("navigation")) {
+        aiDesc = `Fix the responsive navigation menu on mobile devices by addressing the following issues:
+
+1. Menu doesn't close properly after selection on small screens
+2. Dropdown submenus are cut off on certain device widths
+3. Hamburger icon animation is inconsistent
+4. Touch targets are too small on mobile devices
+
+Test on iOS and Android devices with various screen sizes to ensure consistent behavior.`
+      } else if (stage === "In Progress") {
+        aiDesc = `This task is currently in development. Key implementation details:
+
+1. Follow the design specifications in the attached mockups
+2. Ensure responsive behavior across all device sizes
+3. Implement proper error handling and loading states
+4. Write unit tests for all new functionality
+5. Document any API changes or new components
+6. Consider accessibility requirements throughout implementation`
+      } else {
+        aiDesc = `This task involves ${title.toLowerCase()}. Based on the current stage (${stage}), the following should be considered:
+
+1. Define clear acceptance criteria and expected outcomes
+2. Identify dependencies on other tasks or systems
+3. Document any technical requirements or constraints
+4. Consider potential edge cases and error scenarios
+5. Estimate effort required for implementation
+6. Plan for testing and validation steps`
+      }
+
+      setAiSuggestion(aiDesc)
+      setIsGeneratingAI(false)
+    }, 1500)
+  }
+
+  // Apply AI suggestion
+  const applyAISuggestion = () => {
+    if (aiSuggestion) {
+      setDescription(aiSuggestion)
+      setAiSuggestion(null)
+    }
+  }
+
+  // Regenerate AI suggestion
+  const regenerateAISuggestion = () => {
+    setAiSuggestion(null)
+    generateAIDescription()
+  }
+
+  // Dismiss AI suggestion
+  const dismissAISuggestion = () => {
+    setAiSuggestion(null)
+  }
+
+  // Shorten description with AI
+  const shortenDescription = () => {
+    if (!description) return
+
+    setIsGeneratingAI(true)
+
+    // Simulate AI shortening
+    setTimeout(() => {
+      const shortened =
+        description.split("\n\n")[0] +
+        "\n\nKey points:\n" +
+        description
+          .split("\n")
+          .filter((line) => line.trim().length > 0 && !line.startsWith("Key points:"))
+          .slice(1, 4)
+          .map((line) => (line.length > 40 ? line.substring(0, 40) + "..." : line))
+          .join("\n")
+
+      setAiSuggestion(shortened)
+      setIsGeneratingAI(false)
+    }, 1000)
+  }
+
+  // Expand description with AI
+  const expandDescription = () => {
+    if (!description) return
+
+    setIsGeneratingAI(true)
+
+    // Simulate AI expansion
+    setTimeout(() => {
+      const expanded =
+        description +
+        "\n\nAdditional considerations:\n" +
+        "1. Ensure cross-browser compatibility\n" +
+        "2. Consider performance implications\n" +
+        "3. Document any API changes\n" +
+        "4. Add appropriate error handling\n" +
+        "5. Include accessibility features"
+
+      setAiSuggestion(expanded)
+      setIsGeneratingAI(false)
+    }, 1000)
+  }
+
+  // If not open, don't render anything
+  if (!open) return null
+
+  return (
+    <>
+      {/* Sidebar Layout */}
+      <div
+        className={cn(
+          "fixed top-0 right-0 h-full w-[350px] bg-white dark:bg-gray-800 border-l shadow-lg z-50 flex flex-col transition-transform duration-300 ease-in-out",
+          open ? "translate-x-0" : "translate-x-full",
+          "md:w-[350px] sm:w-[320px]",
+        )}
+      >
+        {/* Header with back button and title */}
+        <div className="p-2 border-b flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onOpenChange(false)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Input
+            ref={titleInputRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="text-base font-medium border-0 p-0 h-7 focus-visible:ring-0 focus-visible:ring-offset-0"
+            placeholder="Task title"
+          />
+          {hasUnsavedChanges && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              {isSaving ? (
+                <span className="flex items-center">
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Saving...
+                </span>
+              ) : (
+                "Unsaved"
+              )}
+            </span>
+          )}
+        </div>
+
+        {/* Main content area - single scrollable panel */}
+        <div className="flex-1 overflow-auto">
+          <div className="p-2 space-y-4">
+            {/* Description Section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="description" className="text-xs font-medium">
+                  Description
+                </Label>
+              </div>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add a detailed description..."
+                className="min-h-[100px] resize-y text-sm"
+              />
+
+              {/* AI Assistant - Compact Version */}
+              <div className="border rounded-md p-1.5 bg-violet-50 dark:bg-violet-950/20 mt-1">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3 text-violet-500" />
+                    <h4 className="font-medium text-xs">AI Description Assistant</h4>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={shortenDescription}
+                            disabled={isGeneratingAI || !description}
+                            className="h-5 text-xs px-1.5 py-0"
+                          >
+                            Shorten
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p className="text-xs">Create a shorter version</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={expandDescription}
+                            disabled={isGeneratingAI || !description}
+                            className="h-5 text-xs px-1.5 py-0"
+                          >
+                            Expand
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p className="text-xs">Add more details</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+
+                {isGeneratingAI ? (
+                  <div className="flex items-center justify-center py-2">
+                    <div className="flex flex-col items-center gap-1">
+                      <Loader2 className="h-4 w-4 animate-spin text-violet-500" />
+                      <p className="text-xs text-muted-foreground">Generating...</p>
+                    </div>
+                  </div>
+                ) : aiSuggestion ? (
+                  <div className="space-y-1">
+                    <div className="bg-white dark:bg-gray-800 border rounded-md p-1.5 text-xs whitespace-pre-wrap">
+                      {aiSuggestion}
+                    </div>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={dismissAISuggestion}
+                        className="h-5 text-xs px-1.5 py-0"
+                      >
+                        Dismiss
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={regenerateAISuggestion}
+                        className="h-5 text-xs px-1.5 py-0"
+                      >
+                        Regenerate
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-violet-600 hover:bg-violet-700 text-white h-5 text-xs px-1.5 py-0"
+                        onClick={applyAISuggestion}
+                      >
+                        Apply
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <Button
+                      className="w-full bg-violet-600 hover:bg-violet-700 text-white h-6 text-xs"
+                      onClick={generateAIDescription}
+                    >
+                      <Sparkles className="mr-1 h-3 w-3" />
+                      Generate with AI
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Task Details Section */}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                {/* Type */}
+                <div className="space-y-1">
+                  <Label htmlFor="type" className="text-xs font-medium">
+                    Type
+                  </Label>
+                  <Select
+                    value={task?.type}
+                    onValueChange={(value) => {
+                      setTask({ ...task, type: value })
+                      setHasUnsavedChanges(true)
+                    }}
+                  >
+                    <SelectTrigger id="type" className="h-8 text-xs">
+                      <SelectValue placeholder="Select type">
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            className={cn(
+                              "px-1.5 py-0 h-4 text-[10px]",
+                              task?.type === "feature"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                : task?.type === "bug"
+                                  ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+                                  : task?.type === "story"
+                                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                                    : task?.type === "epic"
+                                      ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+                                      : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
+                            )}
+                          >
+                            {task?.type === "feature"
+                              ? "Feature"
+                              : task?.type === "bug"
+                                ? "Bug"
+                                : task?.type === "story"
+                                  ? "Story"
+                                  : task?.type === "epic"
+                                    ? "Epic"
+                                    : "Task"}
+                          </Badge>
+                        </div>
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="feature">Feature</SelectItem>
+                      <SelectItem value="bug">Bug</SelectItem>
+                      <SelectItem value="task">Task</SelectItem>
+                      <SelectItem value="story">Story</SelectItem>
+                      <SelectItem value="epic">Epic</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Status */}
+                <div className="space-y-1">
+                  <Label htmlFor="status" className="text-xs font-medium">
+                    Status
+                  </Label>
+                  <Select value={stage} onValueChange={setStage}>
+                    <SelectTrigger id="status" className="h-8 text-xs">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stages.map((s) => (
+                        <SelectItem key={s.id} value={s.name} className="text-xs">
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Assignee */}
+                <div className="space-y-1">
+                  <Label htmlFor="assignee" className="text-xs font-medium">
+                    Assignee
+                  </Label>
+                  <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={assigneeOpen}
+                        className="w-full justify-between h-8 text-xs"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {assignee ? (
+                            <>
+                              <Avatar className="h-5 w-5">
+                                <AvatarImage
+                                  src={teamMembers.find((member) => member.id === assignee)?.avatar}
+                                  alt={getAssigneeName()}
+                                />
+                                <AvatarFallback className="text-[10px]">
+                                  {teamMembers.find((member) => member.id === assignee)?.initials}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span>{getAssigneeName()}</span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">Unassigned</span>
+                          )}
+                        </div>
+                        <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                      <Command>
+                        <CommandInput placeholder="Search team member..." className="h-8 text-xs" />
+                        <CommandList>
+                          <CommandEmpty>No team member found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              onSelect={() => {
+                                setAssignee(null)
+                                setAssigneeOpen(false)
+                              }}
+                              className="flex items-center gap-2 text-xs"
+                            >
+                              <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center">
+                                <X className="h-3 w-3" />
+                              </div>
+                              <span>Unassigned</span>
+                              {assignee === null && <Check className="ml-auto h-3 w-3" />}
+                            </CommandItem>
+                            {teamMembers.map((member) => (
+                              <CommandItem
+                                key={member.id}
+                                onSelect={() => {
+                                  setAssignee(member.id)
+                                  setAssigneeOpen(false)
+                                }}
+                                className="flex items-center gap-2 text-xs"
+                              >
+                                <Avatar className="h-5 w-5">
+                                  <AvatarImage src={member.avatar} alt={member.name} />
+                                  <AvatarFallback className="text-[10px]">{member.initials}</AvatarFallback>
+                                </Avatar>
+                                <span>{member.name}</span>
+                                {assignee === member.id && <Check className="ml-auto h-3 w-3" />}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Labels */}
+                <div className="space-y-1">
+                  <Label htmlFor="labels" className="text-xs font-medium">
+                    Labels
+                  </Label>
+                  <Popover open={labelsOpen} onOpenChange={setLabelsOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={labelsOpen}
+                        className="w-full justify-between h-8 text-xs"
+                        id="labels"
+                      >
+                        {selectedLabels.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-[150px] overflow-hidden">
+                            {selectedLabels.map((id) => {
+                              const label = labels.find((l) => l.id === id)
+                              return label ? (
+                                <Badge key={label.id} className="px-1 py-0 h-4 text-[10px]" variant="outline">
+                                  {label.name}
+                                </Badge>
+                              ) : null
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">Select labels</span>
+                        )}
+                        <Tag className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                      <Command>
+                        <CommandInput placeholder="Search labels..." className="h-8 text-xs" />
+                        <CommandList>
+                          <CommandEmpty>No label found.</CommandEmpty>
+                          <CommandGroup>
+                            {labels.map((label) => (
+                              <CommandItem
+                                key={label.id}
+                                onSelect={() => toggleLabel(label.id)}
+                                className="flex items-center gap-2 text-xs"
+                              >
+                                <span>{label.name}</span>
+                                {selectedLabels.includes(label.id) && <Check className="ml-auto h-3 w-3" />}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Due Date */}
+                <div className="space-y-1">
+                  <Label htmlFor="due-date" className="text-xs font-medium">
+                    Due Date
+                  </Label>
+                  <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-left font-normal h-8 text-xs"
+                        id="due-date"
+                      >
+                        <Calendar className="mr-2 h-3 w-3" />
+                        {dueDate ? format(dueDate, "PPP") : <span className="text-muted-foreground">Set due date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={dueDate}
+                        onSelect={(date) => {
+                          setDueDate(date)
+                          setDateOpen(false)
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Priority */}
+                <div className="space-y-1">
+                  <Label htmlFor="priority" className="text-xs font-medium">
+                    Priority
+                  </Label>
+                  <Select value={priority} onValueChange={setPriority}>
+                    <SelectTrigger id="priority" className="h-8 text-xs">
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {priorities.map((p) => (
+                        <SelectItem key={p.value} value={p.value} className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <Clock className={cn("h-3 w-3", p.color)} />
+                            <span>{p.label}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Estimate */}
+                <div className="space-y-1">
+                  <Label htmlFor="estimate" className="text-xs font-medium">
+                    Estimate (hours)
+                  </Label>
+                  <Input
+                    id="estimate"
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={estimate || ""}
+                    onChange={(e) => setEstimate(Number.parseFloat(e.target.value) || undefined)}
+                    placeholder="Enter estimate"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Comments Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Comments ({comments.length})</h3>
+              </div>
+              {/* Comment input */}
+              <div className="space-y-2">
+                <Textarea
+                  ref={commentInputRef}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Add a comment..."
+                  className="min-h-[80px] resize-y text-sm"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleAddComment}
+                    disabled={!newComment.trim()}
+                    className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs"
+                  >
+                    Add Comment
+                  </Button>
+                </div>
+              </div>
+
+              {/* Comments list */}
+              <div className="space-y-3">
+                {comments.length === 0 ? (
+                  <div className="text-center py-6">
+                    <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground opacity-50 mb-2" />
+                    <p className="text-muted-foreground text-xs">No comments yet</p>
+                  </div>
+                ) : (
+                  comments.map((comment) => (
+                    <div key={comment.id} className="border rounded-md p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={comment.user.avatar} alt={comment.user.name} />
+                          <AvatarFallback className="text-xs">{comment.user.initials}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium text-xs">{comment.user.name}</div>
+                          <div className="text-[10px] text-muted-foreground">{formatTimestamp(comment.timestamp)}</div>
+                        </div>
+                      </div>
+                      <div className="text-xs whitespace-pre-wrap">{comment.content}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Activity Section */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium">Activity</h3>
+              <div className="space-y-3">
+                {activities.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Clock className="h-8 w-8 mx-auto text-muted-foreground opacity-50 mb-2" />
+                    <p className="text-muted-foreground text-xs">No activity yet</p>
+                  </div>
+                ) : (
+                  <div className="relative border-l-2 border-muted pl-4 ml-2 space-y-4">
+                    {activities.map((activity) => (
+                      <div key={activity.id} className="relative">
+                        {/* Timeline dot */}
+                        <div className="absolute -left-[21px] top-0 h-3 w-3 rounded-full bg-violet-500 border-2 border-background" />
+
+                        <div className="mb-1">
+                          <div className="flex items-center gap-1">
+                            <Avatar className="h-5 w-5">
+                              <AvatarImage src={activity.user.avatar} alt={activity.user.name} />
+                              <AvatarFallback className="text-[10px]">{activity.user.initials}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium text-xs">{activity.user.name}</span>
+
+                            {activity.type === "status_change" && (
+                              <span className="text-xs">
+                                changed status from{" "}
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                                  {activity.oldValue}
+                                </Badge>{" "}
+                                to{" "}
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                                  {activity.newValue}
+                                </Badge>
+                              </span>
+                            )}
+
+                            {activity.type === "assignee_change" && (
+                              <span className="text-xs">
+                                {activity.oldValue ? (
+                                  <>
+                                    changed assignee from <span className="font-medium">{activity.oldValue}</span> to{" "}
+                                    <span className="font-medium">{activity.newValue}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    assigned to <span className="font-medium">{activity.newValue}</span>
+                                  </>
+                                )}
+                              </span>
+                            )}
+
+                            {activity.type === "comment" && <span className="text-xs">added a comment</span>}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-1">
+                            {formatTimestamp(activity.timestamp)}
+                          </div>
+                        </div>
+
+                        {activity.type === "comment" && (
+                          <div className="bg-muted/30 rounded-md p-2 text-xs mt-1">{activity.content}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Attachments Section */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-medium">Files ({attachments.length})</h3>
+                <Button className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs">
+                  <Paperclip className="mr-1 h-3 w-3" />
+                  Upload File
+                </Button>
+              </div>
+
+              {/* Attachments list */}
+              <div className="space-y-2">
+                {attachments.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Paperclip className="h-8 w-8 mx-auto text-muted-foreground opacity-50 mb-2" />
+                    <p className="text-muted-foreground text-xs">No attachments yet</p>
+                  </div>
+                ) : (
+                  <div className="border rounded-md divide-y">
+                    {attachments.map((attachment) => (
+                      <div key={attachment.id} className="p-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 bg-muted rounded-md flex items-center justify-center">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-xs">{attachment.name}</div>
+                            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                              <span>{attachment.size}</span>
+                              <span>•</span>
+                              <span>Uploaded by {attachment.uploadedBy.name}</span>
+                              <span>•</span>
+                              <span>{formatTimestamp(attachment.timestamp)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                          <ArrowRight className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer with actions */}
+        <div className="p-2 border-t mt-auto">
+          <div className="flex items-center justify-between gap-2">
+            <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)} size="sm" className="h-7 text-xs">
+              <Trash className="mr-1 h-3 w-3" />
+              Delete
+            </Button>
+
+            <div className="flex items-center gap-2">
+              <Select
+                value={stage}
+                onValueChange={(value) => {
+                  setStage(value)
+                  saveChanges()
+                }}
+              >
+                <SelectTrigger className="w-[110px] h-7 text-xs">
+                  <SelectValue placeholder="Move to..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {stages.map((s) => (
+                    <SelectItem key={s.id} value={s.name} className="text-xs">
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                onClick={saveChanges}
+                disabled={isSaving || !hasUnsavedChanges}
+                className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Saving
+                  </>
+                ) : (
+                  "Save"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Backdrop for mobile */}
+      <div
+        className={cn(
+          "fixed inset-0 bg-black/20 z-40 md:hidden",
+          open ? "opacity-100" : "opacity-0 pointer-events-none",
+        )}
+        onClick={() => onOpenChange(false)}
+      />
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the task and all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteTask} className="bg-red-600 hover:bg-red-700 text-white">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}

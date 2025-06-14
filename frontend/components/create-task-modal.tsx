@@ -24,38 +24,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { apiRequest } from "@/lib/api"
 
-// Sample data for the form
-const teamMembers = [
-  {
-    id: 1,
-    name: "Alex Kim",
-    email: "alex@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "AK",
-  },
-  {
-    id: 2,
-    name: "Sarah Lee",
-    email: "sarah@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "SL",
-  },
-  {
-    id: 3,
-    name: "Michael Johnson",
-    email: "michael@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "MJ",
-  },
-  {
-    id: 4,
-    name: "Jessica Taylor",
-    email: "jessica@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "JT",
-  },
-]
+// Dynamic project-specific team members
+interface TeamMember {
+  id: string
+  name: string
+  avatar?: string
+  initials: string
+}
 
 const labels = [
   { id: 1, name: "Frontend", color: "#93c5fd" },
@@ -83,13 +60,15 @@ interface CreateTaskModalProps {
   onOpenChange: (open: boolean) => void
   initialStage?: string
   onTaskCreated?: (task: any) => void
+  projectPublicId?: string
 }
 
-export function CreateTaskModal({ open, onOpenChange, initialStage = "To Do", onTaskCreated }: CreateTaskModalProps) {
+export function CreateTaskModal({ open, onOpenChange, initialStage = "To Do", onTaskCreated, projectPublicId }: CreateTaskModalProps) {
   // Form state
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [assignee, setAssignee] = useState<number | null>(null)
+  const [assignee, setAssignee] = useState<string | null>(null)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [selectedLabels, setSelectedLabels] = useState<number[]>([])
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined)
   const [priority, setPriority] = useState<string | undefined>(undefined)
@@ -104,6 +83,36 @@ export function CreateTaskModal({ open, onOpenChange, initialStage = "To Do", on
 
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null)
+
+  // Load participants when modal opens
+  useEffect(() => {
+    const loadParticipants = async () => {
+      if (!open || !projectPublicId) return
+
+      try {
+        const project: { id: number } = await apiRequest(`/api/projects/public/${projectPublicId}`)
+        if (!project?.id) return
+
+        const participants: Array<any> = await apiRequest(`/api/projects/${project.id}/participants`)
+
+        const members: TeamMember[] = participants.map((p) => ({
+          id: p.userId || p.UserId,
+          name: p.userName || p.UserName,
+          initials: (p.userName || p.UserName || "")
+            .split(" ")
+            .map((n: string) => n[0])
+            .join("")
+            .toUpperCase(),
+        }))
+        setTeamMembers(members)
+      } catch (err) {
+        console.error("Failed to load participants", err)
+        setTeamMembers([])
+      }
+    }
+
+    loadParticipants()
+  }, [open, projectPublicId])
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -148,7 +157,7 @@ export function CreateTaskModal({ open, onOpenChange, initialStage = "To Do", on
       id: Math.floor(Math.random() * 10000), // Generate random ID for demo
       title,
       description,
-      assignee: assignee ? teamMembers.find((member) => member.id === assignee) : null,
+      assignee: assignee ? teamMembers.find((member: TeamMember) => member.id === assignee) : null,
       labels: selectedLabels.map((id) => labels.find((label) => label.id === id)),
       dueDate,
       priority,
@@ -181,7 +190,7 @@ export function CreateTaskModal({ open, onOpenChange, initialStage = "To Do", on
   // Get assignee name
   const getAssigneeName = () => {
     if (!assignee) return "Unassigned"
-    const member = teamMembers.find((member) => member.id === assignee)
+    const member = teamMembers.find((member: TeamMember) => member.id === assignee)
     return member ? member.name : "Unassigned"
   }
 
@@ -243,11 +252,11 @@ export function CreateTaskModal({ open, onOpenChange, initialStage = "To Do", on
                       <>
                         <Avatar className="h-6 w-6">
                           <AvatarImage
-                            src={teamMembers.find((member) => member.id === assignee)?.avatar}
+                            src={teamMembers.find((member: TeamMember) => member.id === assignee)?.avatar}
                             alt={getAssigneeName()}
                           />
                           <AvatarFallback>
-                            {teamMembers.find((member) => member.id === assignee)?.initials}
+                            {teamMembers.find((member: TeamMember) => member.id === assignee)?.initials}
                           </AvatarFallback>
                         </Avatar>
                         <span>{getAssigneeName()}</span>
@@ -278,7 +287,7 @@ export function CreateTaskModal({ open, onOpenChange, initialStage = "To Do", on
                         <span>Unassigned</span>
                         {assignee === null && <Check className="ml-auto h-4 w-4" />}
                       </CommandItem>
-                      {teamMembers.map((member) => (
+                      {teamMembers.map((member: TeamMember) => (
                         <CommandItem
                           key={member.id}
                           onSelect={() => {

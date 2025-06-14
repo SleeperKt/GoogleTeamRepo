@@ -11,7 +11,6 @@ import {
   Cog,
   FolderKanban,
   ListTodo,
-  Menu,
   PanelLeft,
   Plus,
 } from "lucide-react"
@@ -27,6 +26,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -96,6 +96,14 @@ const baseNavItems: Omit<NavItem, "children">[] = [
   },
 ]
 
+// Helper component to show the toggle button only when the sidebar is collapsed
+function SidebarConditionalTrigger() {
+  const { state } = useSidebar()
+  return state === "collapsed" ? (
+    <SidebarTrigger variant="ghost" size="icon" className="mr-2" />
+  ) : null
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -105,29 +113,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   })
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      title: "New comment on 'Authentication Flow'",
-      message: "Sarah Lee commented on your task",
-      time: "5 minutes ago",
-      read: false,
-    },
-    {
-      id: 2,
-      title: "Task assigned to you",
-      message: "Michael Johnson assigned you to 'Fix Navigation Menu'",
-      time: "1 hour ago",
-      read: false,
-    },
-    {
-      id: 3,
-      title: "Project update",
-      message: "TestProject-Dev has been updated to version 2.0",
-      time: "Yesterday",
-      read: true,
-    },
-  ])
+  const [notifications, setNotifications] = useState<Array<{
+    id: number
+    title: string
+    message: string
+    time: string
+    read: boolean
+  }>>([])
   const { user, logout, token } = useAuth()
   const { projects, refreshProjects } = useProject()
 
@@ -373,10 +365,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </Sidebar>
         <div className="flex flex-col flex-1 overflow-hidden">
           <header className="flex h-14 items-center justify-between border-b bg-background px-4 lg:px-6">
-            <Button variant="ghost" size="icon" className="md:hidden">
-              <Menu className="h-5 w-5" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
+            {/* Sidebar toggle button appears only when sidebar is collapsed */}
+            <SidebarConditionalTrigger />
 
             {/* Left side of header - empty now that search is removed */}
             <div></div>

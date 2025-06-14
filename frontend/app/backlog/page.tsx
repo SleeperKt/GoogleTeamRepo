@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   AlertCircle,
   ArrowDown,
@@ -25,6 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils"
 import { CreateTaskSidebar } from "@/components/create-task-sidebar"
 import { PageHeader } from "@/components/page-header"
+import { apiRequest } from "@/lib/api"
+import { useProject } from "@/contexts/project-context"
 
 // Task types with colors
 const taskTypes = {
@@ -37,128 +39,42 @@ const taskTypes = {
 
 // Status types with colors
 const statusTypes = {
-  open: { label: "Open", color: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300" },
-  inReview: { label: "In Review", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" },
-  blocked: { label: "Blocked", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300" },
-  ready: { label: "Ready", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" },
+  Todo: { label: "To Do", color: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300" },
+  InProgress: { label: "In Progress", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300" },
+  InReview: { label: "In Review", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" },
+  Done: { label: "Done", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" },
 }
 
 // Priority levels with icons
 const priorityLevels = {
-  high: { label: "High", icon: ArrowUp, color: "text-red-500" },
-  medium: { label: "Medium", icon: MoreHorizontal, color: "text-yellow-500" },
-  low: { label: "Low", icon: ArrowDown, color: "text-blue-500" },
+  1: { label: "Low", icon: ArrowDown, color: "text-blue-500" },
+  2: { label: "Medium", icon: MoreHorizontal, color: "text-yellow-500" },
+  3: { label: "High", icon: ArrowUp, color: "text-red-500" },
+  4: { label: "Critical", icon: ArrowUp, color: "text-red-600" },
 }
 
-// Sample backlog data
-const initialBacklogData = {
-  upcomingSprint: {
-    id: "upcoming",
-    title: "Upcoming Sprint",
-    tasks: [
-      {
-        id: "task-1",
-        title: "Implement user authentication flow",
-        description: "Add login, registration, and password reset functionality",
-        type: "feature",
-        status: "ready",
-        assignee: { name: "Sarah Lee", initials: "SL", image: "/placeholder.svg?height=32&width=32" },
-        priority: "high",
-        estimate: 8,
-      },
-      {
-        id: "task-2",
-        title: "Fix navigation menu on mobile devices",
-        description: "Menu doesn't close properly after selection on small screens",
-        type: "bug",
-        status: "open",
-        assignee: { name: "Michael Johnson", initials: "MJ", image: "/placeholder.svg?height=32&width=32" },
-        priority: "medium",
-        estimate: 3,
-      },
-      {
-        id: "task-3",
-        title: "Add dark mode toggle",
-        description: "Implement system preference detection and manual toggle",
-        type: "feature",
-        status: "inReview",
-        assignee: { name: "Alex Kim", initials: "AK", image: "/placeholder.svg?height=32&width=32" },
-        priority: "medium",
-        estimate: 5,
-      },
-    ],
-  },
-  futureWork: {
-    id: "future",
-    title: "Future Work",
-    tasks: [
-      {
-        id: "task-4",
-        title: "Implement data export functionality",
-        description: "Allow users to export their data in CSV and JSON formats",
-        type: "feature",
-        status: "open",
-        assignee: { name: "Jessica Taylor", initials: "JT", image: "/placeholder.svg?height=32&width=32" },
-        priority: "low",
-        estimate: 5,
-      },
-      {
-        id: "task-5",
-        title: "Optimize image loading performance",
-        description: "Implement lazy loading and proper caching for images",
-        type: "task",
-        status: "open",
-        assignee: { name: "David Miller", initials: "DM", image: "/placeholder.svg?height=32&width=32" },
-        priority: "medium",
-        estimate: 3,
-      },
-      {
-        id: "task-6",
-        title: "Add multi-language support",
-        description: "Implement i18n framework and add translations for key languages",
-        type: "epic",
-        status: "open",
-        assignee: { name: "Emma Wilson", initials: "EW", image: "/placeholder.svg?height=32&width=32" },
-        priority: "low",
-        estimate: 13,
-      },
-    ],
-  },
-  unassigned: {
-    id: "unassigned",
-    title: "Unassigned Issues",
-    tasks: [
-      {
-        id: "task-7",
-        title: "Improve error handling in API requests",
-        description: "Add better error messages and retry logic",
-        type: "task",
-        status: "open",
-        assignee: null,
-        priority: "medium",
-        estimate: 5,
-      },
-      {
-        id: "task-8",
-        title: "Update documentation for new features",
-        description: "Add user guides and API documentation",
-        type: "task",
-        status: "open",
-        assignee: null,
-        priority: "low",
-        estimate: 3,
-      },
-    ],
-  },
+// Type definitions
+interface Task {
+  id: number
+  title: string
+  description?: string
+  assigneeName?: string
+  priority: number
+  status: string
+  stage: string
+  estimatedHours?: number
+}
+
+interface BacklogData {
+  tasks: Task[]
+  totalCount: number
 }
 
 export default function BacklogPage() {
-  const [backlogData, setBacklogData] = useState(initialBacklogData)
-  const [expandedGroups, setExpandedGroups] = useState({
-    upcoming: true,
-    future: true,
-    unassigned: true,
-  })
+  const { currentProject } = useProject()
+  const [backlogData, setBacklogData] = useState<Task[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState({
     type: "all",
@@ -166,12 +82,95 @@ export default function BacklogPage() {
     assignee: "all",
     priority: "all",
   })
+  const [expandedGroups, setExpandedGroups] = useState({
+    upcoming: true,
+    inProgress: true,
+    done: true,
+    unassigned: true,
+  })
   const [showEmptyState, setShowEmptyState] = useState(false)
-  const [draggedTask, setDraggedTask] = useState(null)
-  const [dragOverGroup, setDragOverGroup] = useState(null)
-  const [dragOverTaskId, setDragOverTaskId] = useState(null)
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null)
+  const [dragOverGroup, setDragOverGroup] = useState<string | null>(null)
+  const [dragOverTaskId, setDragOverTaskId] = useState<number | null>(null)
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [selectedColumn, setSelectedColumn] = useState("upcoming")
+  const [participants, setParticipants] = useState<Array<{userName?: string, UserName?: string}>>([])
+
+  // Fetch backlog data
+  const fetchBacklogData = async () => {
+    if (!currentProject?.publicId) return
+
+    try {
+      setLoading(true)
+      
+      // Build filter parameters
+      const queryParams = new URLSearchParams()
+      
+      if (searchQuery) queryParams.append('SearchTerm', searchQuery)
+      if (filters.assignee !== 'all') queryParams.append('AssigneeName', filters.assignee)
+      if (filters.priority !== 'all') queryParams.append('Priority', filters.priority)
+      if (filters.status !== 'all') queryParams.append('Status', filters.status)
+      
+      const endpoint = `/api/projects/public/${currentProject.publicId}/tasks${queryParams.toString() ? '?' + queryParams.toString() : ''}`
+      
+      const data = await apiRequest<BacklogData>(endpoint)
+      
+      setBacklogData(data.tasks || [])
+      setError(null)
+    } catch (err) {
+      console.error('Error fetching backlog data:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch backlog data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fetch participants for filter dropdown
+  const fetchParticipants = async () => {
+    if (!currentProject?.publicId) return
+
+    try {
+      const data = await apiRequest<Array<{userName?: string, UserName?: string}>>(`/api/projects/public/${currentProject.publicId}/participants`)
+      setParticipants(data || [])
+    } catch (err) {
+      console.error('Error fetching participants:', err)
+    }
+  }
+
+  // Initial data fetch
+  useEffect(() => {
+    if (currentProject?.publicId) {
+      fetchBacklogData()
+      fetchParticipants()
+    }
+  }, [currentProject?.publicId])
+
+  // Refetch when filters change
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (currentProject?.publicId) {
+        fetchBacklogData()
+      }
+    }, 300) // Debounce search
+
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, filters, currentProject?.publicId])
+
+  // Group tasks by status
+  const getGroupedTasks = () => {
+    const grouped = {
+      upcoming: backlogData.filter(task => task.status === 'Todo'),
+      inProgress: backlogData.filter(task => task.status === 'InProgress'),
+      done: backlogData.filter(task => task.status === 'Done'),
+      unassigned: backlogData.filter(task => !task.assigneeName),
+    }
+    return grouped
+  }
+
+  // Get all assignees
+  const getAllAssignees = (): string[] => {
+    return participants.map(p => p.userName || p.UserName).filter(Boolean) as string[]
+  }
 
   // Toggle group expansion
   const toggleGroup = (groupId) => {
@@ -191,7 +190,7 @@ export default function BacklogPage() {
         task.description.toLowerCase().includes(searchQuery.toLowerCase())
 
       // Type filter
-      const matchesType = filters.type === "all" || task.type === filters.type
+      const matchesType = filters.type === "all" || taskTypes[task.type]?.label === filters.type
 
       // Status filter
       const matchesStatus = filters.status === "all" || task.status === filters.status
@@ -199,8 +198,8 @@ export default function BacklogPage() {
       // Assignee filter
       const matchesAssignee =
         filters.assignee === "all" ||
-        (filters.assignee === "unassigned" && !task.assignee) ||
-        (task.assignee && task.assignee.name === filters.assignee)
+        (filters.assignee === "unassigned" && !task.assigneeName) ||
+        (task.assigneeName && task.assigneeName === filters.assignee)
 
       // Priority filter
       const matchesPriority = filters.priority === "all" || task.priority === filters.priority
@@ -209,22 +208,9 @@ export default function BacklogPage() {
     })
   }
 
-  // Get all assignees for filter dropdown
-  const getAllAssignees = () => {
-    const assignees = new Set()
-    Object.values(backlogData).forEach((group) => {
-      group.tasks.forEach((task) => {
-        if (task.assignee) {
-          assignees.add(task.assignee.name)
-        }
-      })
-    })
-    return Array.from(assignees)
-  }
-
   // Handle drag start
   const handleDragStart = (e, task, groupId) => {
-    setDraggedTask({ task, groupId })
+    setDraggedTask({ ...task, groupId })
   }
 
   // Handle drag over
@@ -240,10 +226,10 @@ export default function BacklogPage() {
 
     if (!draggedTask) return
 
-    const { task: sourceTask, groupId: sourceGroupId } = draggedTask
+    const { id, title, description, type, status, priority, assigneeName, groupId: sourceGroupId } = draggedTask
 
     // Don't do anything if dropping onto the same task
-    if (sourceTask.id === targetTaskId) {
+    if (id === targetTaskId) {
       setDraggedTask(null)
       setDragOverGroup(null)
       setDragOverTaskId(null)
@@ -251,25 +237,32 @@ export default function BacklogPage() {
     }
 
     // Create a new state object
-    const newBacklogData = { ...backlogData }
+    const newBacklogData = {
+      id,
+      title,
+      description,
+      type,
+      status,
+      priority,
+      assigneeName,
+      groupId: targetGroupId,
+    }
 
     // Remove the task from the source group
-    newBacklogData[sourceGroupId].tasks = newBacklogData[sourceGroupId].tasks.filter(
-      (task) => task.id !== sourceTask.id,
-    )
+    const updatedBacklogData = backlogData.filter((task) => task.id !== id)
 
     // If dropping onto a task, insert at that position
     if (targetTaskId) {
-      const targetIndex = newBacklogData[targetGroupId].tasks.findIndex((task) => task.id === targetTaskId)
+      const targetIndex = updatedBacklogData.findIndex((task) => task.id === targetTaskId)
 
-      newBacklogData[targetGroupId].tasks.splice(targetIndex, 0, sourceTask)
+      updatedBacklogData.splice(targetIndex, 0, newBacklogData)
     } else {
       // Otherwise, add to the end of the target group
-      newBacklogData[targetGroupId].tasks.push(sourceTask)
+      updatedBacklogData.push(newBacklogData)
     }
 
     // Update state
-    setBacklogData(newBacklogData)
+    setBacklogData(updatedBacklogData)
     setDraggedTask(null)
     setDragOverGroup(null)
     setDragOverTaskId(null)
@@ -399,8 +392,8 @@ export default function BacklogPage() {
 
           {/* Backlog Groups */}
           <div className="space-y-6">
-            {Object.entries(backlogData).map(([groupId, group]) => {
-              const filteredTasks = filterTasks(group.tasks)
+            {Object.entries(getGroupedTasks()).map(([groupId, group]) => {
+              const filteredTasks = filterTasks(group)
               const isEmpty = filteredTasks.length === 0
 
               return (
@@ -423,7 +416,7 @@ export default function BacklogPage() {
                       ) : (
                         <ChevronRight className="h-5 w-5 text-muted-foreground" />
                       )}
-                      <h2 className="text-lg font-medium">{group.title}</h2>
+                      <h2 className="text-lg font-medium">{groupId.charAt(0).toUpperCase() + groupId.slice(1)}</h2>
                       <Badge
                         variant="outline"
                         className="ml-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
@@ -432,20 +425,11 @@ export default function BacklogPage() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                      {groupId === "upcoming" && (
-                        <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white">
-                          Start Sprint
-                        </Button>
-                      )}
-                      {groupId === "future" && (
-                        <Button size="sm" variant="outline">
-                          Move to Upcoming
-                        </Button>
-                      )}
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation()
                           setSelectedColumn(groupId)
                           setCreateTaskOpen(true)
                         }}
@@ -508,29 +492,24 @@ export default function BacklogPage() {
                                     </div>
 
                                     <div className="flex items-center gap-3 flex-shrink-0">
-                                      {task.estimate && (
+                                      {task.estimatedHours && (
                                         <div className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs font-medium">
-                                          {task.estimate} pts
+                                          {task.estimatedHours} hrs
                                         </div>
                                       )}
 
-                                      {task.assignee ? (
+                                      {task.assigneeName && (
                                         <div className="flex items-center gap-2">
                                           <Avatar className="h-6 w-6">
                                             <AvatarImage
-                                              src={task.assignee.image || "/placeholder.svg"}
-                                              alt={task.assignee.name}
+                                              src={`/placeholder.svg?height=32&width=32&name=${task.assigneeName}`}
+                                              alt={task.assigneeName}
                                             />
-                                            <AvatarFallback>{task.assignee.initials}</AvatarFallback>
+                                            <AvatarFallback>{task.assigneeName.substring(0, 2)}</AvatarFallback>
                                           </Avatar>
                                           <span className="text-sm text-muted-foreground hidden md:inline">
-                                            {task.assignee.name}
+                                            {task.assigneeName}
                                           </span>
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-center gap-2 text-muted-foreground">
-                                          <AlertCircle className="h-4 w-4" />
-                                          <span className="text-sm hidden md:inline">Unassigned</span>
                                         </div>
                                       )}
 
@@ -581,8 +560,8 @@ export default function BacklogPage() {
           const newBacklogData = { ...backlogData }
           const columnId = selectedColumn
 
-          newBacklogData[columnId].tasks.push({
-            id: `task-${Math.floor(Math.random() * 10000)}`,
+          newBacklogData.push({
+            id: Math.floor(Math.random() * 10000),
             title: newTask.title,
             description: newTask.description || "",
             type: newTask.labels?.find((l) => l?.name === "Feature")
@@ -590,11 +569,11 @@ export default function BacklogPage() {
               : newTask.labels?.find((l) => l?.name === "Bug")
                 ? "bug"
                 : "task",
-            assignee: newTask.assignee,
-            priority: newTask.priority || "medium",
-            labels: newTask.labels?.map((l) => l?.name) || [],
-            comments: 0,
-            attachments: 0,
+            status: "Todo",
+            priority: newTask.priority || 2,
+            assigneeName: newTask.assigneeName,
+            groupId: columnId,
+            estimatedHours: newTask.estimatedHours,
           })
 
           // Update the board data

@@ -17,9 +17,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { apiRequest } from "@/lib/api"
 
-// Team members will be loaded dynamically by the parent component in the future.
-const teamMembers: Array<{ id: number; name: string; email?: string; avatar?: string; initials: string }> = []
+// Dynamic team-member type.
+interface TeamMember {
+  id: string
+  name: string
+  email?: string
+  avatar?: string
+  initials: string
+}
 
 const labels = [
   { id: 1, name: "Frontend", color: "#93c5fd" },
@@ -47,6 +54,8 @@ interface CreateTaskSidebarProps {
   onOpenChange: (open: boolean) => void
   initialStage?: string
   onTaskCreated?: (task: any) => void
+  /** Public GUID of the project (route slug). When provided, participants will be fetched from the backend. */
+  projectPublicId?: string
 }
 
 export function CreateTaskSidebar({
@@ -54,11 +63,13 @@ export function CreateTaskSidebar({
   onOpenChange,
   initialStage = "To Do",
   onTaskCreated,
+  projectPublicId,
 }: CreateTaskSidebarProps) {
   // Form state
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [assignee, setAssignee] = useState<number | null>(null)
+  const [assignee, setAssignee] = useState<string | null>(null)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [selectedLabels, setSelectedLabels] = useState<number[]>([])
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined)
   const [priority, setPriority] = useState<string | undefined>("high")
@@ -78,6 +89,46 @@ export function CreateTaskSidebar({
 
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null)
+
+  // Load project participants
+  useEffect(() => {
+    const loadParticipants = async () => {
+      if (!open || !projectPublicId) return
+
+      try {
+        // First get internal project id
+        const project: { id: number } = await apiRequest(`/api/projects/public/${projectPublicId}`)
+        if (!project?.id) return
+
+        // Fetch participants
+        const raw = await apiRequest(`/api/projects/${project.id}/participants`)
+
+        // Backend (ASP.NET) may wrap collections in {$values:[...]}. Normalize here.
+        const participantArray: Array<any> = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.$values)
+            ? raw.$values
+            : []
+
+        const members: TeamMember[] = participantArray.map((p) => ({
+          id: p.userId || p.UserId,
+          name: p.userName || p.UserName,
+          initials: (p.userName || p.UserName || "")
+            .split(" ")
+            .map((n: string) => n[0])
+            .join("")
+            .toUpperCase(),
+        }))
+
+        setTeamMembers(members)
+      } catch (err) {
+        console.error("Failed to load project participants", err)
+        setTeamMembers([])
+      }
+    }
+
+    loadParticipants()
+  }, [open, projectPublicId])
 
   // Reset form when sidebar opens/closes
   useEffect(() => {
@@ -134,7 +185,7 @@ export function CreateTaskSidebar({
     const newTask = {
       title,
       description,
-      assigneeId: assignee ? assignee.toString() : undefined, // GUI will supply real GUID later
+      assigneeId: assignee ? assignee : undefined, // GUI will supply real GUID later
       labels: selectedLabels.map((id) => labels.find((label) => label.id === id)),
       dueDate,
       priority: priorityMap[priority ?? 1],
@@ -166,7 +217,7 @@ export function CreateTaskSidebar({
   // Get assignee name
   const getAssigneeName = () => {
     if (!assignee) return "Unassigned"
-    const member = teamMembers.find((member) => member.id === assignee)
+    const member = teamMembers.find((member: TeamMember) => member.id === assignee)
     return member ? member.name : "Unassigned"
   }
 
@@ -498,11 +549,11 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                           <>
                             <Avatar className="h-6 w-6">
                               <AvatarImage
-                                src={teamMembers.find((member) => member.id === assignee)?.avatar}
+                                src={teamMembers.find((member: TeamMember) => member.id === assignee)?.avatar}
                                 alt={getAssigneeName()}
                               />
                               <AvatarFallback>
-                                {teamMembers.find((member) => member.id === assignee)?.initials}
+                                {teamMembers.find((member: TeamMember) => member.id === assignee)?.initials}
                               </AvatarFallback>
                             </Avatar>
                             <span>{getAssigneeName()}</span>
@@ -533,7 +584,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                             <span>Unassigned</span>
                             {assignee === null && <Check className="ml-auto h-4 w-4" />}
                           </CommandItem>
-                          {teamMembers.map((member) => (
+                          {teamMembers.map((member: TeamMember) => (
                             <CommandItem
                               key={member.id}
                               onSelect={() => {

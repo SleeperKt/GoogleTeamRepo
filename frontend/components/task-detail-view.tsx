@@ -40,9 +40,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { apiRequest } from "@/lib/api"
+import React from "react"
 
-// Sample data for the form
-const teamMembers = [
+// Unified team member type used in this component
+interface TeamMember {
+  id: string | number
+  name: string
+  email: string
+  avatar: string
+  initials: string
+}
+
+// Sample fallback data for demo purposes (used when participants cannot be fetched)
+const fallbackTeamMembers: TeamMember[] = [
   {
     id: 1,
     name: "Alex Kim",
@@ -99,7 +110,7 @@ const sampleActivities = [
   {
     id: 1,
     type: "status_change",
-    user: teamMembers[0],
+    user: fallbackTeamMembers[0],
     oldValue: "To Do",
     newValue: "In Progress",
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
@@ -107,16 +118,16 @@ const sampleActivities = [
   {
     id: 2,
     type: "comment",
-    user: teamMembers[1],
+    user: fallbackTeamMembers[1],
     content: "I've started working on this. Will update the design files soon.",
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1), // 1 hour ago
   },
   {
     id: 3,
     type: "assignee_change",
-    user: teamMembers[0],
+    user: fallbackTeamMembers[0],
     oldValue: null,
-    newValue: teamMembers[1].name,
+    newValue: fallbackTeamMembers[1].name,
     timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
   },
 ]
@@ -125,13 +136,13 @@ const sampleActivities = [
 const sampleComments = [
   {
     id: 1,
-    user: teamMembers[1],
+    user: fallbackTeamMembers[1],
     content: "I've started working on this. Will update the design files soon.",
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1), // 1 hour ago
   },
   {
     id: 2,
-    user: teamMembers[2],
+    user: fallbackTeamMembers[2],
     content: "Let me know if you need any help with the API integration part.",
     timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
   },
@@ -144,7 +155,7 @@ const sampleAttachments = [
     name: "design-mockup.png",
     size: "2.4 MB",
     type: "image",
-    uploadedBy: teamMembers[1],
+    uploadedBy: fallbackTeamMembers[1],
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3), // 3 hours ago
   },
   {
@@ -152,7 +163,7 @@ const sampleAttachments = [
     name: "api-documentation.pdf",
     size: "1.2 MB",
     type: "document",
-    uploadedBy: teamMembers[2],
+    uploadedBy: fallbackTeamMembers[2],
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
   },
 ]
@@ -163,6 +174,7 @@ interface TaskDetailViewProps {
   task: any
   onTaskUpdated?: (updatedTask: any) => void
   onTaskDeleted?: (taskId: string | number) => void
+  projectPublicId?: string
 }
 
 export function TaskDetailView({
@@ -171,12 +183,14 @@ export function TaskDetailView({
   task: initialTask,
   onTaskUpdated,
   onTaskDeleted,
+  projectPublicId,
 }: TaskDetailViewProps) {
   // Task state
   const [task, setTask] = useState(initialTask)
   const [title, setTitle] = useState(initialTask?.title || "")
   const [description, setDescription] = useState(initialTask?.description || "")
-  const [assignee, setAssignee] = useState<number | null>(initialTask?.assignee?.id || null)
+  const [assignee, setAssignee] = useState<string | number | null>(initialTask?.assigneeId || null)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [selectedLabels, setSelectedLabels] = useState<number[]>(
     initialTask?.labels
       ?.map((label: string) => {
@@ -185,10 +199,24 @@ export function TaskDetailView({
       })
       .filter(Boolean) || [],
   )
-  const [dueDate, setDueDate] = useState<Date | undefined>(initialTask?.dueDate || undefined)
-  const [priority, setPriority] = useState<string | undefined>(initialTask?.priority || undefined)
-  const [stage, setStage] = useState(initialTask?.status || "To Do")
-  const [estimate, setEstimate] = useState<number | undefined>(initialTask?.estimate || undefined)
+  const [dueDate, setDueDate] = useState<Date | undefined>(
+    initialTask?.dueDate ? new Date(initialTask.dueDate) : undefined
+  )
+  const [priority, setPriority] = useState<string | undefined>(
+    initialTask?.priority ? 
+      initialTask.priority === 1 ? "low" :
+      initialTask.priority === 2 ? "medium" :
+      initialTask.priority === 3 ? "high" :
+      initialTask.priority === 4 ? "critical" : "medium"
+    : undefined
+  )
+  const [stage, setStage] = useState(
+    initialTask?.status === 1 ? "To Do" :
+    initialTask?.status === 2 ? "In Progress" :
+    initialTask?.status === 3 ? "Review" :
+    initialTask?.status === 4 ? "Done" : "To Do"
+  )
+  const [estimate, setEstimate] = useState<number | undefined>(initialTask?.estimatedHours || undefined)
 
   // UI state
   const [assigneeOpen, setAssigneeOpen] = useState(false)
@@ -209,12 +237,58 @@ export function TaskDetailView({
   const titleInputRef = useRef<HTMLInputElement>(null)
   const commentInputRef = useRef<HTMLTextAreaElement>(null)
 
+  // Load project participants when the view opens
+  useEffect(() => {
+    const loadParticipants = async () => {
+      if (!open || !projectPublicId) return
+
+      try {
+        const project: { id: number } = await apiRequest(`/api/projects/public/${projectPublicId}`)
+        if (!project?.id) return
+
+        const raw = await apiRequest(`/api/projects/${project.id}/participants`)
+
+        const participantArray: Array<any> = Array.isArray(raw)
+          ? raw
+          : Array.isArray((raw as any)?.$values)
+            ? (raw as any).$values
+            : []
+
+        const members = participantArray.map((p) => ({
+          id: p.userId || p.UserId,
+          name: p.userName || p.UserName,
+          email: p.email || p.Email || "",
+          avatar: "",
+          initials: (p.userName || p.UserName || "")
+            .split(" ")
+            .map((n: string) => n[0])
+            .join("")
+            .toUpperCase(),
+        }))
+
+        setTeamMembers(members)
+      } catch (err) {
+        console.error("Failed to load participants for task detail", err)
+        setTeamMembers([])
+      }
+    }
+
+    loadParticipants()
+  }, [open, projectPublicId])
+
+  // Combine dynamic members with fallback (unique by id)
+  const availableMembers = React.useMemo(() => {
+    const map = new Map<string | number, any>()
+    ;[...teamMembers, ...fallbackTeamMembers].forEach((m) => map.set(m.id, m))
+    return Array.from(map.values())
+  }, [teamMembers])
+
   // Reset form when task changes
   useEffect(() => {
     if (initialTask) {
       setTitle(initialTask.title || "")
       setDescription(initialTask.description || "")
-      setAssignee(initialTask.assignee?.id || null)
+      setAssignee(initialTask.assigneeId || null)
       setSelectedLabels(
         initialTask.labels
           ?.map((label: string) => {
@@ -223,10 +297,22 @@ export function TaskDetailView({
           })
           .filter(Boolean) || [],
       )
-      setDueDate(initialTask.dueDate || undefined)
-      setPriority(initialTask.priority || undefined)
-      setStage(initialTask.status || "To Do")
-      setEstimate(initialTask.estimate || undefined)
+      setDueDate(initialTask.dueDate ? new Date(initialTask.dueDate) : undefined)
+      setPriority(
+        initialTask.priority ? 
+          initialTask.priority === 1 ? "low" :
+          initialTask.priority === 2 ? "medium" :
+          initialTask.priority === 3 ? "high" :
+          initialTask.priority === 4 ? "critical" : "medium"
+        : undefined
+      )
+      setStage(
+        initialTask.status === 1 ? "To Do" :
+        initialTask.status === 2 ? "In Progress" :
+        initialTask.status === 3 ? "Review" :
+        initialTask.status === 4 ? "Done" : "To Do"
+      )
+      setEstimate(initialTask.estimatedHours || undefined)
       setHasUnsavedChanges(false)
     }
   }, [initialTask])
@@ -242,14 +328,28 @@ export function TaskDetailView({
 
   // Mark changes as unsaved when any field changes
   useEffect(() => {
+    const originalDueDate = initialTask?.dueDate ? new Date(initialTask.dueDate) : undefined
+    const originalPriority = initialTask?.priority ? 
+      initialTask.priority === 1 ? "low" :
+      initialTask.priority === 2 ? "medium" :
+      initialTask.priority === 3 ? "high" :
+      initialTask.priority === 4 ? "critical" : "medium"
+    : undefined
+    const originalStage = initialTask?.status === 1 ? "To Do" :
+      initialTask?.status === 2 ? "In Progress" :
+      initialTask?.status === 3 ? "Review" :
+      initialTask?.status === 4 ? "Done" : "To Do"
+    
+    const dueDateChanged = dueDate?.getTime() !== originalDueDate?.getTime()
+    
     if (
       title !== initialTask?.title ||
       description !== initialTask?.description ||
-      assignee !== initialTask?.assignee?.id ||
-      dueDate !== initialTask?.dueDate ||
-      priority !== initialTask?.priority ||
-      stage !== initialTask?.status ||
-      estimate !== initialTask?.estimate ||
+      assignee !== initialTask?.assigneeId ||
+      dueDateChanged ||
+      priority !== originalPriority ||
+      stage !== originalStage ||
+      estimate !== initialTask?.estimatedHours ||
       !arraysEqual(
         selectedLabels,
         initialTask?.labels
@@ -283,7 +383,7 @@ export function TaskDetailView({
       ...initialTask,
       title,
       description,
-      assignee: assignee ? teamMembers.find((member) => member.id === assignee) : null,
+      assigneeId: assignee,
       labels: selectedLabels.map((id) => {
         const label = labels.find((l) => l.id === id)
         return label?.name
@@ -291,7 +391,7 @@ export function TaskDetailView({
       dueDate,
       priority,
       status: stage,
-      estimate,
+      estimatedHours: estimate,
     }
 
     // Simulate API call
@@ -311,7 +411,7 @@ export function TaskDetailView({
         const newActivity = {
           id: activities.length + 1,
           type: "status_change",
-          user: teamMembers[0], // Current user (hardcoded for demo)
+          user: availableMembers[0], // Current user (hardcoded for demo)
           oldValue: initialTask.status,
           newValue: stage,
           timestamp: new Date(),
@@ -320,13 +420,13 @@ export function TaskDetailView({
       }
 
       // Add activity for assignee change if it changed
-      if (initialTask.assignee?.id !== assignee) {
+      if (initialTask.assigneeId !== assignee) {
         const newActivity = {
           id: activities.length + 1,
           type: "assignee_change",
-          user: teamMembers[0], // Current user (hardcoded for demo)
-          oldValue: initialTask.assignee?.name || null,
-          newValue: assignee ? teamMembers.find((member) => member.id === assignee)?.name : null,
+          user: availableMembers[0], // Current user (hardcoded for demo)
+          oldValue: initialTask.assigneeId ? availableMembers.find((member: any) => member.id === initialTask.assigneeId)?.name : null,
+          newValue: assignee ? availableMembers.find((member: any) => member.id === assignee)?.name : null,
           timestamp: new Date(),
         }
         setActivities([newActivity, ...activities])
@@ -355,7 +455,7 @@ export function TaskDetailView({
 
     const comment = {
       id: comments.length + 1,
-      user: teamMembers[0], // Current user (hardcoded for demo)
+      user: availableMembers[0], // Current user (hardcoded for demo)
       content: newComment,
       timestamp: new Date(),
     }
@@ -367,7 +467,7 @@ export function TaskDetailView({
     const activity = {
       id: activities.length + 1,
       type: "comment",
-      user: teamMembers[0],
+      user: availableMembers[0],
       content: newComment,
       timestamp: new Date(),
     }
@@ -382,8 +482,11 @@ export function TaskDetailView({
   // Get assignee name
   const getAssigneeName = () => {
     if (!assignee) return "Unassigned"
-    const member = teamMembers.find((member) => member.id === assignee)
-    return member ? member.name : "Unassigned"
+    const member = availableMembers.find((member: any) => member.id === assignee)
+    if (member) return member.name
+    // Fall back to assigneeName from task if member not found in participants
+    if (initialTask?.assigneeName) return initialTask.assigneeName
+    return "Unassigned"
   }
 
   // Toggle label selection
@@ -499,9 +602,9 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
         "\n\nKey points:\n" +
         description
           .split("\n")
-          .filter((line) => line.trim().length > 0 && !line.startsWith("Key points:"))
+          .filter((line: string) => line.trim().length > 0 && !line.startsWith("Key points:"))
           .slice(1, 4)
-          .map((line) => (line.length > 40 ? line.substring(0, 40) + "..." : line))
+          .map((line: string) => (line.length > 40 ? line.substring(0, 40) + "..." : line))
           .join("\n")
 
       setAiSuggestion(shortened)
@@ -780,11 +883,11 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                             <>
                               <Avatar className="h-5 w-5">
                                 <AvatarImage
-                                  src={teamMembers.find((member) => member.id === assignee)?.avatar}
+                                  src={availableMembers.find((member: any) => member.id === assignee)?.avatar}
                                   alt={getAssigneeName()}
                                 />
                                 <AvatarFallback className="text-[10px]">
-                                  {teamMembers.find((member) => member.id === assignee)?.initials}
+                                  {availableMembers.find((member: any) => member.id === assignee)?.initials}
                                 </AvatarFallback>
                               </Avatar>
                               <span>{getAssigneeName()}</span>
@@ -815,7 +918,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                               <span>Unassigned</span>
                               {assignee === null && <Check className="ml-auto h-3 w-3" />}
                             </CommandItem>
-                            {teamMembers.map((member) => (
+                            {availableMembers.map((member) => (
                               <CommandItem
                                 key={member.id}
                                 onSelect={() => {

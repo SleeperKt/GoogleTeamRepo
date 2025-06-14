@@ -110,8 +110,13 @@ export default function ProjectsPage() {
   const confirmDeleteProject = async () => {
     if (!projectToDelete) return
     try {
-      await apiRequest(`/api/projects/${projectToDelete.id}`, { method: "DELETE" })
+      const deleteUrl = projectToDelete.id && projectToDelete.id.toString().includes("-")
+        ? `/api/projects/public/${projectToDelete.id}`
+        : `/api/projects/${projectToDelete.id}`
+
+      await apiRequest(deleteUrl, { method: "DELETE" })
       setProjectList(projectList.filter((p) => p.id !== projectToDelete.id))
+      refreshProjects()
     } catch (err: any) {
       console.error(err)
       alert(err.message ?? "Failed to delete project")
@@ -131,7 +136,11 @@ export default function ProjectsPage() {
     }
 
     try {
-      await apiRequest(`/api/projects/${editingProject.id}`, {
+      const updateUrl = editingProject.id && editingProject.id.toString().includes("-")
+        ? `/api/projects/public/${editingProject.id}`
+        : `/api/projects/${editingProject.id}`
+
+      await apiRequest(updateUrl, {
         method: "PUT",
         body: JSON.stringify(payload),
       })
@@ -238,7 +247,11 @@ export default function ProjectsPage() {
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
             Click 'Create New Project' to get started with your first project.
           </p>
-          <Button size="lg" className="bg-violet-600 hover:bg-violet-700 text-white">
+          <Button
+            size="lg"
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+            onClick={() => setCreateProjectDialogOpen(true)}
+          >
             <Plus className="mr-2 h-4 w-4" /> Create New Project
           </Button>
         </div>

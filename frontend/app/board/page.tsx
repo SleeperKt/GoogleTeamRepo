@@ -32,11 +32,44 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils"
 import { TaskDetailView } from "@/components/task-detail-view"
 import { CreateTaskSidebar } from "@/components/create-task-sidebar"
+import { apiRequest } from "@/lib/api"
+import { useProject } from "@/contexts/project-context"
 
-// Sample data
-const projectData = {
-  name: "TestProject-Dev",
-  lastSynced: "3 minutes ago",
+// Type definitions
+interface Task {
+  id: number
+  title: string
+  description?: string
+  assigneeName?: string
+  priority: number
+  status: string
+  labels?: string[]
+  comments?: number
+  attachments?: number
+}
+
+interface Column {
+  id: string
+  title: string
+  tasks: Task[]
+  status?: string
+}
+
+interface BoardData {
+  todo: Column
+  inprogress: Column
+  inreview: Column
+  done: Column
+}
+
+interface ApiResponse {
+  projectId: string
+  columns: Array<{
+    id: string
+    title: string
+    status: string
+    tasks: Task[]
+  }>
 }
 
 // Task types with colors
@@ -66,164 +99,30 @@ const taskTypes = {
 
 // Priority levels with icons
 const priorityLevels = {
-  high: { label: "High", icon: ArrowUp, color: "text-red-500" },
-  medium: { label: "Medium", icon: MoreHorizontal, color: "text-yellow-500" },
-  low: { label: "Low", icon: ArrowDown, color: "text-blue-500" },
+  1: { label: "Low", icon: ArrowDown, color: "text-blue-500" },
+  2: { label: "Medium", icon: MoreHorizontal, color: "text-yellow-500" },
+  3: { label: "High", icon: ArrowUp, color: "text-red-500" },
+  4: { label: "Critical", icon: ArrowUp, color: "text-red-600" },
 }
 
 // Column definitions
 const columnDefinitions = [
-  { id: "todo", title: "To Do", icon: Clock },
-  { id: "inProgress", title: "In Progress", icon: ArrowUp },
-  { id: "review", title: "Review", icon: CheckCircle },
-  { id: "done", title: "Done", icon: CheckCircle },
+  { id: "todo", title: "To Do", icon: Clock, status: "Todo" },
+  { id: "inprogress", title: "In Progress", icon: ArrowUp, status: "InProgress" },
+  { id: "inreview", title: "In Review", icon: CheckCircle, status: "InReview" },
+  { id: "done", title: "Done", icon: CheckCircle, status: "Done" },
 ]
 
-// Sample board data
-const initialBoardData = {
-  todo: {
-    id: "todo",
-    title: "To Do",
-    tasks: [
-      {
-        id: "task-1",
-        title: "Implement user authentication flow",
-        description:
-          "Add login, registration, and password reset functionality with OAuth integration for Google and GitHub.",
-        type: "feature",
-        assignee: { name: "Sarah Lee", initials: "SL", image: "/placeholder.svg?height=32&width=32" },
-        priority: "high",
-        labels: ["Frontend", "Security"],
-        comments: 3,
-        attachments: 1,
-      },
-      {
-        id: "task-2",
-        title: "Fix navigation menu on mobile devices",
-        description: "Menu doesn't close properly after selection on small screens.",
-        type: "bug",
-        assignee: { name: "Michael Johnson", initials: "MJ", image: "/placeholder.svg?height=32&width=32" },
-        priority: "medium",
-        labels: ["Frontend", "Mobile"],
-        comments: 2,
-        attachments: 0,
-      },
-      {
-        id: "task-3",
-        title: "Add dark mode toggle",
-        description: "Implement system preference detection and manual toggle for dark mode.",
-        type: "feature",
-        assignee: { name: "Alex Kim", initials: "AK", image: "/placeholder.svg?height=32&width=32" },
-        priority: "low",
-        labels: ["Frontend", "UI/UX"],
-        comments: 5,
-        attachments: 2,
-      },
-    ],
-  },
-  inProgress: {
-    id: "inProgress",
-    title: "In Progress",
-    tasks: [
-      {
-        id: "task-4",
-        title: "Implement data export functionality",
-        description: "Allow users to export their data in CSV and JSON formats.",
-        type: "feature",
-        assignee: { name: "Jessica Taylor", initials: "JT", image: "/placeholder.svg?height=32&width=32" },
-        priority: "medium",
-        labels: ["Backend", "Data"],
-        comments: 1,
-        attachments: 0,
-      },
-      {
-        id: "task-5",
-        title: "Optimize image loading performance",
-        description: "Implement lazy loading and proper caching for images.",
-        type: "task",
-        assignee: { name: "David Miller", initials: "DM", image: "/placeholder.svg?height=32&width=32" },
-        priority: "high",
-        labels: ["Frontend", "Performance"],
-        comments: 0,
-        attachments: 1,
-      },
-    ],
-  },
-  review: {
-    id: "review",
-    title: "Review",
-    tasks: [
-      {
-        id: "task-6",
-        title: "Add multi-language support",
-        description: "Implement i18n framework and add translations for key languages.",
-        type: "epic",
-        assignee: { name: "Emma Wilson", initials: "EW", image: "/placeholder.svg?height=32&width=32" },
-        priority: "medium",
-        labels: ["Frontend", "Localization"],
-        comments: 7,
-        attachments: 3,
-      },
-    ],
-  },
-  done: {
-    id: "done",
-    title: "Done",
-    tasks: [
-      {
-        id: "task-7",
-        title: "Improve error handling in API requests",
-        description: "Add better error messages and retry logic.",
-        type: "task",
-        assignee: { name: "James Brown", initials: "JB", image: "/placeholder.svg?height=32&width=32" },
-        priority: "medium",
-        labels: ["Backend", "Error Handling"],
-        comments: 2,
-        attachments: 0,
-      },
-      {
-        id: "task-8",
-        title: "Update documentation for new features",
-        description: "Add user guides and API documentation.",
-        type: "task",
-        assignee: { name: "Olivia Davis", initials: "OD", image: "/placeholder.svg?height=32&width=32" },
-        priority: "low",
-        labels: ["Documentation"],
-        comments: 1,
-        attachments: 4,
-      },
-    ],
-  },
-}
-
-// Get all unique labels from tasks
-const getAllLabels = () => {
-  const labels = new Set()
-  Object.values(initialBoardData).forEach((column) => {
-    column.tasks.forEach((task) => {
-      task.labels.forEach((label) => {
-        labels.add(label)
-      })
-    })
-  })
-  return Array.from(labels)
-}
-
-// Get all assignees
-const getAllAssignees = () => {
-  const assignees = new Set()
-  Object.values(initialBoardData).forEach((column) => {
-    column.tasks.forEach((task) => {
-      if (task.assignee) {
-        assignees.add(task.assignee.name)
-      }
-    })
-  })
-  return Array.from(assignees)
-}
-
 export default function BoardPage() {
-  const [boardData, setBoardData] = useState(initialBoardData)
+  const { currentProject } = useProject()
+  const [boardData, setBoardData] = useState<BoardData>({
+    todo: { id: "todo", title: "To Do", tasks: [] },
+    inprogress: { id: "inprogress", title: "In Progress", tasks: [] },
+    inreview: { id: "inreview", title: "In Review", tasks: [] },
+    done: { id: "done", title: "Done", tasks: [] },
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState({
     type: "all",
@@ -234,17 +133,115 @@ export default function BoardPage() {
   const [viewMode, setViewMode] = useState("detailed") // "detailed" or "compact"
   const [showCompletedTasks, setShowCompletedTasks] = useState(true)
   const [showEmptyState, setShowEmptyState] = useState(false)
-  const [draggedTask, setDraggedTask] = useState(null)
-  const [dragOverColumn, setDragOverColumn] = useState(null)
-  const [dragOverTaskId, setDragOverTaskId] = useState(null)
-  const boardRef = useRef(null)
+  const [draggedTask, setDraggedTask] = useState<{task: Task, columnId: string} | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
+  const [dragOverTaskId, setDragOverTaskId] = useState<number | null>(null)
+  const boardRef = useRef<HTMLDivElement>(null)
   const [isScrolling, setIsScrolling] = useState(false)
-  const [scrollDirection, setScrollDirection] = useState(null)
-  const scrollInterval = useRef(null)
+  const [scrollDirection, setScrollDirection] = useState<string | null>(null)
+  const scrollInterval = useRef<NodeJS.Timeout | null>(null)
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [selectedColumn, setSelectedColumn] = useState("todo")
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
-  const [selectedTask, setSelectedTask] = useState(null)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [participants, setParticipants] = useState<Array<{userName?: string, UserName?: string}>>([])
+  const [lastSynced, setLastSynced] = useState<string | null>(null)
+
+  // Fetch board data
+  const fetchBoardData = async (filterParams = {}) => {
+    if (!currentProject?.publicId) return
+
+    try {
+      setLoading(true)
+      
+      // Build filter parameters
+      const queryParams = new URLSearchParams()
+      
+      if (searchQuery) queryParams.append('SearchTerm', searchQuery)
+      if (filters.assignee !== 'all') queryParams.append('AssigneeName', filters.assignee)
+      if (filters.priority !== 'all') queryParams.append('Priority', filters.priority)
+      
+      const endpoint = `/api/projects/public/${currentProject.publicId}/board${queryParams.toString() ? '?' + queryParams.toString() : ''}`
+      
+      const data = await apiRequest<ApiResponse>(endpoint)
+      
+      // Transform API data to match frontend structure
+      const transformedData: BoardData = {
+        todo: { id: "todo", title: "To Do", tasks: [] },
+        inprogress: { id: "inprogress", title: "In Progress", tasks: [] },
+        inreview: { id: "inreview", title: "In Review", tasks: [] },
+        done: { id: "done", title: "Done", tasks: [] },
+      }
+
+      // Map tasks to columns based on status
+      data.columns.forEach((column) => {
+        const columnKey = column.id.toLowerCase() as keyof BoardData
+        if (transformedData[columnKey]) {
+          transformedData[columnKey].tasks = column.tasks || []
+        }
+      })
+
+      setBoardData(transformedData)
+      setLastSynced(new Date().toLocaleTimeString())
+      setError(null)
+    } catch (err) {
+      console.error('Error fetching board data:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch board data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fetch participants for filter dropdown
+  const fetchParticipants = async () => {
+    if (!currentProject?.publicId) return
+
+    try {
+      const data = await apiRequest<Array<{userName?: string, UserName?: string}>>(`/api/projects/public/${currentProject.publicId}/participants`)
+      setParticipants(data || [])
+    } catch (err) {
+      console.error('Error fetching participants:', err)
+    }
+  }
+
+  // Initial data fetch
+  useEffect(() => {
+    if (currentProject?.publicId) {
+      fetchBoardData()
+      fetchParticipants()
+    }
+  }, [currentProject?.publicId])
+
+  // Refetch when filters change
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (currentProject?.publicId) {
+        fetchBoardData()
+      }
+    }, 300) // Debounce search
+
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, filters, currentProject?.publicId])
+
+  // Get all unique labels from tasks
+  const getAllLabels = (): string[] => {
+    const labels = new Set<string>()
+    Object.values(boardData).forEach((column) => {
+      column.tasks.forEach((task) => {
+        if (task.labels) {
+          task.labels.forEach((label) => {
+            labels.add(label)
+          })
+        }
+      })
+    })
+    return Array.from(labels)
+  }
+
+  // Get all assignees
+  const getAllAssignees = (): string[] => {
+    return participants.map(p => p.userName || p.UserName).filter(Boolean) as string[]
+  }
 
   // Filter tasks based on search and filters
   const filterTasks = (tasks) => {
@@ -286,65 +283,61 @@ export default function BoardPage() {
   }
 
   // Handle drag start
-  const handleDragStart = (e, task, columnId) => {
+  const handleDragStart = (e: React.DragEvent, task: Task, columnId: string) => {
     setDraggedTask({ task, columnId })
     // Create a ghost image for dragging
     const ghostElement = document.createElement("div")
     ghostElement.classList.add("invisible")
     document.body.appendChild(ghostElement)
     e.dataTransfer.setDragImage(ghostElement, 0, 0)
-    e.target.style.opacity = 0.6
+    ;(e.target as HTMLElement).style.opacity = "0.6"
   }
 
   // Handle drag over
-  const handleDragOver = (e, columnId, taskId = null) => {
+  const handleDragOver = (e: React.DragEvent, columnId: string, taskId: number | null = null) => {
     e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
     setDragOverColumn(columnId)
     setDragOverTaskId(taskId)
 
-    // Auto-scrolling logic
-    if (boardRef.current) {
-      const boardRect = boardRef.current.getBoundingClientRect()
-      const scrollThreshold = 100 // pixels from edge to trigger scrolling
+    // Auto-scroll functionality
+    const boardElement = boardRef.current
+    if (boardElement) {
+      const rect = boardElement.getBoundingClientRect()
+      const scrollThreshold = 100
 
-      if (e.clientX < boardRect.left + scrollThreshold) {
-        // Near left edge, scroll left
-        if (scrollDirection !== "left") {
+      if (e.clientX < rect.left + scrollThreshold) {
+        if (!isScrolling || scrollDirection !== "left") {
           setScrollDirection("left")
-          startScrolling("left")
+          setIsScrolling(true)
         }
-      } else if (e.clientX > boardRect.right - scrollThreshold) {
-        // Near right edge, scroll right
-        if (scrollDirection !== "right") {
+      } else if (e.clientX > rect.right - scrollThreshold) {
+        if (!isScrolling || scrollDirection !== "right") {
           setScrollDirection("right")
-          startScrolling("right")
+          setIsScrolling(true)
         }
       } else {
-        // Not near edges, stop scrolling
-        if (scrollDirection !== null) {
-          setScrollDirection(null)
-          stopScrolling()
-        }
+        setIsScrolling(false)
+        setScrollDirection(null)
       }
     }
   }
 
-  // Start auto-scrolling
-  const startScrolling = (direction) => {
+  // Auto-scroll functionality
+  const startScrolling = (direction: string) => {
     if (scrollInterval.current) {
       clearInterval(scrollInterval.current)
     }
 
-    setIsScrolling(true)
     scrollInterval.current = setInterval(() => {
-      if (boardRef.current) {
-        const scrollAmount = direction === "left" ? -15 : 15
-        boardRef.current.scrollLeft += scrollAmount
+      const boardElement = boardRef.current
+      if (boardElement) {
+        const scrollAmount = direction === "left" ? -10 : 10
+        boardElement.scrollLeft += scrollAmount
       }
-    }, 20)
+    }, 50)
   }
 
-  // Stop auto-scrolling
   const stopScrolling = () => {
     if (scrollInterval.current) {
       clearInterval(scrollInterval.current)
@@ -355,163 +348,103 @@ export default function BoardPage() {
   }
 
   // Handle drop
-  const handleDrop = (e, targetColumnId, targetTaskId = null) => {
+  const handleDrop = (e: React.DragEvent, targetColumnId: string, targetTaskId: number | null = null) => {
     e.preventDefault()
     stopScrolling()
 
     if (!draggedTask) return
 
-    const { task: sourceTask, columnId: sourceColumnId } = draggedTask
+    const { task, columnId: sourceColumnId } = draggedTask
 
-    // Don't do anything if dropping onto the same task
-    if (sourceTask.id === targetTaskId && sourceColumnId === targetColumnId) {
-      setDraggedTask(null)
-      setDragOverColumn(null)
-      setDragOverTaskId(null)
-      return
+    // Don't do anything if dropping in the same position
+    if (sourceColumnId === targetColumnId && !targetTaskId) return
+
+    // Update the task status if moving to different column
+    if (sourceColumnId !== targetColumnId) {
+      updateTaskStatus(task.id, targetColumnId)
     }
 
-    // Create a new state object
-    const newBoardData = { ...boardData }
-
-    // Remove the task from the source column
-    newBoardData[sourceColumnId].tasks = newBoardData[sourceColumnId].tasks.filter((task) => task.id !== sourceTask.id)
-
-    // If dropping onto a task, insert at that position
-    if (targetTaskId) {
-      const targetIndex = newBoardData[targetColumnId].tasks.findIndex((task) => task.id === targetTaskId)
-
-      newBoardData[targetColumnId].tasks.splice(targetIndex, 0, sourceTask)
-    } else {
-      // Otherwise, add to the end of the target column
-      newBoardData[targetColumnId].tasks.push(sourceTask)
-    }
-
-    // Update state
-    setBoardData(newBoardData)
+    // Reset drag state
     setDraggedTask(null)
     setDragOverColumn(null)
     setDragOverTaskId(null)
   }
 
+  // Update task status via API
+  const updateTaskStatus = async (taskId: number, newColumnId: string) => {
+    if (!currentProject?.publicId) return
+
+    try {
+      const statusMap: Record<string, string> = {
+        todo: "Todo",
+        inprogress: "InProgress", 
+        inreview: "InReview",
+        done: "Done"
+      }
+
+      await apiRequest(`/api/projects/public/${currentProject.publicId}/tasks/${taskId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          Status: statusMap[newColumnId]
+        })
+      })
+
+      // Refresh board data
+      fetchBoardData()
+    } catch (err) {
+      console.error('Error updating task status:', err)
+    }
+  }
+
   // Handle drag end
-  const handleDragEnd = (e) => {
-    e.target.style.opacity = 1
+  const handleDragEnd = (e: React.DragEvent) => {
+    ;(e.target as HTMLElement).style.opacity = "1"
+    const ghostElement = document.querySelector(".invisible")
+    if (ghostElement && ghostElement.parentNode) {
+      ghostElement.parentNode.removeChild(ghostElement)
+    }
     setDraggedTask(null)
     setDragOverColumn(null)
     setDragOverTaskId(null)
     stopScrolling()
   }
 
-  // Clean up intervals on unmount
-  useEffect(() => {
-    return () => {
-      if (scrollInterval.current) {
-        clearInterval(scrollInterval.current)
-      }
-    }
-  }, [])
-
-  // Toggle empty state for demo
+  // Toggle empty state (for demo purposes)
   const toggleEmptyState = () => {
     setShowEmptyState(!showEmptyState)
   }
 
-  // Handle opening the create task modal
-  const handleOpenCreateTask = (columnId) => {
+  // Handle opening create task modal
+  const handleOpenCreateTask = (columnId: string) => {
     setSelectedColumn(columnId)
     setCreateTaskOpen(true)
   }
 
   // Handle task creation
-  const handleTaskCreated = (newTask) => {
-    // Add the new task to the selected column
-    const newBoardData = { ...boardData }
-
-    // Determine the column to add the task to based on the status
-    const columnId =
-      Object.keys(newBoardData).find((key) => newBoardData[key].title === newTask.status) || selectedColumn
-
-    // Add the task to the column
-    newBoardData[columnId].tasks = [
-      ...newBoardData[columnId].tasks,
-      {
-        id: newTask.id,
-        title: newTask.title,
-        description: newTask.description || "",
-        type: newTask.labels?.find((l) => l?.name === "Feature")
-          ? "feature"
-          : newTask.labels?.find((l) => l?.name === "Bug")
-            ? "bug"
-            : "task",
-        assignee: newTask.assignee,
-        priority: newTask.priority || "medium",
-        labels: newTask.labels?.map((l) => l?.name) || [],
-        comments: 0,
-        attachments: 0,
-      },
-    ]
-
-    // Update the board data
-    setBoardData(newBoardData)
+  const handleTaskCreated = () => {
+    // Refresh board data to show new task
+    fetchBoardData()
+    setCreateTaskOpen(false)
   }
 
   // Handle opening task detail view
-  const handleOpenTaskDetail = (task) => {
+  const handleOpenTaskDetail = (task: Task) => {
     setSelectedTask(task)
     setTaskDetailOpen(true)
   }
 
   // Handle task update
-  const handleTaskUpdated = (updatedTask) => {
-    // Create a new board data object
-    const newBoardData = { ...boardData }
-
-    // Find the column that contains the task
-    let sourceColumnId = null
-    for (const columnId in newBoardData) {
-      const taskIndex = newBoardData[columnId].tasks.findIndex((task) => task.id === updatedTask.id)
-      if (taskIndex !== -1) {
-        sourceColumnId = columnId
-        break
-      }
-    }
-
-    if (!sourceColumnId) return
-
-    // Determine the target column based on the updated status
-    const targetColumnId =
-      Object.keys(newBoardData).find((key) => newBoardData[key].title === updatedTask.status) || sourceColumnId
-
-    // Remove the task from the source column
-    newBoardData[sourceColumnId].tasks = newBoardData[sourceColumnId].tasks.filter((task) => task.id !== updatedTask.id)
-
-    // Add the updated task to the target column
-    newBoardData[targetColumnId].tasks.push(updatedTask)
-
-    // Update the board data
-    setBoardData(newBoardData)
-
-    // Update the selected task
-    setSelectedTask(updatedTask)
+  const handleTaskUpdated = () => {
+    // Refresh board data to show updated task
+    fetchBoardData()
   }
 
   // Handle task deletion
-  const handleTaskDeleted = (taskId) => {
-    // Create a new board data object
-    const newBoardData = { ...boardData }
-
-    // Find and remove the task from its column
-    for (const columnId in newBoardData) {
-      const taskIndex = newBoardData[columnId].tasks.findIndex((task) => task.id === taskId)
-      if (taskIndex !== -1) {
-        newBoardData[columnId].tasks.splice(taskIndex, 1)
-        break
-      }
-    }
-
-    // Update the board data
-    setBoardData(newBoardData)
+  const handleTaskDeleted = () => {
+    // Refresh board data to remove deleted task
+    fetchBoardData()
+    setTaskDetailOpen(false)
+    setSelectedTask(null)
   }
 
   return (
@@ -521,8 +454,8 @@ export default function BoardPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold mb-2">Board</h1>
           <div className="flex items-center gap-2">
-            <span className="font-medium">{projectData.name}</span>
-            <span className="text-sm text-muted-foreground">Synced {projectData.lastSynced}</span>
+            <span className="font-medium">{currentProject?.name}</span>
+            <span className="text-sm text-muted-foreground">Synced {lastSynced}</span>
           </div>
         </div>
         <Button

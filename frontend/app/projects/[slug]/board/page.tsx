@@ -84,6 +84,7 @@ interface Task {
   dueDate?: string
   estimatedHours?: number
   priority: number
+  type?: string
   labels?: string[]
   comments?: number
   attachments?: number
@@ -122,9 +123,10 @@ export default function ProjectBoardPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedLabels, setSelectedLabels] = useState<string[]>([])
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([])
-  const [selectedPriority, setSelectedPriority] = useState("")
-  const [selectedType, setSelectedType] = useState("")
+  const [selectedPriority, setSelectedPriority] = useState("all")
+  const [selectedType, setSelectedType] = useState("all")
   const [showEmptyColumns, setShowEmptyColumns] = useState(true)
+  const [projectParticipants, setProjectParticipants] = useState<Array<{ id: string, name: string, initials: string }>>([])
   
   // UI states
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
@@ -188,28 +190,85 @@ export default function ProjectBoardPage() {
     }
   }, [projectId])
 
+  // Fetch project participants for filter dropdown
+  useEffect(() => {
+    const fetchParticipants = async () => {
+      if (!projectId) return
+
+      try {
+        const token = localStorage.getItem('token')
+        
+        // First get internal project id
+        const projectResponse = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        
+        if (!projectResponse.ok) return
+        
+        const projectData = await projectResponse.json()
+        
+        // Fetch participants
+        const participantsResponse = await fetch(`${API_BASE_URL}/api/projects/${projectData.id}/participants`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        
+        if (!participantsResponse.ok) return
+        
+        const participants = await participantsResponse.json()
+        
+        // Handle different response formats (array vs object with $values)
+        let participantsList = participants
+        if (participants && typeof participants === 'object' && !Array.isArray(participants)) {
+          if (participants.$values && Array.isArray(participants.$values)) {
+            participantsList = participants.$values
+          } else if (participants.data && Array.isArray(participants.data)) {
+            participantsList = participants.data
+          } else {
+            console.warn('Unexpected participants response format:', participants)
+            participantsList = []
+          }
+        }
+        
+        if (!Array.isArray(participantsList)) {
+          console.warn('Participants is not an array:', participantsList)
+          setProjectParticipants([])
+          return
+        }
+        
+        const formattedParticipants = participantsList.map((p: any) => ({
+          id: p.userId || p.UserId,
+          name: p.userName || p.UserName,
+          initials: (p.userName || p.UserName || "")
+            .split(" ")
+            .map((n: string) => n[0])
+            .join("")
+            .toUpperCase(),
+        }))
+        
+        setProjectParticipants(formattedParticipants)
+      } catch (err) {
+        console.error("Failed to fetch project participants", err)
+        setProjectParticipants([])
+      }
+    }
+
+    fetchParticipants()
+  }, [projectId])
+
   // Get all unique labels from tasks (placeholder - not implemented in backend yet)
   const getAllLabels = () => {
     return [] // TODO: Implement labels in backend
   }
 
-  // Get all unique assignees from tasks
+  // Get project participants for assignee filter
   const getAllAssignees = () => {
-    if (!boardData) return []
-    const assignees = new Map<string, { id?: string, name: string, initials: string, image?: string }>()
-    boardData.columns.forEach(column => {
-      column.tasks.forEach(task => {
-        if (task.assigneeName) {
-          assignees.set(task.assigneeId || task.assigneeName, {
-            id: task.assigneeId,
-            name: task.assigneeName,
-            initials: task.assigneeName.split(' ').map((n: string) => n[0]).join('').toUpperCase(),
-            // image not provided by backend currently
-          })
-        }
-      })
-    })
-    return Array.from(assignees.values())
+    return projectParticipants
   }
 
   const filterTasks = (tasks: Task[]) => {
@@ -220,8 +279,8 @@ export default function ProjectBoardPage() {
                            (task.labels && selectedLabels.some(label => task.labels!.includes(label)))
       const matchesAssignees = selectedAssignees.length === 0 || 
                               (task.assigneeName && selectedAssignees.includes(task.assigneeName))
-      const matchesPriority = selectedPriority === "" || task.priority?.toString() === selectedPriority
-      const matchesType = selectedType === "" // TODO: Add task type to backend
+      const matchesPriority = selectedPriority === "all" || task.priority?.toString() === selectedPriority
+      const matchesType = selectedType === "all" || task.type === selectedType
 
       return matchesSearch && matchesLabels && matchesAssignees && matchesPriority && matchesType
     })
@@ -231,8 +290,8 @@ export default function ProjectBoardPage() {
     setSearchTerm("")
     setSelectedLabels([])
     setSelectedAssignees([])
-    setSelectedPriority("")
-    setSelectedType("")
+    setSelectedPriority("all")
+    setSelectedType("all")
   }
 
   const handleDragStart = (e: React.DragEvent, task: Task, columnId: string) => {
@@ -387,6 +446,7 @@ export default function ProjectBoardPage() {
         estimatedHours: (newTask as any).estimate ?? newTask.estimatedHours ?? null,
         priority: priorityMap[(newTask.priority as any) ?? 1] ?? 1,
         status: statusMap[createTaskColumnId],
+        type: newTask.type ?? 'task',
       }
 
       console.log('Sending task creation request:', payload)
@@ -459,13 +519,47 @@ export default function ProjectBoardPage() {
     try {
       const token = localStorage.getItem('token')
       
+      // Prepare payload adhering to UpdateTaskRequest DTO
+      const statusMap: Record<string | number, number> = {
+        "To Do": 1,
+        "In Progress": 2,
+        "Review": 3,
+        "Done": 4,
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 4,
+      }
+
+      const priorityMap: Record<string | number, number> = {
+        low: 1,
+        medium: 2,
+        high: 3,
+        critical: 4,
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 4,
+      }
+
+      const payload: any = {
+        title: updatedTask.title,
+        description: updatedTask.description,
+        assigneeId: updatedTask.assigneeId ?? null,
+        status: statusMap[(updatedTask.status as any) ?? updatedTask.stage],
+        dueDate: updatedTask.dueDate ?? null,
+        priority: priorityMap[updatedTask.priority ?? 1] ?? undefined,
+        estimatedHours: updatedTask.estimatedHours ?? undefined,
+        type: updatedTask.type ?? 'task',
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/tasks/${updatedTask.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(updatedTask)
+        body: JSON.stringify(payload)
       })
       
       if (!response.ok) {
@@ -648,7 +742,7 @@ export default function ProjectBoardPage() {
                   <SelectValue placeholder="All priorities" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All priorities</SelectItem>
+                  <SelectItem value="all">All priorities</SelectItem>
                   {Object.entries(priorityLevels).map(([key, priority]) => (
                     <SelectItem key={key} value={key}>
                       <div className="flex items-center gap-2">
@@ -669,7 +763,7 @@ export default function ProjectBoardPage() {
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All types</SelectItem>
+                  <SelectItem value="all">All types</SelectItem>
                   {Object.entries(taskTypes).map(([key, type]) => (
                     <SelectItem key={key} value={key}>
                       {type.label}
@@ -795,6 +889,18 @@ export default function ProjectBoardPage() {
                         </p>
                       )}
 
+                      {/* Task Type Badge */}
+                      {task.type && taskTypes[task.type as keyof typeof taskTypes] && (
+                        <div className="mb-3">
+                          <Badge 
+                            variant="outline" 
+                            className={cn("text-xs", taskTypes[task.type as keyof typeof taskTypes].color)}
+                          >
+                            {taskTypes[task.type as keyof typeof taskTypes].label}
+                          </Badge>
+                        </div>
+                      )}
+
                       {/* Task Labels */}
                       {task.labels && task.labels.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-3">
@@ -866,6 +972,7 @@ export default function ProjectBoardPage() {
           task={selectedTask}
           onTaskUpdated={handleTaskUpdated}
           onTaskDeleted={(id) => handleTaskDeleted(Number(id))}
+          projectPublicId={projectId}
         />
       )}
 
@@ -878,6 +985,7 @@ export default function ProjectBoardPage() {
         }}
         initialStage={createTaskColumnId}
         onTaskCreated={handleTaskCreated}
+        projectPublicId={projectId}
       />
     </div>
   )

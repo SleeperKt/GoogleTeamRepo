@@ -33,12 +33,17 @@ namespace ProjectHub.API.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetProject(int id)
         {
+            var userEmail = GetCurrentUserEmail();
+            var hasAccess = await _projectService.UserHasAccessAsync(id, userEmail);
+            if (!hasAccess)
+            {
+                return Forbid();
+            }
             var project = await _projectService.GetProjectByIdAsync(id);
             if (project == null)
             {
                 return NotFound();
             }
-            // можно проверить, имеет ли текущий пользователь доступ к этому проекту,
             return Ok(project);
         }
         [HttpGet]

@@ -132,5 +132,22 @@ namespace ProjectHub.Core.Services
 
             await _projectRepository.DeleteAsync(id);
         }
+
+        public async Task<bool> UserHasAccessAsync(int projectId, string userEmail)
+        {
+            var project = await _projectRepository.GetByIdAsync(projectId);
+            if (project == null)
+                return false;
+
+            if (project.OwnerId.Equals(userEmail, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var user = await _userRepository.GetByEmailAsync(userEmail);
+            if (user == null)
+                return false;
+
+            var role = await _participantRepository.GetUserRoleInProjectAsync(projectId, user.UserId);
+            return role != null;
+        }
     }
 }

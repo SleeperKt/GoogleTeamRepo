@@ -106,12 +106,16 @@ namespace ProjectHub.Core.Services
             {
                 tasks = await _taskRepository.GetFilteredTasksAsync(
                     projectId,
+                    filter.SearchTerm,
                     filter.Status,
                     filter.Stage,
                     filter.AssigneeId,
+                    filter.AssigneeName,
                     filter.Priority,
                     filter.DueDateFrom,
                     filter.DueDateTo,
+                    filter.TaskType,
+                    filter.Labels,
                     filter.PageNumber,
                     filter.PageSize);
             }
@@ -263,12 +267,16 @@ namespace ProjectHub.Core.Services
 
             return await _taskRepository.GetTotalCountAsync(
                 projectId,
+                filter.SearchTerm,
                 filter.Status,
                 filter.Stage,
                 filter.AssigneeId,
+                filter.AssigneeName,
                 filter.Priority,
                 filter.DueDateFrom,
-                filter.DueDateTo);
+                filter.DueDateTo,
+                filter.TaskType,
+                filter.Labels);
         }
 
         public async Task<IEnumerable<TaskResponse>> GetMyTasksAsync(string userId)

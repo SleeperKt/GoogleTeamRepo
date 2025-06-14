@@ -15,6 +15,7 @@ interface Project {
   currentSprint?: string | null
   avatar?: string
   color?: string
+  publicId: string
 }
 
 interface ProjectContextType {
@@ -57,6 +58,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
             currentSprint: null,
             avatar: p.name.substring(0, 2).toUpperCase(),
             color: "bg-violet-100 text-violet-600",
+            publicId: p.publicId ?? p.id.toString(),
           }))
           
           setProjects(transformedProjects)

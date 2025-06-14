@@ -57,6 +57,7 @@ interface Project {
   id: number
   name: string
   description: string
+  publicId: string
 }
 
 interface NavItem {
@@ -100,6 +101,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
     Projects: true, // Projects is expanded by default
+    Boards: true, // Boards is expanded by default
   })
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -138,7 +140,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       children: [
         ...projects.map((p) => ({
           name: p.name,
-          href: `/projects/${p.id}`,
+          href: `/projects/${p.publicId}`,
           starred: false,
         })),
         {
@@ -149,14 +151,27 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       ],
     },
     {
+      name: "Boards",
+      href: "/board",
+      icon: PanelLeft,
+      expanded: true,
+      children: [
+        ...projects.map((p) => ({
+          name: p.name,
+          href: `/projects/${p.publicId}/board`,
+          starred: false,
+        })),
+        {
+          name: "General Board",
+          href: "/board",
+          icon: PanelLeft,
+        },
+      ],
+    },
+    {
       name: "Backlog",
       href: "/backlog",
       icon: ListTodo,
-    },
-    {
-      name: "Board",
-      href: "/board",
-      icon: PanelLeft,
     },
     {
       name: "Reports",

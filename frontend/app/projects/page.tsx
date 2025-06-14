@@ -72,7 +72,7 @@ export default function ProjectsPage() {
         const arr = Array.isArray(json) ? json : Array.isArray(json.$values) ? json.$values : [];
         setProjectList(
           arr.map((p: any) => ({
-            id: p.id,
+            id: p.publicId ?? p.id.toString(),
             name: p.name,
             description: p.description ?? "",
             status: "Active",
@@ -310,7 +310,7 @@ export default function ProjectsPage() {
                 })
                 // map backend project to UI shape
                 const mapped = {
-                  id: created.id,
+                  id: created.publicId ?? created.id.toString(),
                   name: created.name,
                   description: created.description ?? "",
                   status: "Active",
@@ -445,11 +445,7 @@ function ProjectCard({
     }
 
     // Navigate to project page - convert name to URL-friendly format
-    const projectSlug = project.name
-      .toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9-]/g, "")
-    router.push(`/projects/${projectSlug}`)
+    router.push(`/projects/${project.id}`)
   }
 
   const handleStarClick = (e: React.MouseEvent) => {

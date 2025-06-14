@@ -18,37 +18,8 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-// Sample data for the form
-const teamMembers = [
-  {
-    id: 1,
-    name: "Alex Kim",
-    email: "alex@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "AK",
-  },
-  {
-    id: 2,
-    name: "Sarah Lee",
-    email: "sarah@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "SL",
-  },
-  {
-    id: 3,
-    name: "Michael Johnson",
-    email: "michael@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "MJ",
-  },
-  {
-    id: 4,
-    name: "Jessica Taylor",
-    email: "jessica@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "JT",
-  },
-]
+// Team members will be loaded dynamically by the parent component in the future.
+const teamMembers: Array<{ id: number; name: string; email?: string; avatar?: string; initials: string }> = []
 
 const labels = [
   { id: 1, name: "Frontend", color: "#93c5fd" },
@@ -148,18 +119,26 @@ export function CreateTaskSidebar({
     // Show loading state
     setIsSubmitting(true)
 
-    // Create new task object
+    // Create task object in a shape expected by the parent handler / backend
+    const priorityMap: Record<string | number, number> = {
+      low: 1,
+      medium: 2,
+      high: 3,
+      critical: 4,
+      1: 1,
+      2: 2,
+      3: 3,
+      4: 4,
+    }
+
     const newTask = {
-      id: Math.floor(Math.random() * 10000), // Generate random ID for demo
       title,
       description,
-      assignee: assignee ? teamMembers.find((member) => member.id === assignee) : null,
+      assigneeId: assignee ? assignee.toString() : undefined, // GUI will supply real GUID later
       labels: selectedLabels.map((id) => labels.find((label) => label.id === id)),
       dueDate,
-      priority,
-      status: stage,
+      priority: priorityMap[priority ?? 1],
       estimate: estimate ? Number.parseFloat(estimate) : undefined,
-      createdAt: new Date(),
     }
 
     // Simulate API call

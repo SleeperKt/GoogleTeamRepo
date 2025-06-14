@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { ArrowLeft, CheckCircle2, Edit, FileText, MoreHorizontal, PlayCircle, Users, XCircle } from "lucide-react"
+import { ArrowLeft, CheckCircle2, Edit, FileText, MoreHorizontal, PlayCircle, Users, XCircle, LayoutGrid } from "lucide-react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -82,20 +82,19 @@ export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { token } = useAuth()
-  const idParam = params.slug as string
-  const projectId = parseInt(idParam, 10)
+  const publicId = params.slug as string
 
   const [project, setProject] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchProject = async () => {
-      if (!token || isNaN(projectId)) {
+      if (!token) {
         setLoading(false)
         return
       }
       try {
-        const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
+        const res = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (res.ok) {
@@ -124,7 +123,7 @@ export default function ProjectDetailPage() {
       }
     }
     fetchProject()
-  }, [token, projectId])
+  }, [token, publicId])
 
   if (loading) {
     return <div className="p-4">Loading...</div>
@@ -156,7 +155,15 @@ export default function ProjectDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" />Back to projects
         </Link>
       </Button>
-      <h1 className="text-2xl font-bold mb-4">{project.name}</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">{project.name}</h1>
+        <Button asChild>
+          <Link href={`/projects/${publicId}/board`}>
+            <LayoutGrid className="mr-2 h-4 w-4" />
+            View Board
+          </Link>
+        </Button>
+      </div>
       <p className="text-muted-foreground mb-6">{project.description}</p>
       <Badge className={statusColors[project.status] ?? ""}>{project.status}</Badge>
       <p className="text-sm mt-2">Created at: {new Date(project.createdAt).toLocaleString()}</p>

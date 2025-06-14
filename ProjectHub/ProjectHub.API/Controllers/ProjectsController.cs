@@ -121,7 +121,7 @@ namespace ProjectHub.API.Controllers
             return NoContent();
         }
 
-        [HttpDelete("{id}")]
+        [HttpDelete("{id:int}")]
         public async Task<IActionResult> DeleteProject(int id)
         {
             var userEmail = GetCurrentUserEmail();
@@ -188,6 +188,73 @@ namespace ProjectHub.API.Controllers
             };
 
             return Ok(boardData);
+        }
+
+        [HttpDelete("public/{publicId:guid}")]
+        public async Task<IActionResult> DeleteProjectByPublicId(Guid publicId)
+        {
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+            {
+                return NotFound();
+            }
+
+            var userEmail = GetCurrentUserEmail();
+            try
+            {
+                await _projectService.DeleteProjectAsync(internalId.Value, userEmail);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+            catch (Exception ex) when (ex.Message.Contains("Project not found"))
+            {
+                return NotFound();
+            }
+
+            return NoContent();
+        }
+
+        [HttpPut("public/{publicId:guid}")]
+        public async Task<IActionResult> UpdateProjectByPublicId(Guid publicId, [FromBody] UpdateProjectRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+            {
+                return NotFound();
+            }
+
+            var project = await _projectService.GetProjectByIdAsync(internalId.Value);
+            if (project == null)
+            {
+                return NotFound();
+            }
+
+            // Update allowed fields
+            project.Name = request.Name;
+            project.Description = request.Description;
+
+            var userEmail = GetCurrentUserEmail();
+            try
+            {
+                await _projectService.UpdateProjectAsync(project, userEmail);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+            catch (Exception ex) when (ex.Message.Contains("Project not found"))
+            {
+                return NotFound();
+            }
+
+            return NoContent();
         }
     }
 } 

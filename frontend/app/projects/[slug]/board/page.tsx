@@ -598,6 +598,11 @@ export default function ProjectBoardPage() {
   const handleOpenCreateTask = (columnId: string) => {
     setSelectedColumn(columnId)
     setCreateTaskOpen(true)
+    // Close task detail view when opening create task sidebar
+    if (taskDetailOpen) {
+      setTaskDetailOpen(false)
+      setSelectedTask(null)
+    }
   }
 
   // Map column ID to initial stage for task creation
@@ -623,6 +628,10 @@ export default function ProjectBoardPage() {
     console.log('🎯 ProjectBoard: Opening task detail for task:', task.id, 'status:', task.status);
     setSelectedTask(task)
     setTaskDetailOpen(true)
+    // Close create task sidebar when opening task detail view
+    if (createTaskOpen) {
+      setCreateTaskOpen(false)
+    }
   }
 
   // Handle task update (called optimistically and on success from TaskDetailView)
@@ -904,7 +913,10 @@ export default function ProjectBoardPage() {
   }
 
   return (
-    <div className={cn("p-4 md:p-6 w-full transition-all duration-300", taskDetailOpen ? "md:pr-[366px]" : "")}>
+    <div className={cn(
+      "p-4 md:p-6 w-full transition-all duration-300", 
+      (taskDetailOpen || createTaskOpen) ? "md:pr-[366px]" : ""
+    )}>
       {/* Header Section */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -916,10 +928,7 @@ export default function ProjectBoardPage() {
         </div>
         <Button
           className="bg-violet-600 hover:bg-violet-700 text-white"
-          onClick={() => {
-            setSelectedColumn("todo")
-            setCreateTaskOpen(true)
-          }}
+          onClick={() => handleOpenCreateTask("todo")}
         >
           <Plus className="mr-2 h-4 w-4" /> Add Task
         </Button>
@@ -935,7 +944,7 @@ export default function ProjectBoardPage() {
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
             Start by adding tasks to your board to track your work visually.
           </p>
-          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => setCreateTaskOpen(true)}>
+          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => handleOpenCreateTask("todo")}>
             <Plus className="mr-2 h-4 w-4" /> Create Task
           </Button>
         </div>

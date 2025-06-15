@@ -139,7 +139,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     },
     {
       name: "Boards",
-      href: "/projects",
+      href: "/boards",
       icon: PanelLeft,
       expanded: true,
       children: [

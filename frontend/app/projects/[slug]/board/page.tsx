@@ -325,7 +325,40 @@ export default function ProjectBoardPage() {
   // Handle drag start
   const handleDragStart = (e: React.DragEvent, task: Task, columnId: string) => {
     setDraggedTask({task, columnId})
-    ;(e.target as HTMLElement).style.opacity = "0.5"
+    
+    // Create a more polished drag image
+    const dragElement = e.target as HTMLElement
+    const clone = dragElement.cloneNode(true) as HTMLElement
+    
+    // Style the clone for better visual feedback
+    clone.style.transform = 'rotate(5deg)'
+    clone.style.opacity = '0.8'
+    clone.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.3)'
+    clone.style.border = '2px solid rgb(139, 92, 246)' // violet-500
+    clone.style.backgroundColor = 'white'
+    clone.style.borderRadius = '8px'
+    clone.style.width = dragElement.offsetWidth + 'px'
+    clone.style.position = 'absolute'
+    clone.style.top = '-1000px'
+    clone.style.pointerEvents = 'none'
+    clone.style.zIndex = '9999'
+    
+    // Add it to body temporarily for drag image
+    document.body.appendChild(clone)
+    
+    // Set custom drag image
+    e.dataTransfer.setDragImage(clone, dragElement.offsetWidth / 2, 20)
+    
+    // Clean up clone after drag starts
+    setTimeout(() => {
+      document.body.removeChild(clone)
+    }, 0)
+    
+    // Apply dragging state to original element
+    dragElement.style.opacity = "0.4"
+    dragElement.style.transform = "scale(0.95)"
+    dragElement.style.transition = "all 0.2s ease"
+    dragElement.classList.add('dragging')
   }
 
   // Handle drag over
@@ -385,14 +418,31 @@ export default function ProjectBoardPage() {
     
     const { task, columnId: sourceColumnId } = draggedTask
     
+    // Add visual feedback for successful drop
+    const dropTarget = e.currentTarget as HTMLElement
+    dropTarget.style.transition = "all 0.3s ease"
+    dropTarget.style.transform = "scale(1.02)"
+    
+    setTimeout(() => {
+      dropTarget.style.transform = "scale(1)"
+    }, 150)
+    
     // Don't do anything if dropped in the same position
-    if (sourceColumnId === targetColumnId && !targetTaskId) return
+    if (sourceColumnId === targetColumnId && !targetTaskId) {
+      setDraggedTask(null)
+      setDragOverColumn(null)
+      setDragOverTaskId(null)
+      return
+    }
     
     updateTaskStatus(task.id, targetColumnId)
     
-    setDraggedTask(null)
-    setDragOverColumn(null)
-    setDragOverTaskId(null)
+    // Clear drag state immediately for visual feedback, but with a slight delay to ensure all operations complete
+    setTimeout(() => {
+      setDraggedTask(null)
+      setDragOverColumn(null)
+      setDragOverTaskId(null)
+    }, 10)
   }
 
   // Update task status via API
@@ -459,9 +509,12 @@ export default function ProjectBoardPage() {
       return newBoardData
     })
 
-    // Update selected task if it's the one being moved
+    // Delay selected task update to prevent UI lag during drag
     if (selectedTask && selectedTask.id === taskId) {
-      setSelectedTask(optimisticTask)
+      // Use a small delay to ensure drag operation completes smoothly
+      setTimeout(() => {
+        setSelectedTask(optimisticTask)
+      }, 100)
     }
 
     try {
@@ -515,14 +568,24 @@ export default function ProjectBoardPage() {
 
   // Handle drag end
   const handleDragEnd = (e: React.DragEvent) => {
-    ;(e.target as HTMLElement).style.opacity = "1"
-    const ghostElement = document.querySelector(".invisible")
-    if (ghostElement && ghostElement.parentNode) {
-      ghostElement.parentNode.removeChild(ghostElement)
-    }
+    const dragElement = e.target as HTMLElement
+    
+    // Smooth transition back to normal state
+    dragElement.style.opacity = "1"
+    dragElement.style.transform = "scale(1)"
+    dragElement.style.transition = "all 0.3s ease"
+    dragElement.classList.remove('dragging')
+    
+    // Clear dragging states
     setDraggedTask(null)
     setDragOverColumn(null)
     setDragOverTaskId(null)
+    
+    // Clean up any remaining drag effects
+    setTimeout(() => {
+      dragElement.style.transition = ""
+    }, 300)
+    
     stopScrolling()
   }
 
@@ -565,6 +628,14 @@ export default function ProjectBoardPage() {
   // Handle task update (called optimistically and on success from TaskDetailView)
   const handleTaskUpdated = (updatedTaskData?: any, isOptimistic?: boolean) => {
     console.log('📋 PROJECT BOARD: handleTaskUpdated called with status:', updatedTaskData?.status, 'isOptimistic:', isOptimistic);
+    
+    // If we're currently dragging, skip this update to prevent performance issues
+    // The drag operation already handles optimistic updates
+    if (draggedTask) {
+      console.log('📋 PROJECT BOARD: Skipping handleTaskUpdated during drag operation');
+      return;
+    }
+    
     if (!updatedTaskData || typeof updatedTaskData.id === 'undefined') {
       console.warn('ProjectBoard: handleTaskUpdated called with invalid data:', updatedTaskData);
       fetchBoardData(); 
@@ -627,7 +698,8 @@ export default function ProjectBoardPage() {
     };
 
     setBoardData(prevBoardData => {
-      const newBoardData = JSON.parse(JSON.stringify(prevBoardData)) as BoardData;
+      // Use shallow cloning for better performance
+      const newBoardData = { ...prevBoardData };
 
       // Locate the task and remember its current column & index
       let previousColumnKey: keyof BoardData | undefined;
@@ -644,14 +716,24 @@ export default function ProjectBoardPage() {
 
       // If found in the same column we are saving to, just replace in place
       if (previousColumnKey && previousColumnKey === targetColumnKey && previousIndex !== -1) {
+        newBoardData[targetColumnKey] = {
+          ...newBoardData[targetColumnKey],
+          tasks: [...newBoardData[targetColumnKey].tasks]
+        };
         newBoardData[targetColumnKey].tasks[previousIndex] = boardPageTask;
       } else {
         // Otherwise remove it from wherever it was and insert at top of new column
         if (previousColumnKey && previousIndex !== -1) {
-          newBoardData[previousColumnKey].tasks.splice(previousIndex, 1);
+          newBoardData[previousColumnKey] = {
+            ...newBoardData[previousColumnKey],
+            tasks: newBoardData[previousColumnKey].tasks.filter(t => t.id !== boardPageTask.id)
+          };
         }
         if (newBoardData[targetColumnKey]) {
-          newBoardData[targetColumnKey].tasks.unshift(boardPageTask);
+          newBoardData[targetColumnKey] = {
+            ...newBoardData[targetColumnKey],
+            tasks: [boardPageTask, ...newBoardData[targetColumnKey].tasks]
+          };
         } else {
           console.error(`ProjectBoard: Target column ${targetColumnKey} not found in boardData during update.`);
         }
@@ -737,14 +819,18 @@ export default function ProjectBoardPage() {
     };
 
     setBoardData(prevBoardData => {
-      const newBoardData = JSON.parse(JSON.stringify(prevBoardData)) as BoardData;
+      // Use shallow cloning for better performance
+      const newBoardData = { ...prevBoardData };
 
       // Remove the optimistically placed/updated task
       let removedFromAttemptedCol = false;
       if (attemptedColumnKey && newBoardData[attemptedColumnKey]) {
         const taskIndexOptimistic = newBoardData[attemptedColumnKey].tasks.findIndex(t => t.id === attemptedOptimisticTaskData.id);
         if (taskIndexOptimistic !== -1) {
-          newBoardData[attemptedColumnKey].tasks.splice(taskIndexOptimistic, 1);
+          newBoardData[attemptedColumnKey] = {
+            ...newBoardData[attemptedColumnKey],
+            tasks: newBoardData[attemptedColumnKey].tasks.filter(t => t.id !== attemptedOptimisticTaskData.id)
+          };
           removedFromAttemptedCol = true;
         }
       }
@@ -753,7 +839,10 @@ export default function ProjectBoardPage() {
             const currentColumnKey = colKeyStr as keyof BoardData;
             const taskIndex = newBoardData[currentColumnKey].tasks.findIndex(t => t.id === attemptedOptimisticTaskData.id);
             if (taskIndex !== -1) {
-              newBoardData[currentColumnKey].tasks.splice(taskIndex, 1);
+              newBoardData[currentColumnKey] = {
+                ...newBoardData[currentColumnKey],
+                tasks: newBoardData[currentColumnKey].tasks.filter(t => t.id !== attemptedOptimisticTaskData.id)
+              };
               break; 
             }
           }
@@ -763,10 +852,19 @@ export default function ProjectBoardPage() {
       if (newBoardData[originalColumnKey]) {
         const taskExistsInOriginalCol = newBoardData[originalColumnKey].tasks.some(t => t.id === revertedBoardTask.id);
         if (!taskExistsInOriginalCol) {
-          newBoardData[originalColumnKey].tasks.unshift(revertedBoardTask);
+          newBoardData[originalColumnKey] = {
+            ...newBoardData[originalColumnKey],
+            tasks: [revertedBoardTask, ...newBoardData[originalColumnKey].tasks]
+          };
         } else {
             const existingIndex = newBoardData[originalColumnKey].tasks.findIndex(t => t.id === revertedBoardTask.id);
-            if(existingIndex !== -1) newBoardData[originalColumnKey].tasks[existingIndex] = revertedBoardTask;
+            if(existingIndex !== -1) {
+              newBoardData[originalColumnKey] = {
+                ...newBoardData[originalColumnKey],
+                tasks: [...newBoardData[originalColumnKey].tasks]
+              };
+              newBoardData[originalColumnKey].tasks[existingIndex] = revertedBoardTask;
+            }
         }
       } else {
         console.error(`ProjectBoard: Original column ${originalColumnKey} not found during revert. Task may be lost from UI.`);
@@ -976,8 +1074,9 @@ export default function ProjectBoardPage() {
                 <div
                   key={column.id}
                   className={cn(
-                    "flex-1 min-w-0 bg-white dark:bg-gray-800 rounded-lg border shadow-sm overflow-hidden",
-                    dragOverColumn === column.id && !dragOverTaskId && "border-violet-500 ring-1 ring-violet-500",
+                    "flex-1 min-w-0 bg-white dark:bg-gray-800 rounded-lg border shadow-sm overflow-hidden transition-all duration-200",
+                    dragOverColumn === column.id && !dragOverTaskId && "border-violet-500 ring-2 ring-violet-500 ring-opacity-30 bg-violet-50 dark:bg-violet-950/10 shadow-lg",
+                    draggedTask && draggedTask.columnId !== column.id && "border-dashed border-gray-300 dark:border-gray-600",
                   )}
                   onDragOver={(e) => handleDragOver(e, column.id)}
                   onDrop={(e) => handleDrop(e, column.id)}
@@ -1019,11 +1118,13 @@ export default function ProjectBoardPage() {
                             <div
                               key={task.id}
                               className={cn(
-                                "p-3 bg-white dark:bg-gray-800 rounded-md border shadow-sm hover:shadow-md transition-shadow cursor-pointer",
-                                dragOverTaskId === task.id && "border-violet-500 ring-1 ring-violet-500",
+                                "p-3 bg-white dark:bg-gray-800 rounded-md border shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer",
+                                dragOverTaskId === task.id && "border-violet-500 ring-2 ring-violet-500 ring-opacity-50 bg-violet-50 dark:bg-violet-950/20",
+                                draggedTask?.task.id === task.id && "opacity-40 scale-95 shadow-none",
                                 viewMode === "compact" ? "p-2" : "p-3",
                                 taskTypeColor.includes("border") &&
                                   `border-l-4 ${taskTypeColor.split(" ").find((c: string) => c.startsWith("border-"))}`,
+                                "hover:scale-[1.02] active:scale-95",
                               )}
                               draggable
                               onDragStart={(e) => handleDragStart(e, task, column.id)}
@@ -1115,7 +1216,7 @@ export default function ProjectBoardPage() {
         initialStage={getInitialStageFromColumn(selectedColumn)}
       />
 
-      {/* Task Detail View Sidebar */}
+      {/* Task Detail View Sidebar - Optimized for drag performance */}
       {selectedTask && projectId && (
         <TaskDetailView
           key={selectedTask.id} // Use stable key to prevent unnecessary remounts
@@ -1126,6 +1227,7 @@ export default function ProjectBoardPage() {
           onTaskDeleted={handleTaskDeleted}
           onTaskUpdateFailed={handleTaskUpdateFailed}
           projectPublicId={projectId}
+          isDragging={!!draggedTask} // Pass drag state to optimize rendering
         />
       )}
 

@@ -99,6 +99,7 @@ interface TaskDetailViewProps {
   onTaskDeleted?: (taskId: string | number) => void
   onTaskUpdateFailed?: (originalTask: any, attemptedChanges: any) => void
   projectPublicId?: string
+  isDragging?: boolean
 }
 
 // Helper to derive stage string from status value (number or string)
@@ -122,7 +123,7 @@ const mapStatusToStage = (statusValue: any): string => {
   return 'To Do'
 }
 
-export function TaskDetailView({
+const TaskDetailViewComponent = function TaskDetailView({
   open,
   onOpenChange,
   task: initialTask,
@@ -130,6 +131,7 @@ export function TaskDetailView({
   onTaskDeleted,
   onTaskUpdateFailed,
   projectPublicId,
+  isDragging = false,
 }: TaskDetailViewProps) {
   console.log('🔧 TaskDetailView: Rendered with onTaskUpdated callback:', !!onTaskUpdated);
   // Task state
@@ -266,14 +268,17 @@ export function TaskDetailView({
     React.useMemo(() => {
       let timeout: NodeJS.Timeout | null = null
       return () => {
+        // Skip updates during drag operations to maintain performance
+        if (isDragging) return
+        
         if (timeout) return
         timeout = setTimeout(() => {
           refreshActivities()
           timeout = null
         }, 300)
       }
-    }, [refreshActivities]),
-    [refreshActivities]
+    }, [refreshActivities, isDragging]),
+    [refreshActivities, isDragging]
   )
 
   // Load comments and activities when task opens - deferred to prevent animation stuttering
@@ -322,7 +327,7 @@ export function TaskDetailView({
 
   // Refresh activities when task is updated externally (like via drag & drop)
   useEffect(() => {
-    if (!open || !initialTask?.id) return
+    if (!open || !initialTask?.id || isDragging) return // Skip during drag operations
     
     // Use a ref to prevent excessive calls
     const timeoutId = setTimeout(() => {
@@ -330,18 +335,18 @@ export function TaskDetailView({
     }, 200)
 
     return () => clearTimeout(timeoutId)
-  }, [open, initialTask?.id, initialTask?.status, refreshActivities])
+  }, [open, initialTask?.id, initialTask?.status, refreshActivities, isDragging])
 
   // Periodic activity refresh while detail view is open (every 10 seconds)
   useEffect(() => {
-    if (!open || !initialTask?.id) return
+    if (!open || !initialTask?.id || isDragging) return // Skip during drag
 
     const intervalId = setInterval(() => {
       throttledRefreshActivities()
     }, 10000) // Refresh every 10 seconds
 
     return () => clearInterval(intervalId)
-  }, [open, initialTask?.id, refreshActivities])
+  }, [open, initialTask?.id, refreshActivities, isDragging])
 
   // Combine dynamic members with fallback (unique by id)
   const availableMembers = React.useMemo(() => {
@@ -353,6 +358,13 @@ export function TaskDetailView({
   // Reset form when task changes
   useEffect(() => {
     console.log('📝 TaskDetailView: Task prop changed, status:', initialTask?.status);
+    
+    // Skip expensive form updates during drag operations to maintain performance
+    if (isDragging) {
+      console.log('📝 TaskDetailView: Skipping form update during drag operation');
+      return;
+    }
+    
     if (initialTask) {
       setTask(initialTask)
       setTitle(initialTask.title || "")
@@ -389,7 +401,7 @@ export function TaskDetailView({
       setEstimate(initialTask.estimatedHours || undefined)
       setHasUnsavedChanges(false)
     }
-  }, [initialTask])
+  }, [initialTask, isDragging])
 
   // Focus on title input when sidebar opens - defer to prevent animation stuttering
   useEffect(() => {
@@ -465,6 +477,12 @@ export function TaskDetailView({
   // Save changes
   const saveChanges = async () => {
     if (!initialTask?.id || !projectPublicId || !onTaskUpdated) return;
+    
+    // Prevent save operations during drag to maintain performance
+    if (isDragging) {
+      console.log('📝 TaskDetailView: Skipping save operation during drag');
+      return;
+    }
 
     const originalTaskForRevert = JSON.parse(JSON.stringify(initialTask));
 
@@ -597,6 +615,12 @@ export function TaskDetailView({
   // Handle add comment
   const handleAddComment = async () => {
     if (!newComment.trim() || !initialTask?.id || !projectPublicId) return
+    
+    // Prevent comment operations during drag to maintain performance
+    if (isDragging) {
+      console.log('📝 TaskDetailView: Skipping add comment during drag');
+      return;
+    }
 
     try {
       const commentData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/comments`, {
@@ -831,11 +855,15 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
       {/* Sidebar Layout */}
       <div
         className={cn(
-          "fixed top-0 right-0 h-full w-[350px] bg-white dark:bg-gray-800 border-l shadow-lg z-50 flex flex-col transition-transform duration-300 ease-in-out will-change-transform transform-gpu sidebar-slide hw-accelerate",
+          "fixed top-0 right-0 h-full w-[350px] bg-white dark:bg-gray-800 border-l shadow-lg flex flex-col transition-transform duration-300 ease-in-out will-change-transform transform-gpu sidebar-slide hw-accelerate",
           open ? "translate-x-0" : "translate-x-full",
           "md:w-[350px] sm:w-[320px]",
           !open && "no-select-during-animation",
+          isDragging ? "z-40 pointer-events-none" : "z-50", // Lower z-index and disable interactions during drag
         )}
+        style={{
+          pointerEvents: isDragging ? 'none' : 'auto', // Disable all interactions during drag
+        }}
       >
         {/* Header with back button and title */}
         <div className="p-2 border-b flex items-center gap-2">
@@ -865,8 +893,8 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
 
         {/* Main content area - single scrollable panel */}
         <div className="flex-1 overflow-auto optimized-scroll">
-          {isAnimating ? (
-            // Simplified view during animation to prevent stuttering
+          {isAnimating || isDragging ? (
+            // Simplified view during animation or drag to prevent stuttering
             <div className="p-2 space-y-4">
               <div className="space-y-2">
                 <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
@@ -877,6 +905,11 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                 <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
               </div>
               <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+              {isDragging && (
+                <div className="text-center text-sm text-muted-foreground py-4">
+                  Drag in progress...
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-2 space-y-4">
@@ -1610,3 +1643,24 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
     </>
   )
 }
+
+// Memoize the component to prevent unnecessary re-renders during drag operations
+export const TaskDetailView = React.memo(TaskDetailViewComponent, (prevProps, nextProps) => {
+  // During drag operations, be very aggressive about preventing re-renders
+  if (nextProps.isDragging || prevProps.isDragging) {
+    // Only re-render if the detail view is being opened/closed
+    return prevProps.open === nextProps.open && 
+           prevProps.task?.id === nextProps.task?.id &&
+           prevProps.projectPublicId === nextProps.projectPublicId
+  }
+  
+  // Normal comparison when not dragging - compare all critical props
+  return (
+    prevProps.open === nextProps.open &&
+    prevProps.task?.id === nextProps.task?.id &&
+    prevProps.task?.status === nextProps.task?.status &&
+    prevProps.task?.title === nextProps.task?.title &&
+    prevProps.projectPublicId === nextProps.projectPublicId &&
+    prevProps.isDragging === nextProps.isDragging
+  )
+})

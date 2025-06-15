@@ -232,6 +232,30 @@ export function TaskDetailView({
     loadParticipants()
   }, [open, projectPublicId])
 
+  // Function to refresh activities
+  const refreshActivities = React.useCallback(async () => {
+    if (!initialTask?.id || !projectPublicId) return
+
+    try {
+      const activitiesData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/activities`)
+      console.log('🔄 Activities refreshed:', activitiesData)
+      
+      // Handle different response formats
+      let activities = []
+      if (Array.isArray(activitiesData)) {
+        activities = activitiesData
+      } else if (activitiesData && Array.isArray((activitiesData as any).$values)) {
+        activities = (activitiesData as any).$values
+      } else if (activitiesData && (activitiesData as any).activities && Array.isArray((activitiesData as any).activities)) {
+        activities = (activitiesData as any).activities
+      }
+      
+      setActivities(activities)
+    } catch (err) {
+      console.error("Failed to refresh activities", err)
+    }
+  }, [initialTask?.id, projectPublicId])
+
   // Load comments and activities when task opens
   useEffect(() => {
     const loadTaskData = async () => {
@@ -263,18 +287,37 @@ export function TaskDetailView({
       // Load activities
       setLoadingActivities(true)
       try {
-        const activitiesData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/activities`)
-        setActivities(Array.isArray(activitiesData) ? activitiesData : [])
-      } catch (err) {
-        console.error("Failed to load task activities", err)
-        setActivities([])
+        await refreshActivities()
       } finally {
         setLoadingActivities(false)
       }
     }
 
     loadTaskData()
-  }, [open, initialTask?.id, projectPublicId])
+  }, [open, initialTask?.id, projectPublicId, refreshActivities])
+
+  // Refresh activities when task is updated externally (like via drag & drop)
+  useEffect(() => {
+    if (!open || !initialTask?.id) return
+    
+    // Add a small delay to ensure backend processing is complete
+    const timeoutId = setTimeout(() => {
+      refreshActivities()
+    }, 200)
+
+    return () => clearTimeout(timeoutId)
+  }, [open, initialTask?.status, initialTask?.assigneeName, initialTask?.priority, refreshActivities])
+
+  // Periodic activity refresh while detail view is open (every 10 seconds)
+  useEffect(() => {
+    if (!open || !initialTask?.id) return
+
+    const intervalId = setInterval(() => {
+      refreshActivities()
+    }, 10000) // Refresh every 10 seconds
+
+    return () => clearInterval(intervalId)
+  }, [open, initialTask?.id, refreshActivities])
 
   // Combine dynamic members with fallback (unique by id)
   const availableMembers = React.useMemo(() => {
@@ -482,13 +525,10 @@ export function TaskDetailView({
 
       // Note: Comment count updates are handled in the main task update above
 
-      // Refresh activities to include the new comment activity
-      try {
-        const activitiesData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/activities`)
-        setActivities(Array.isArray(activitiesData) ? activitiesData : [])
-      } catch (err) {
-        console.error('Failed to refresh activities', err)
-      }
+                   // Refresh activities to include any new activities from the task update
+      setTimeout(() => {
+        refreshActivities()
+      }, 100)
 
     } catch (err) {
       console.error('Failed to save task changes:', err);
@@ -558,18 +598,18 @@ export function TaskDetailView({
         }
       }
 
-      // Refresh activities to include the new comment activity
-      try {
-        const activitiesData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/activities`)
-        setActivities(Array.isArray(activitiesData) ? activitiesData : [])
-      } catch (err) {
-        console.error('Failed to refresh activities', err)
-      }
+      // Clear the comment input
+      setNewComment("")
 
-    // Focus back on comment input
-    setTimeout(() => {
-      commentInputRef.current?.focus()
-    }, 100)
+                   // Refresh activities to include the new comment activity
+      setTimeout(() => {
+        refreshActivities()
+      }, 100)
+
+      // Focus back on comment input
+      setTimeout(() => {
+        commentInputRef.current?.focus()
+      }, 200)
     } catch (err) {
       console.error("Failed to add comment", err)
       // Could show a toast notification here
@@ -1362,10 +1402,11 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
 
                             {activity.activityType === "comment" && <span className="text-xs">added a comment</span>}
                             {activity.activityType === "created" && <span className="text-xs">created this task</span>}
+                            {activity.activityType === "updated" && <span className="text-xs">updated this task</span>}
                             {activity.activityType === "deleted" && <span className="text-xs">deleted this task</span>}
                             
                             {/* Generic description fallback */}
-                            {!["status_change", "assignee_change", "priority_change", "comment", "created", "deleted"].includes(activity.activityType) && (
+                            {!["status_change", "assignee_change", "priority_change", "comment", "created", "updated", "deleted"].includes(activity.activityType) && (
                               <span className="text-xs">{activity.description || activity.activityType}</span>
                             )}
                           </div>

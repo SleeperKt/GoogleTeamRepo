@@ -304,12 +304,16 @@ namespace ProjectHub.Core.Services
 
             await _taskRepository.UpdateAsync(task);
 
+            // Track if any activities were logged
+            bool activityLogged = false;
+
             // Log activities for significant changes
             if (request.Status.HasValue && originalStatus != task.Status)
             {
                 await LogTaskActivityAsync(id, "status_change", requestingUserId, 
                     $"Changed status from {originalStatus} to {task.Status}", 
                     originalStatus.ToString(), task.Status.ToString());
+                activityLogged = true;
             }
 
             if (originalAssigneeId != task.AssigneeId)
@@ -322,6 +326,7 @@ namespace ProjectHub.Core.Services
                 await LogTaskActivityAsync(id, "assignee_change", requestingUserId, 
                     $"Changed assignee from {oldAssigneeName} to {newAssigneeName}", 
                     oldAssigneeName, newAssigneeName);
+                activityLogged = true;
             }
 
             if (request.Priority.HasValue && originalPriority != task.Priority)
@@ -333,6 +338,14 @@ namespace ProjectHub.Core.Services
                 await LogTaskActivityAsync(id, "priority_change", requestingUserId, 
                     $"Changed priority from {oldPriorityName} to {newPriorityName}", 
                     oldPriorityName, newPriorityName);
+                activityLogged = true;
+            }
+
+            // Log a general update activity if no specific changes were logged
+            // This catches title, description, labels, and other field changes
+            if (!activityLogged)
+            {
+                await LogTaskActivityAsync(id, "updated", requestingUserId, "Updated task details");
             }
 
             return await MapToTaskResponseAsync(task);

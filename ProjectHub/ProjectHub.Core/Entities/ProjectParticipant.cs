@@ -16,6 +16,6 @@ namespace ProjectHub.Core.Entities
         [Required]
         public ParticipantRole Role { get; set; }
         
-        public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
+        public DateTime JoinedAt { get; set; } = DateTime.Now;
     }
 }

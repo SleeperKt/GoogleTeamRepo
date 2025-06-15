@@ -130,7 +130,7 @@ namespace ProjectHub.Infrastructure.Repositories
 
         public async Task UpdateAsync(ProjectTask task)
         {
-            task.UpdatedAt = DateTime.UtcNow;
+            task.UpdatedAt = DateTime.Now;
             _context.Entry(task).State = EntityState.Modified;
             await _context.SaveChangesAsync();
         }

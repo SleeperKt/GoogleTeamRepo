@@ -46,7 +46,7 @@ namespace ProjectHub.Core.Services
 
             // Set required properties
             project.OwnerId = ownerId;
-            project.CreatedAt = DateTime.UtcNow;
+            project.CreatedAt = DateTime.Now;
             
             // Validate required fields
             if (string.IsNullOrEmpty(project.Name))
@@ -62,7 +62,7 @@ namespace ProjectHub.Core.Services
                 ProjectId = project.Id,
                 UserId = ownerUser.UserId, 
                 Role = ParticipantRole.Owner,
-                JoinedAt = DateTime.UtcNow
+                JoinedAt = DateTime.Now
             };
             await _participantRepository.AddAsync(ownerParticipant);
             

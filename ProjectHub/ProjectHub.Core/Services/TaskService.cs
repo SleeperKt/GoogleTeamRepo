@@ -194,7 +194,7 @@ namespace ProjectHub.Core.Services
                 EstimatedHours = request.EstimatedHours,
                 Priority = request.Priority,
                 Type = request.Type,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             await _taskRepository.AddAsync(task);
@@ -407,7 +407,7 @@ namespace ProjectHub.Core.Services
                 TaskId = taskId,
                 UserId = user.UserId,
                 Content = request.Content,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             await _commentRepository.AddAsync(comment);
@@ -539,7 +539,7 @@ namespace ProjectHub.Core.Services
                 Description = description,
                 OldValue = oldValue,
                 NewValue = newValue,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             await _activityRepository.AddAsync(activity);

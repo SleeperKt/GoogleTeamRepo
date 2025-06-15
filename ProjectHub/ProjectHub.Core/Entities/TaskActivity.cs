@@ -25,7 +25,7 @@ namespace ProjectHub.Core.Entities
         [MaxLength(100)]
         public string? NewValue { get; set; } // For change tracking
         
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
         
         // Navigation properties (if needed)
         public ProjectTask Task { get; set; } = null!;

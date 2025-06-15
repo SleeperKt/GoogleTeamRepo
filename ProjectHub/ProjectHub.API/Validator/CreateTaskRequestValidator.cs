@@ -27,7 +27,7 @@ namespace ProjectHub.API.Validator
                 .WithMessage("Estimated hours must be greater than 0.");
 
             RuleFor(x => x.DueDate)
-                .GreaterThan(DateTime.UtcNow)
+                .GreaterThan(DateTime.Now)
                 .When(x => x.DueDate.HasValue)
                 .WithMessage("Due date must be in the future.");
         }

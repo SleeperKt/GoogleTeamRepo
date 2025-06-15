@@ -45,7 +45,7 @@ namespace ProjectHub.Infrastructure.Repositories
 
         public async Task UpdateAsync(TaskComment comment)
         {
-            comment.UpdatedAt = DateTime.UtcNow;
+            comment.UpdatedAt = DateTime.Now;
             _context.Entry(comment).State = EntityState.Modified;
             await _context.SaveChangesAsync();
         }

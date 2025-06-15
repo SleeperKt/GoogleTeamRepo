@@ -16,6 +16,8 @@ namespace ProjectHub.Core.Entities
         [Required]
         public string OwnerId { get; set; } = string.Empty;
         
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        
+        public Guid PublicId { get; set; } = Guid.NewGuid();
     }
 }

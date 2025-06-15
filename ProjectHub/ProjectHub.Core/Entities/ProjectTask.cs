@@ -27,7 +27,7 @@ namespace ProjectHub.Core.Entities
         [Required]
         public Guid CreatedById { get; set; }
         
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
         
         public DateTime? UpdatedAt { get; set; }
         
@@ -36,5 +36,11 @@ namespace ProjectHub.Core.Entities
         public int? EstimatedHours { get; set; }
         
         public int Priority { get; set; } = 1; // 1=Low, 2=Medium, 3=High, 4=Critical
+        
+        [MaxLength(50)]
+        public string Type { get; set; } = "task"; // task, bug, feature, story, epic
+        
+        [MaxLength(500)]
+        public string? Labels { get; set; } // JSON string of labels: ["Frontend", "Bug"]
     }
 }

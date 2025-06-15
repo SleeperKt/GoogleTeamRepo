@@ -14,6 +14,8 @@ namespace ProjectHub.Infrastructure.Data
         public DbSet<Project> Projects { get; set; } = null!;
         public DbSet<ProjectParticipant> ProjectParticipants { get; set; } = null!;
         public DbSet<ProjectTask> Tasks { get; set; } = null!;
+        public DbSet<TaskComment> TaskComments { get; set; } = null!;
+        public DbSet<TaskActivity> TaskActivities { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -93,6 +95,52 @@ namespace ProjectHub.Infrastructure.Data
             modelBuilder.Entity<ProjectTask>()
                 .Property(t => t.CreatedById)
                 .IsRequired();
+
+            // Configure TaskComment entity
+            modelBuilder.Entity<TaskComment>()
+                .HasKey(tc => tc.Id);
+
+            modelBuilder.Entity<TaskComment>()
+                .Property(tc => tc.TaskId)
+                .IsRequired();
+
+            modelBuilder.Entity<TaskComment>()
+                .Property(tc => tc.UserId)
+                .IsRequired();
+
+            modelBuilder.Entity<TaskComment>()
+                .Property(tc => tc.Content)
+                .HasMaxLength(2000)
+                .IsRequired();
+
+            // Configure TaskActivity entity
+            modelBuilder.Entity<TaskActivity>()
+                .HasKey(ta => ta.Id);
+
+            modelBuilder.Entity<TaskActivity>()
+                .Property(ta => ta.TaskId)
+                .IsRequired();
+
+            modelBuilder.Entity<TaskActivity>()
+                .Property(ta => ta.UserId)
+                .IsRequired();
+
+            modelBuilder.Entity<TaskActivity>()
+                .Property(ta => ta.ActivityType)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            modelBuilder.Entity<TaskActivity>()
+                .Property(ta => ta.Description)
+                .HasMaxLength(500);
+
+            modelBuilder.Entity<TaskActivity>()
+                .Property(ta => ta.OldValue)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<TaskActivity>()
+                .Property(ta => ta.NewValue)
+                .HasMaxLength(100);
         }
     }
 }

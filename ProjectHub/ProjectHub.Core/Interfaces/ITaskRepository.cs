@@ -10,11 +10,13 @@ namespace ProjectHub.Core.Interfaces
         Task<ProjectTask?> GetByIdAsync(int id);
         Task<IEnumerable<ProjectTask>> GetAllByProjectIdAsync(int projectId);
         Task<IEnumerable<ProjectTask>> GetFilteredTasksAsync(int projectId, ProjectHub.Core.Entities.TaskStatus? status = null, TaskStage? stage = null, Guid? assigneeId = null, int? priority = null, DateTime? dueDateFrom = null, DateTime? dueDateTo = null, int pageNumber = 1, int pageSize = 10);
+        Task<IEnumerable<ProjectTask>> GetFilteredTasksAsync(int projectId, string? searchTerm = null, ProjectHub.Core.Entities.TaskStatus? status = null, TaskStage? stage = null, Guid? assigneeId = null, string? assigneeName = null, int? priority = null, DateTime? dueDateFrom = null, DateTime? dueDateTo = null, string? taskType = null, string[]? labels = null, int pageNumber = 1, int pageSize = 10);
         Task<IEnumerable<ProjectTask>> GetByAssigneeIdAsync(Guid assigneeId);
         Task<IEnumerable<ProjectTask>> GetByCreatedByIdAsync(Guid createdById);
         Task AddAsync(ProjectTask task);
         Task UpdateAsync(ProjectTask task);
         Task DeleteAsync(int id);
         Task<int> GetTotalCountAsync(int projectId, ProjectHub.Core.Entities.TaskStatus? status = null, TaskStage? stage = null, Guid? assigneeId = null, int? priority = null, DateTime? dueDateFrom = null, DateTime? dueDateTo = null);
+        Task<int> GetTotalCountAsync(int projectId, string? searchTerm = null, ProjectHub.Core.Entities.TaskStatus? status = null, TaskStage? stage = null, Guid? assigneeId = null, string? assigneeName = null, int? priority = null, DateTime? dueDateFrom = null, DateTime? dueDateTo = null, string? taskType = null, string[]? labels = null);
     }
 }

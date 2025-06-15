@@ -5,6 +5,7 @@ using ProjectHub.Core.DataTransferObjects;
 using ProjectHub.Core.Entities;
 using ProjectHub.Core.Interfaces;
 using ProjectHub.Infrastructure.Services;
+using System.Text.RegularExpressions;
 
 namespace ProjectHub.API.Controllers
 {
@@ -26,6 +27,12 @@ namespace ProjectHub.API.Controllers
             var existingEmail = await this.userRepository.GetByEmailAsync(dto.Email);
             if (existingEmail != null)
                 return BadRequest("Email already registered");
+
+            var passwordValidationResult = ValidatePassword(dto.Password);
+            if (!passwordValidationResult.IsValid)
+            {
+                return BadRequest(passwordValidationResult.ErrorMessage);
+            }
 
             var user = new User
             {
@@ -56,6 +63,22 @@ namespace ProjectHub.API.Controllers
 
             var token = jwtTokenService.GenerateToken(user);
             return Ok(new { Token = token });
+        }
+
+        private static (bool IsValid, string ErrorMessage) ValidatePassword(string password)
+        {
+            if (password.Length < 6)
+                return (false, "Password must be at least 6 characters long.");
+            if (!Regex.IsMatch(password, @"[A-Z]"))
+                return (false, "Password must contain at least one uppercase letter.");
+            if (!Regex.IsMatch(password, @"[a-z]"))
+                return (false, "Password must contain at least one lowercase letter.");
+            if (!Regex.IsMatch(password, @"\d"))
+                return (false, "Password must contain at least one digit.");
+            if (!Regex.IsMatch(password, @"[^a-zA-Z0-9]"))
+                return (false, "Password must contain at least one non-alphanumeric character.");
+
+            return (true, string.Empty);
         }
     }
 }

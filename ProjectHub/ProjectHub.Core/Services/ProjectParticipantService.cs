@@ -61,7 +61,7 @@ namespace ProjectHub.Core.Services
                 ProjectId = projectId,
                 UserId = userId,
                 Role = role,
-                JoinedAt = DateTime.UtcNow
+                JoinedAt = DateTime.Now
             };
 
             await _participantRepository.AddAsync(participant);

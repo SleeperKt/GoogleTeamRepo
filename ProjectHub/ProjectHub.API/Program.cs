@@ -34,6 +34,10 @@ builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService
 builder.Services.AddScoped<ITaskRepository, TaskRepository>();
 builder.Services.AddScoped<ITaskService, TaskService>();
 
+// Регистрация сервисов и репозиториев для комментариев и активности задач
+builder.Services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
+builder.Services.AddScoped<ITaskActivityRepository, TaskActivityRepository>();
+
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
@@ -43,6 +47,7 @@ builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>()
 builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
 builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
+builder.Services.AddScoped<IValidator<CreateTaskCommentRequest>, CreateTaskCommentRequestValidator>();
 
 builder.Services.AddEndpointsApiExplorer();
 var jwtKey = builder.Configuration["Jwt:Key"];
@@ -94,14 +99,37 @@ builder.Services.AddAuthentication("Bearer")
         };
     });
 
-var app = builder.Build();
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+builder.Services.AddCors(options =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Auth API V1");
-    c.RoutePrefix = string.Empty;
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
 });
+
+var app = builder.Build();
+
+// Apply pending migrations and expose Swagger UI only in Development
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    context.Database.Migrate();
+
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Auth API V1");
+        c.RoutePrefix = string.Empty;
+    });
+}
+
 app.UseRouting();
+
+app.UseCors("Frontend");
 
 // Use Middlewares
 app.UseWhen(context =>

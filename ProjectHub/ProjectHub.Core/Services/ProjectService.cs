@@ -46,7 +46,7 @@ namespace ProjectHub.Core.Services
 
             // Set required properties
             project.OwnerId = ownerId;
-            project.CreatedAt = DateTime.UtcNow;
+            project.CreatedAt = DateTime.Now;
             
             // Validate required fields
             if (string.IsNullOrEmpty(project.Name))
@@ -62,7 +62,7 @@ namespace ProjectHub.Core.Services
                 ProjectId = project.Id,
                 UserId = ownerUser.UserId, 
                 Role = ParticipantRole.Owner,
-                JoinedAt = DateTime.UtcNow
+                JoinedAt = DateTime.Now
             };
             await _participantRepository.AddAsync(ownerParticipant);
             
@@ -131,6 +131,33 @@ namespace ProjectHub.Core.Services
             }
 
             await _projectRepository.DeleteAsync(id);
+        }
+
+        public async Task<bool> UserHasAccessAsync(int projectId, string userEmail)
+        {
+            var project = await _projectRepository.GetByIdAsync(projectId);
+            if (project == null)
+                return false;
+
+            if (project.OwnerId.Equals(userEmail, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var user = await _userRepository.GetByEmailAsync(userEmail);
+            if (user == null)
+                return false;
+
+            var role = await _participantRepository.GetUserRoleInProjectAsync(projectId, user.UserId);
+            return role != null;
+        }
+
+        public async Task<Project?> GetProjectByPublicIdAsync(Guid publicId)
+        {
+            return await _projectRepository.GetByPublicIdAsync(publicId);
+        }
+
+        public async Task<int?> GetInternalIdByPublicIdAsync(Guid publicId)
+        {
+            return await _projectRepository.GetInternalIdByPublicIdAsync(publicId);
         }
     }
 }

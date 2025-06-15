@@ -11,5 +11,8 @@ namespace ProjectHub.Core.Interfaces
         Task<Project> CreateProjectAsync(Project project, string ownerId);
         Task UpdateProjectAsync(Project project, string currentUserId);
         Task DeleteProjectAsync(int id, string currentUserId);
+        Task<bool> UserHasAccessAsync(int projectId, string userEmail);
+        Task<Project?> GetProjectByPublicIdAsync(Guid publicId);
+        Task<int?> GetInternalIdByPublicIdAsync(Guid publicId);
     }
 } 

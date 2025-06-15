@@ -62,5 +62,16 @@ namespace ProjectHub.Infrastructure.Repositories
                 await _context.SaveChangesAsync();
             }
         }
+
+        public async Task<Project?> GetByPublicIdAsync(Guid publicId)
+        {
+            return await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.PublicId == publicId);
+        }
+
+        public async Task<int?> GetInternalIdByPublicIdAsync(Guid publicId)
+        {
+            var id = await _context.Projects.Where(p => p.PublicId == publicId).Select(p => (int?)p.Id).FirstOrDefaultAsync();
+            return id;
+        }
     }
 }

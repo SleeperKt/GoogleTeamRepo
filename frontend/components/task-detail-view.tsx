@@ -415,6 +415,14 @@ const TaskDetailViewComponent = function TaskDetailView({
     }
   }, [open])
 
+  // Helper function to compare arrays
+  const arraysEqual = (a: any[], b: any[]) => {
+    if (a.length !== b.length) return false
+    const sortedA = [...a].sort()
+    const sortedB = [...b].sort()
+    return sortedA.every((val, idx) => val === sortedB[idx])
+  }
+
   // Mark changes as unsaved when any field changes - optimized with useMemo
   const hasChanges = React.useMemo(() => {
     if (!initialTask) return false
@@ -465,14 +473,6 @@ const TaskDetailViewComponent = function TaskDetailView({
   useEffect(() => {
     setHasUnsavedChanges(hasChanges)
   }, [hasChanges])
-
-  // Helper function to compare arrays
-  const arraysEqual = (a: any[], b: any[]) => {
-    if (a.length !== b.length) return false
-    const sortedA = [...a].sort()
-    const sortedB = [...b].sort()
-    return sortedA.every((val, idx) => val === sortedB[idx])
-  }
 
   // Save changes
   const saveChanges = async () => {

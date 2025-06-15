@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef } from "react"
+import React, { useEffect, useRef, useCallback, useMemo } from "react"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -36,6 +36,7 @@ export function CreateTaskSidebar({
     initialStage,
     onTaskCreated,
     onClose: () => onOpenChange(false),
+    projectPublicId,
   })
 
   const { teamMembers } = useProjectParticipants(projectPublicId, open)
@@ -57,7 +58,8 @@ export function CreateTaskSidebar({
       resetForm()
       setTimeout(() => titleInputRef.current?.focus(), 100)
     }
-  }, [open, resetForm])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -67,29 +69,34 @@ export function CreateTaskSidebar({
     }
   }
 
-  // AI Assistant handlers
-  const handleAIGenerate = () => {
+  // AI Assistant handlers - memoized to prevent infinite loops
+  const handleAIGenerate = useCallback(() => {
     generateDescription(formData.title, formData.stage)
-  }
+  }, [generateDescription, formData.title, formData.stage])
 
-  const handleAIShorten = () => {
+  const handleAIShorten = useCallback(() => {
     shortenDescription(formData.description)
-  }
+  }, [shortenDescription, formData.description])
 
-  const handleAIExpand = () => {
+  const handleAIExpand = useCallback(() => {
     expandDescription(formData.description)
-  }
+  }, [expandDescription, formData.description])
 
-  const handleAIApply = () => {
+  const handleAIApply = useCallback(() => {
     const suggestion = applySuggestion()
     if (suggestion) {
       updateFormData({ description: suggestion })
     }
-  }
+  }, [applySuggestion, updateFormData])
 
-  const handleAIRegenerate = () => {
+  const handleAIRegenerate = useCallback(() => {
     regenerate(formData.title, formData.stage)
-  }
+  }, [regenerate, formData.title, formData.stage])
+
+  // Memoize hasDescription to prevent unnecessary re-renders
+  const hasDescription = useMemo(() => {
+    return Boolean(formData.description && formData.description.trim().length > 0)
+  }, [formData.description])
 
   // Convert priority number to string for display
   const getPriorityString = (priority: number) => {
@@ -171,7 +178,7 @@ export function CreateTaskSidebar({
                 onApply={handleAIApply}
                 onDismiss={dismissSuggestion}
                 onRegenerate={handleAIRegenerate}
-                hasDescription={Boolean(formData.description)}
+                hasDescription={hasDescription}
               />
             </div>
 

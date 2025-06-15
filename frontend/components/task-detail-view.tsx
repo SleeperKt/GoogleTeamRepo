@@ -110,6 +110,7 @@ export function TaskDetailView({
   onTaskUpdateFailed,
   projectPublicId,
 }: TaskDetailViewProps) {
+  console.log('🔧 TaskDetailView: Rendered with onTaskUpdated callback:', !!onTaskUpdated);
   // Task state
   const [task, setTask] = useState(initialTask)
   const [title, setTitle] = useState(initialTask?.title || "")
@@ -266,6 +267,7 @@ export function TaskDetailView({
 
   // Reset form when task changes
   useEffect(() => {
+    console.log('📝 TaskDetailView: Task prop changed, status:', initialTask?.status);
     if (initialTask) {
       setTask(initialTask)
       setTitle(initialTask.title || "")
@@ -424,7 +426,13 @@ export function TaskDetailView({
       attachments: initialTask?.attachments,
     };
 
-    onTaskUpdated(optimisticUpdatedTask, true);
+    // Send optimistic update if callback is provided
+    if (onTaskUpdated) {
+      console.log('🚀 TaskDetailView: Sending optimistic update with status:', optimisticUpdatedTask.status);
+      onTaskUpdated(optimisticUpdatedTask, true);
+    } else {
+      console.warn('❌ TaskDetailView: onTaskUpdated callback is missing!');
+    }
 
     try {
       const payload = {
@@ -445,10 +453,18 @@ export function TaskDetailView({
           .filter((name): name is string => typeof name === 'string' && name.trim().length > 0),
       };
 
-      await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}`, {
+      const updatedTaskFromAPI = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}`, {
         method: 'PUT',
         body: JSON.stringify(payload)
       });
+
+      // Call the success callback with the actual API response
+      if (onTaskUpdated && updatedTaskFromAPI) {
+        console.log('✅ TaskDetailView: Sending API success update with status:', (updatedTaskFromAPI as any).status);
+        onTaskUpdated(updatedTaskFromAPI, false);
+      } else {
+        console.warn('❌ TaskDetailView: API success callback missing or no API response');
+      }
 
       setTask(optimisticUpdatedTask);
       setHasUnsavedChanges(false);

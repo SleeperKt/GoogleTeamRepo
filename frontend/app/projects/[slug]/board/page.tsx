@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useParams } from "next/navigation"
-import { API_BASE_URL } from "@/lib/api"
 import {
   ArrowDown,
   ArrowUp,
@@ -34,6 +33,61 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils"
 import { TaskDetailView } from "@/components/task-detail-view"
 import { CreateTaskSidebar } from "@/components/create-task-sidebar"
+import { apiRequest } from "@/lib/api"
+
+// Type definitions
+interface Task {
+  id: number
+  title: string
+  description?: string
+  assigneeId?: string | null
+  assigneeName?: string
+  assignee?: {
+    name: string
+    image?: string
+    initials: string
+  }
+  priority: number
+  status: string
+  type?: string
+  labels?: string[]
+  comments?: number
+  attachments?: number
+  dueDate?: string | Date
+  estimatedHours?: number
+}
+
+interface Column {
+  id: string
+  title: string
+  tasks: Task[]
+  status?: string
+}
+
+interface BoardData {
+  todo: Column
+  inprogress: Column
+  inreview: Column
+  done: Column
+}
+
+interface ApiResponse {
+  projectId: string
+  columns: Array<{
+    id: string
+    title: string
+    status: string
+    tasks: Task[]
+  }>
+}
+
+interface Project {
+  id: number
+  name: string
+  description: string
+  publicId: string
+  createdAt: string
+}
 
 // Task types with colors
 const taskTypes = {
@@ -61,567 +115,634 @@ const taskTypes = {
 }
 
 // Priority levels with icons
-const priorityLevels: Record<number, { label: string; icon: any; color: string }> = {
+const priorityLevels = {
   1: { label: "Low", icon: ArrowDown, color: "text-blue-500" },
   2: { label: "Medium", icon: MoreHorizontal, color: "text-yellow-500" },
   3: { label: "High", icon: ArrowUp, color: "text-red-500" },
   4: { label: "Critical", icon: ArrowUp, color: "text-red-600" },
 }
 
-interface Task {
-  id: number
-  title: string
-  description?: string
-  projectId: number
-  assigneeId?: string
-  assigneeName?: string
-  status: number
-  stage: number
-  createdById: string
-  createdByName: string
-  createdAt: string
-  updatedAt?: string
-  dueDate?: string
-  estimatedHours?: number
-  priority: number
-  type?: string
-  labels?: string[]
-  comments?: number
-  attachments?: number
-}
-
-interface BoardColumn {
-  id: string
-  title: string
-  status: number
-  tasks: Task[]
-}
-
-interface BoardData {
-  projectId: string
-  columns: BoardColumn[]
-}
-
-interface Project {
-  id: number
-  name: string
-  description: string
-  publicId: string
-  createdAt: string
-}
+// Column definitions
+const columnDefinitions = [
+  { id: "todo", title: "To Do", icon: Clock, status: "Todo" },
+  { id: "inprogress", title: "In Progress", icon: ArrowUp, status: "InProgress" },
+  { id: "inreview", title: "In Review", icon: CheckCircle, status: "InReview" },
+  { id: "done", title: "Done", icon: CheckCircle, status: "Done" },
+]
 
 export default function ProjectBoardPage() {
   const params = useParams()
   const projectId = params.slug as string
   
-  const [boardData, setBoardData] = useState<BoardData | null>(null)
+  const [project, setProject] = useState<Project | null>(null)
+  const [boardData, setBoardData] = useState<BoardData>({
+    todo: { id: "todo", title: "To Do", tasks: [] },
+    inprogress: { id: "inprogress", title: "In Progress", tasks: [] },
+    inreview: { id: "inreview", title: "In Review", tasks: [] },
+    done: { id: "done", title: "Done", tasks: [] },
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [project, setProject] = useState<Project | null>(null)
-  
-  // Filter states
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedLabels, setSelectedLabels] = useState<string[]>([])
-  const [selectedAssignees, setSelectedAssignees] = useState<string[]>([])
-  const [selectedPriority, setSelectedPriority] = useState("all")
-  const [selectedType, setSelectedType] = useState("all")
-  const [showEmptyColumns, setShowEmptyColumns] = useState(true)
-  const [projectParticipants, setProjectParticipants] = useState<Array<{ id: string, name: string, initials: string }>>([])
-  
-  // UI states
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false)
-  const [createTaskColumnId, setCreateTaskColumnId] = useState("")
-  const [draggedTask, setDraggedTask] = useState<Task | null>(null)
-  const [draggedFromColumn, setDraggedFromColumn] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filters, setFilters] = useState({
+    type: "all",
+    assignee: "all",
+    priority: "all",
+    label: "all",
+  })
+  const [viewMode, setViewMode] = useState("detailed") // "detailed" or "compact"
+  const [showCompletedTasks, setShowCompletedTasks] = useState(true)
+  const [showEmptyState, setShowEmptyState] = useState(false)
+  const [draggedTask, setDraggedTask] = useState<{task: Task, columnId: string} | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
-  const [dragOverTask, setDragOverTask] = useState<number | null>(null)
+  const [dragOverTaskId, setDragOverTaskId] = useState<number | null>(null)
+  const boardRef = useRef<HTMLDivElement>(null)
   const [isScrolling, setIsScrolling] = useState(false)
-  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  
-  // Ref to prevent duplicate task creation in strict mode
-  const isCreatingTaskRef = useRef(false)
+  const [scrollDirection, setScrollDirection] = useState<string | null>(null)
+  const scrollInterval = useRef<NodeJS.Timeout | null>(null)
+  const [createTaskOpen, setCreateTaskOpen] = useState(false)
+  const [selectedColumn, setSelectedColumn] = useState("todo")
+  const [taskDetailOpen, setTaskDetailOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [lastSynced, setLastSynced] = useState<string | null>(null)
 
   // Fetch board data
+  const fetchBoardData = async (filterParams = {}) => {
+    if (!projectId) return
+
+    try {
+      // Build filter parameters
+      const queryParams = new URLSearchParams()
+      
+      if (searchQuery) queryParams.append('SearchTerm', searchQuery)
+      if (filters.assignee !== 'all') queryParams.append('AssigneeName', filters.assignee)
+      if (filters.priority !== 'all') queryParams.append('Priority', filters.priority)
+      
+      const endpoint = `/api/projects/public/${projectId}/board${queryParams.toString() ? '?' + queryParams.toString() : ''}`
+      
+      const data = await apiRequest<ApiResponse>(endpoint)
+      
+      // Transform API data to match frontend structure
+      const transformedData: BoardData = {
+        todo: { id: "todo", title: "To Do", tasks: [] },
+        inprogress: { id: "inprogress", title: "In Progress", tasks: [] },
+        inreview: { id: "inreview", title: "In Review", tasks: [] },
+        done: { id: "done", title: "Done", tasks: [] },
+      }
+
+      // Map tasks to columns based on status
+      data.columns.forEach((column) => {
+        const columnKey = column.id.toLowerCase() as keyof BoardData
+        if (transformedData[columnKey]) {
+          transformedData[columnKey].tasks = column.tasks || []
+        }
+      })
+
+      setBoardData(transformedData)
+      setLastSynced(new Date().toLocaleTimeString())
+      setError(null)
+    } catch (err) {
+      console.error('Error fetching board data:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch board data')
+    }
+  }
+
+  // Fetch project details
+  const fetchProject = async () => {
+    if (!projectId) return
+
+    try {
+      const projectData = await apiRequest<Project>(`/api/projects/public/${projectId}`)
+      setProject(projectData)
+    } catch (err) {
+      console.error('Error fetching project:', err)
+    }
+  }
+
+  // Fetch participants for filter dropdown
+  const fetchParticipants = async () => {
+    if (!projectId) return
+
+    try {
+      // For now, we'll get participants from task assignees since there's no public participants endpoint
+      // This is handled in getAllAssignees() function
+      console.log('Participants will be derived from task assignees')
+    } catch (err) {
+      console.error('Error fetching participants:', err)
+    }
+  }
+
+  // Initial data fetch - consolidated to prevent multiple re-renders
   useEffect(() => {
-    const fetchBoardData = async () => {
+    const initializeBoard = async () => {
+      if (!projectId) return
+      
       try {
         setLoading(true)
-        const token = localStorage.getItem('token')
-        
-        // Fetch project details
-        const projectResponse = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        })
-        
-        if (!projectResponse.ok) {
-          throw new Error('Failed to fetch project')
-        }
-        
-        const projectData = await projectResponse.json()
-        setProject(projectData)
-        
-        // Fetch board data
-        const boardResponse = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/board`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        })
-        
-        if (!boardResponse.ok) {
-          throw new Error('Failed to fetch board data')
-        }
-        
-        const data = await boardResponse.json()
-        setBoardData(data)
+        // Fetch all data in parallel to minimize re-renders
+        await Promise.all([
+          fetchProject(),
+          fetchBoardData(),
+          fetchParticipants()
+        ])
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred')
+        console.error('Error initializing board:', err)
       } finally {
         setLoading(false)
       }
     }
 
-    if (projectId) {
-      fetchBoardData()
-    }
+    initializeBoard()
   }, [projectId])
 
-  // Fetch project participants for filter dropdown
+  // Refetch when filters change (but not on initial mount)
   useEffect(() => {
-    const fetchParticipants = async () => {
-      if (!projectId) return
-
-      try {
-        const token = localStorage.getItem('token')
-        
-        // First get internal project id
-        const projectResponse = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        })
-        
-        if (!projectResponse.ok) return
-        
-        const projectData = await projectResponse.json()
-        
-        // Fetch participants
-        const participantsResponse = await fetch(`${API_BASE_URL}/api/projects/${projectData.id}/participants`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        })
-        
-        if (!participantsResponse.ok) return
-        
-        const participants = await participantsResponse.json()
-        
-        // Handle different response formats (array vs object with $values)
-        let participantsList = participants
-        if (participants && typeof participants === 'object' && !Array.isArray(participants)) {
-          if (participants.$values && Array.isArray(participants.$values)) {
-            participantsList = participants.$values
-          } else if (participants.data && Array.isArray(participants.data)) {
-            participantsList = participants.data
-          } else {
-            console.warn('Unexpected participants response format:', participants)
-            participantsList = []
-          }
-        }
-        
-        if (!Array.isArray(participantsList)) {
-          console.warn('Participants is not an array:', participantsList)
-          setProjectParticipants([])
-          return
-        }
-        
-        const formattedParticipants = participantsList.map((p: any) => ({
-          id: p.userId || p.UserId,
-          name: p.userName || p.UserName,
-          initials: (p.userName || p.UserName || "")
-            .split(" ")
-            .map((n: string) => n[0])
-            .join("")
-            .toUpperCase(),
-        }))
-        
-        setProjectParticipants(formattedParticipants)
-      } catch (err) {
-        console.error("Failed to fetch project participants", err)
-        setProjectParticipants([])
+    // Skip if this is the initial render (loading is true)
+    if (loading) return
+    
+    const timeoutId = setTimeout(() => {
+      if (projectId) {
+        fetchBoardData()
       }
-    }
+    }, 300) // Debounce search
 
-    fetchParticipants()
-  }, [projectId])
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, filters, projectId, loading])
 
-  // Get all unique labels from tasks (placeholder - not implemented in backend yet)
-  const getAllLabels = () => {
-    return [] // TODO: Implement labels in backend
+  // Get all unique labels from tasks
+  const getAllLabels = (): string[] => {
+    const labels = new Set<string>()
+    Object.values(boardData).forEach((column) => {
+      column.tasks.forEach((task: Task) => {
+        if (task.labels) {
+          task.labels.forEach((label: string) => labels.add(label))
+        }
+      })
+    })
+    return Array.from(labels)
   }
 
-  // Get project participants for assignee filter
-  const getAllAssignees = () => {
-    return projectParticipants
+  // Get all unique assignees from tasks
+  const getAllAssignees = (): string[] => {
+    const assignees = new Set<string>()
+    Object.values(boardData).forEach((column) => {
+      column.tasks.forEach((task: Task) => {
+        if (task.assigneeName) {
+          assignees.add(task.assigneeName)
+        }
+      })
+    })
+    return Array.from(assignees)
   }
 
+  // Filter tasks based on current filters
   const filterTasks = (tasks: Task[]) => {
-    return tasks.filter(task => {
-      const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           task.description?.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesLabels = selectedLabels.length === 0 || 
-                           (task.labels && selectedLabels.some(label => task.labels!.includes(label)))
-      const matchesAssignees = selectedAssignees.length === 0 || 
-                              (task.assigneeName && selectedAssignees.includes(task.assigneeName))
-      const matchesPriority = selectedPriority === "all" || task.priority?.toString() === selectedPriority
-      const matchesType = selectedType === "all" || task.type === selectedType
-
-      return matchesSearch && matchesLabels && matchesAssignees && matchesPriority && matchesType
+    return tasks.filter((task: Task) => {
+      const matchesSearch = !searchQuery || 
+        task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        task.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      
+      const matchesType = filters.type === "all" || task.type === filters.type
+      const matchesAssignee = filters.assignee === "all" || task.assigneeName === filters.assignee
+      const matchesPriority = filters.priority === "all" || task.priority.toString() === filters.priority
+      const matchesLabel = filters.label === "all" || task.labels?.includes(filters.label)
+      
+      return matchesSearch && matchesType && matchesAssignee && matchesPriority && matchesLabel
     })
   }
 
+  // Clear all filters
   const clearFilters = () => {
-    setSearchTerm("")
-    setSelectedLabels([])
-    setSelectedAssignees([])
-    setSelectedPriority("all")
-    setSelectedType("all")
+    setFilters({
+      type: "all",
+      assignee: "all", 
+      priority: "all",
+      label: "all",
+    })
+    setSearchQuery("")
   }
 
+  // Handle drag start
   const handleDragStart = (e: React.DragEvent, task: Task, columnId: string) => {
-    setDraggedTask(task)
-    setDraggedFromColumn(columnId)
-    e.dataTransfer.effectAllowed = "move"
+    setDraggedTask({task, columnId})
+    ;(e.target as HTMLElement).style.opacity = "0.5"
   }
 
+  // Handle drag over
   const handleDragOver = (e: React.DragEvent, columnId: string, taskId: number | null = null) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = "move"
     setDragOverColumn(columnId)
-    setDragOverTask(taskId)
+    setDragOverTaskId(taskId)
+    
+    // Auto-scroll logic
+    const container = boardRef.current
+    if (container) {
+      const rect = container.getBoundingClientRect()
+      const scrollThreshold = 100
+      
+      if (e.clientX < rect.left + scrollThreshold) {
+        startScrolling("left")
+      } else if (e.clientX > rect.right - scrollThreshold) {
+        startScrolling("right")
+      } else {
+        stopScrolling()
+      }
+    }
   }
 
-  const handleDrop = async (e: React.DragEvent, targetColumnId: string, targetTaskId: number | null = null) => {
-    e.preventDefault()
+  // Auto-scroll functions
+  const startScrolling = (direction: string) => {
+    if (isScrolling && scrollDirection === direction) return
     
-    if (!draggedTask || !draggedFromColumn) return
+    stopScrolling()
+    setIsScrolling(true)
+    setScrollDirection(direction)
+    
+    scrollInterval.current = setInterval(() => {
+      const container = boardRef.current
+      if (container) {
+        const scrollAmount = direction === "left" ? -10 : 10
+        container.scrollLeft += scrollAmount
+      }
+    }, 16)
+  }
+
+  const stopScrolling = () => {
+    if (scrollInterval.current) {
+      clearInterval(scrollInterval.current)
+      scrollInterval.current = null
+    }
+    setIsScrolling(false)
+    setScrollDirection(null)
+  }
+
+  // Handle drop
+  const handleDrop = (e: React.DragEvent, targetColumnId: string, targetTaskId: number | null = null) => {
+    e.preventDefault()
+    stopScrolling()
+    
+    if (!draggedTask) return
+    
+    const { task, columnId: sourceColumnId } = draggedTask
     
     // Don't do anything if dropped in the same position
-    if (draggedFromColumn === targetColumnId && !targetTaskId) return
+    if (sourceColumnId === targetColumnId && !targetTaskId) return
     
-    try {
-      // Update task status via API
-      const token = localStorage.getItem('token')
-      const statusMap: Record<string, number> = {
-        'todo': 1,
-        'inprogress': 2, 
-        'inreview': 3,
-        'done': 4
-      }
-      
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/tasks/${draggedTask.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: draggedTask.title,
-          description: draggedTask.description,
-          status: statusMap[targetColumnId],
-          priority: draggedTask.priority,
-          assigneeId: draggedTask.assigneeId,
-          dueDate: draggedTask.dueDate,
-          estimatedHours: draggedTask.estimatedHours,
-          labels: draggedTask.labels || [],
-          type: draggedTask.type || 'task'
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to update task')
-      }
-      
-      // Update local state
-      setBoardData(prevData => {
-        if (!prevData) return prevData
-        
-        // Create a deep copy to avoid mutations
-        const newData: BoardData = {
-          ...prevData,
-          columns: prevData.columns.map(col => ({
-            ...col,
-            tasks: [...col.tasks]
-          }))
-        }
+    updateTaskStatus(task.id, targetColumnId)
+    
+    setDraggedTask(null)
+    setDragOverColumn(null)
+    setDragOverTaskId(null)
+  }
 
-        const sourceColumn = newData.columns.find(col => col.id === draggedFromColumn)
-        const targetColumn = newData.columns.find(col => col.id === targetColumnId)
+  // Update task status via API
+  const updateTaskStatus = async (taskId: number, newColumnId: string) => {
+    if (!projectId) return
 
-        if (sourceColumn && targetColumn) {
-          // Remove from source column
-          sourceColumn.tasks = sourceColumn.tasks.filter(t => t.id !== draggedTask.id)
-
-          const updatedTask: Task = { ...draggedTask, status: statusMap[targetColumnId] }
-
-          // Add to target column
-          if (targetTaskId) {
-            const targetIndex = targetColumn.tasks.findIndex(t => t.id === targetTaskId)
-            targetColumn.tasks.splice(targetIndex, 0, updatedTask)
-          } else {
-            // Check if task already exists in target column to prevent duplicates
-            const taskExists = targetColumn.tasks.some(t => t.id === updatedTask.id)
-            if (!taskExists) {
-              targetColumn.tasks.push(updatedTask)
-            }
-          }
-        }
-
-        return newData
-      })
-    } catch (error) {
-      console.error('Error updating task:', error)
-      // Could show a toast notification here
+    const statusMap: Record<string, number> = {
+      todo: 1,        // Todo
+      inprogress: 2,  // InProgress
+      inreview: 3,    // InReview
+      done: 4         // Done
     }
-    
-    setDraggedTask(null)
-    setDraggedFromColumn(null)
-    setDragOverColumn(null)
-    setDragOverTask(null)
-  }
 
-  const handleDragEnd = () => {
-    setDraggedTask(null)
-    setDraggedFromColumn(null)
-    setDragOverColumn(null)
-    setDragOverTask(null)
-  }
+    const statusNames: Record<number, string> = {
+      1: "Todo",
+      2: "InProgress", 
+      3: "InReview",
+      4: "Done"
+    }
 
-  const handleOpenCreateTask = (columnId: string) => {
-    setCreateTaskColumnId(columnId)
-    setIsCreateTaskOpen(true)
-  }
+    // Find the current task to preserve its data
+    let currentTask: Task | undefined
+    let sourceColumnId: string | undefined
+    for (const [columnKey, column] of Object.entries(boardData)) {
+      currentTask = column.tasks.find((t: Task) => t.id === taskId)
+      if (currentTask) {
+        sourceColumnId = columnKey
+        break
+      }
+    }
 
-  const handleTaskCreated = async (newTask: Partial<Task>) => {
-    // Prevent duplicate calls in React Strict Mode
-    if (isCreatingTaskRef.current) {
-      console.log('Task creation already in progress, skipping duplicate call')
+    if (!currentTask || !sourceColumnId) {
+      console.error('Task not found for status update')
       return
     }
-    
-    isCreatingTaskRef.current = true
-    console.log('Starting task creation:', newTask.title)
-    
+
+    // Don't update if already in the target column
+    if (sourceColumnId === newColumnId) {
+      return
+    }
+
+    // Create optimistic update data
+    const optimisticTask: Task = {
+      ...currentTask,
+      status: statusNames[statusMap[newColumnId]]
+    }
+
+    // Apply optimistic update immediately
+    setBoardData(prevBoardData => {
+      const newBoardData = { ...prevBoardData }
+      
+      // Remove task from source column
+      newBoardData[sourceColumnId as keyof BoardData] = {
+        ...newBoardData[sourceColumnId as keyof BoardData],
+        tasks: newBoardData[sourceColumnId as keyof BoardData].tasks.filter(t => t.id !== taskId)
+      }
+      
+      // Add task to target column
+      newBoardData[newColumnId as keyof BoardData] = {
+        ...newBoardData[newColumnId as keyof BoardData],
+        tasks: [optimisticTask, ...newBoardData[newColumnId as keyof BoardData].tasks]
+      }
+      
+      return newBoardData
+    })
+
+    // Update selected task if it's the one being moved
+    if (selectedTask && selectedTask.id === taskId) {
+      setSelectedTask(optimisticTask)
+    }
+
     try {
-      const token = localStorage.getItem('token')
-      const statusMap: Record<string, number> = {
-        'todo': 1,
-        'inprogress': 2,
-        'inreview': 3,
-        'done': 4
-      }
-
-      // Map string priorities to numeric values expected by backend
-      const priorityMap: Record<string | number, number> = {
-        low: 1,
-        medium: 2,
-        high: 3,
-        critical: 4,
-        1: 1,
-        2: 2,
-        3: 3,
-        4: 4,
-      }
-
-      // Build payload according to CreateTaskRequest DTO (backend)
       const payload = {
-        title: newTask.title ?? '',
-        description: newTask.description ?? '',
-        assigneeId: (newTask as any).assigneeId ?? null, // Sidebar will eventually supply a GUID
-        dueDate: newTask.dueDate ? new Date(newTask.dueDate as any).toISOString() : null,
-        estimatedHours: (newTask as any).estimate ?? newTask.estimatedHours ?? null,
-        priority: priorityMap[(newTask.priority as any) ?? 1] ?? 1,
-        status: statusMap[createTaskColumnId],
-        type: newTask.type ?? 'task',
-      }
+        status: statusMap[newColumnId],
+        // Preserve existing labels and other fields to prevent data loss
+        ...(currentTask?.labels && { labels: currentTask.labels }),
+        ...(currentTask?.title && { title: currentTask.title }),
+        ...(currentTask?.description && { description: currentTask.description }),
+        ...(currentTask?.priority && { priority: currentTask.priority }),
+        ...(currentTask?.type && { type: currentTask.type }),
+        ...(currentTask?.estimatedHours && { estimatedHours: currentTask.estimatedHours }),
+        // Handle assignee properly - preserve the assigneeId (which can be null for unassigned)
+        assigneeId: currentTask?.assigneeId || null
+      };
 
-      console.log('Sending task creation request:', payload)
-
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/tasks`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to create task')
-      }
-      
-      const createdTask = await response.json()
-      console.log('Task created successfully:', createdTask.id, createdTask.title)
-      
-      // Update local state with proper duplicate prevention
-      setBoardData(prevData => {
-        if (!prevData) return prevData
-        
-        console.log('Updating board data with new task')
-        
-        // Create a deep copy to avoid mutations
-        const newData: BoardData = {
-          ...prevData,
-          columns: prevData.columns.map(col => ({
-            ...col,
-            tasks: [...col.tasks]
-          }))
-        }
-        
-        const targetColumn = newData.columns.find(col => col.id === createTaskColumnId)
-        if (targetColumn) {
-          // Only add if not already present (prevents duplicates from React strict mode)
-          const taskExists = targetColumn.tasks.some(t => t.id === createdTask.id)
-          console.log('Task exists check:', taskExists, 'for task ID:', createdTask.id)
-          if (!taskExists) {
-            targetColumn.tasks.push(createdTask)
-            console.log('Task added to column:', createTaskColumnId)
-          } else {
-            console.log('Task already exists, skipping add')
-          }
-        }
-        return newData
-      })
-      
-      setIsCreateTaskOpen(false)
-      setCreateTaskColumnId("")
-    } catch (error) {
-      console.error('Error creating task:', error)
-      // Could show a toast notification here
-    } finally {
-      // Reset the flag after a short delay to allow for any pending state updates
-      setTimeout(() => {
-        isCreatingTaskRef.current = false
-        console.log('Task creation flag reset')
-      }, 100)
-    }
-  }
-
-  const handleOpenTaskDetail = (task: Task) => {
-    setSelectedTask(task)
-  }
-
-  const handleTaskUpdated = async (updatedTask: Task) => {
-    try {
-      const token = localStorage.getItem('token')
-      
-      // Prepare payload adhering to UpdateTaskRequest DTO
-      const statusMap: Record<string | number, number> = {
-        "To Do": 1,
-        "In Progress": 2,
-        "Review": 3,
-        "Done": 4,
-        1: 1,
-        2: 2,
-        3: 3,
-        4: 4,
-      }
-
-      const priorityMap: Record<string | number, number> = {
-        low: 1,
-        medium: 2,
-        high: 3,
-        critical: 4,
-        1: 1,
-        2: 2,
-        3: 3,
-        4: 4,
-      }
-
-      const payload: any = {
-        title: updatedTask.title,
-        description: updatedTask.description,
-        assigneeId: updatedTask.assigneeId ?? null,
-        status: statusMap[(updatedTask.status as any) ?? updatedTask.stage],
-        dueDate: updatedTask.dueDate ?? null,
-        priority: priorityMap[updatedTask.priority ?? 1] ?? undefined,
-        estimatedHours: updatedTask.estimatedHours ?? undefined,
-        type: updatedTask.type ?? 'task',
-        labels: updatedTask.labels || [],
-      }
-
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/tasks/${updatedTask.id}`, {
+      await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(payload)
       })
+
+      console.log('✅ Task status updated successfully via drag and drop')
+    } catch (err) {
+      console.error('❌ Error updating task status via drag and drop:', err)
       
-      if (!response.ok) {
-        throw new Error('Failed to update task')
-      }
-      
-      const updated = await response.json()
-      
-      // Update local state
-      setBoardData(prevData => {
-        if (!prevData) return prevData
-        const newData: BoardData = { ...prevData }
-        newData.columns.forEach(column => {
-          const taskIndex = column.tasks.findIndex(t => t.id === updated.id)
-          if (taskIndex !== -1) {
-            column.tasks[taskIndex] = updated
-          }
-        })
-        return newData
+      // Revert optimistic update on failure
+      setBoardData(prevBoardData => {
+        const newBoardData = { ...prevBoardData }
+        
+        // Remove task from target column
+        newBoardData[newColumnId as keyof BoardData] = {
+          ...newBoardData[newColumnId as keyof BoardData],
+          tasks: newBoardData[newColumnId as keyof BoardData].tasks.filter(t => t.id !== taskId)
+        }
+        
+        // Add task back to source column
+        newBoardData[sourceColumnId as keyof BoardData] = {
+          ...newBoardData[sourceColumnId as keyof BoardData],
+          tasks: [currentTask, ...newBoardData[sourceColumnId as keyof BoardData].tasks]
+        }
+        
+        return newBoardData
       })
-      
-      setSelectedTask(null)
-    } catch (error) {
-      console.error('Error updating task:', error)
-      // Could show a toast notification here
+
+      // Revert selected task if it was the one being moved
+      if (selectedTask && selectedTask.id === taskId) {
+        setSelectedTask(currentTask)
+      }
     }
   }
 
-  const handleTaskDeleted = async (taskId: number) => {
-    try {
-      const token = localStorage.getItem('token')
-      
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/tasks/${taskId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+  // Handle drag end
+  const handleDragEnd = (e: React.DragEvent) => {
+    ;(e.target as HTMLElement).style.opacity = "1"
+    const ghostElement = document.querySelector(".invisible")
+    if (ghostElement && ghostElement.parentNode) {
+      ghostElement.parentNode.removeChild(ghostElement)
+    }
+    setDraggedTask(null)
+    setDragOverColumn(null)
+    setDragOverTaskId(null)
+    stopScrolling()
+  }
+
+  // Toggle empty state (for demo purposes)
+  const toggleEmptyState = () => {
+    setShowEmptyState(!showEmptyState)
+  }
+
+  // Handle opening create task modal
+  const handleOpenCreateTask = (columnId: string) => {
+    setSelectedColumn(columnId)
+    setCreateTaskOpen(true)
+  }
+
+  // Map column ID to initial stage for task creation
+  const getInitialStageFromColumn = (columnId: string): string => {
+    const columnToStageMap: Record<string, string> = {
+      "todo": "To Do",
+      "inprogress": "In Progress", 
+      "inreview": "Review",
+      "done": "Done"
+    }
+    return columnToStageMap[columnId] || "To Do"
+  }
+
+  // Handle task creation
+  const handleTaskCreated = () => {
+    // Refresh board data to show new task
+    fetchBoardData()
+    setCreateTaskOpen(false)
+  }
+
+  // Handle opening task detail view
+  const handleOpenTaskDetail = (task: Task) => {
+    console.log('🎯 ProjectBoard: Opening task detail for task:', task.id, 'status:', task.status);
+    setSelectedTask(task)
+    setTaskDetailOpen(true)
+  }
+
+  // Handle task update (called optimistically and on success from TaskDetailView)
+  const handleTaskUpdated = (updatedTaskData?: any, isOptimistic?: boolean) => {
+    console.log('📋 PROJECT BOARD: handleTaskUpdated called with status:', updatedTaskData?.status, 'isOptimistic:', isOptimistic);
+    if (!updatedTaskData || typeof updatedTaskData.id === 'undefined') {
+      console.warn('ProjectBoard: handleTaskUpdated called with invalid data:', updatedTaskData);
+      fetchBoardData(); 
+      return;
+    }
+
+    const statusIdToColumnKey: Record<number, keyof BoardData | undefined> = {
+      1: "todo", 2: "inprogress", 3: "inreview", 4: "done",
+    };
+    const statusIdToDisplayStatusString: Record<number, string | undefined> = {
+      1: "Todo", 2: "InProgress", 3: "InReview", 4: "Done",
+    };
+
+    const targetColumnKey = statusIdToColumnKey[updatedTaskData.status];
+    const newDisplayStatusString = statusIdToDisplayStatusString[updatedTaskData.status];
+
+    if (!targetColumnKey || !newDisplayStatusString) {
+      console.error(`ProjectBoard: Invalid status ID ${updatedTaskData.status} from updated task. Refetching board data.`);
+      fetchBoardData();
+      return;
+    }
+
+    const normalizedLabels: string[] = (updatedTaskData.labels || []).map((lbl: any) =>
+      typeof lbl === 'string' ? lbl : lbl?.name ?? ''
+    ).filter(Boolean);
+
+    const boardPageTask: Task = {
+      id: updatedTaskData.id,
+      title: updatedTaskData.title,
+      description: updatedTaskData.description,
+      assigneeId: updatedTaskData.assigneeId,
+      assigneeName: updatedTaskData.assigneeName,
+      assignee: updatedTaskData.assignee,
+      priority: updatedTaskData.priority,
+      status: newDisplayStatusString,
+      type: updatedTaskData.type,
+      labels: normalizedLabels,
+      dueDate: updatedTaskData.dueDate,
+      estimatedHours: updatedTaskData.estimatedHours,
+      comments: updatedTaskData.comments,
+      attachments: updatedTaskData.attachments,
+    };
+
+    setBoardData(prevBoardData => {
+      const newBoardData = JSON.parse(JSON.stringify(prevBoardData)) as BoardData;
+
+      // Locate the task and remember its current column & index
+      let previousColumnKey: keyof BoardData | undefined;
+      let previousIndex = -1;
+      for (const colKeyStr in newBoardData) {
+        const columnKey = colKeyStr as keyof BoardData;
+        const idx = newBoardData[columnKey].tasks.findIndex(t => t.id === boardPageTask.id);
+        if (idx !== -1) {
+          previousColumnKey = columnKey;
+          previousIndex = idx;
+          break;
         }
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete task')
+      }
+
+      // If found in the same column we are saving to, just replace in place
+      if (previousColumnKey && previousColumnKey === targetColumnKey && previousIndex !== -1) {
+        newBoardData[targetColumnKey].tasks[previousIndex] = boardPageTask;
+      } else {
+        // Otherwise remove it from wherever it was and insert at top of new column
+        if (previousColumnKey && previousIndex !== -1) {
+          newBoardData[previousColumnKey].tasks.splice(previousIndex, 1);
+        }
+        if (newBoardData[targetColumnKey]) {
+          newBoardData[targetColumnKey].tasks.unshift(boardPageTask);
+        } else {
+          console.error(`ProjectBoard: Target column ${targetColumnKey} not found in boardData during update.`);
+        }
+      }
+
+      return newBoardData;
+    });
+
+    if (selectedTask && selectedTask.id === boardPageTask.id) {
+      console.log('🔄 ProjectBoard: Updating selectedTask with new status:', boardPageTask.status);
+      setSelectedTask(boardPageTask);
+    }
+  }
+
+  // Handle task update failure (to revert optimistic update)
+  const handleTaskUpdateFailed = (originalTaskData: any, attemptedOptimisticTaskData: any) => {
+    console.warn('ProjectBoard: Task update failed. Reverting optimistic changes for task ID:', originalTaskData.id);
+
+    const statusIdToColumnKey: Record<number, keyof BoardData | undefined> = {
+      1: "todo", 2: "inprogress", 3: "inreview", 4: "done",
+    };
+    const statusIdToDisplayStatusString: Record<number, string | undefined> = {
+      1: "Todo", 2: "InProgress", 3: "InReview", 4: "Done",
+    };
+    
+    // Determine original and attempted column keys from their numeric statuses
+    const originalNumericStatus = originalTaskData.status;
+    const originalColumnKey = statusIdToColumnKey[originalNumericStatus];
+    const originalDisplayStatusString = statusIdToDisplayStatusString[originalNumericStatus];
+
+    const attemptedNumericStatus = attemptedOptimisticTaskData.status;
+    const attemptedColumnKey = statusIdToColumnKey[attemptedNumericStatus];
+
+    if (!originalColumnKey || !originalDisplayStatusString) {
+      console.error(`ProjectBoard: Invalid original status ID ${originalNumericStatus} during revert. Board may be inconsistent.`);
+      fetchBoardData(); // Fallback
+      return;
+    }
+
+    const normalizedOriginalLabels: string[] = (originalTaskData.labels || []).map((lbl: any)=> typeof lbl === 'string'? lbl : lbl?.name ?? '').filter(Boolean);
+
+    const revertedBoardTask: Task = {
+      id: originalTaskData.id,
+      title: originalTaskData.title,
+      description: originalTaskData.description,
+      assigneeId: originalTaskData.assigneeId,
+      assigneeName: originalTaskData.assigneeName,
+      assignee: originalTaskData.assignee,
+      priority: originalTaskData.priority,
+      status: originalDisplayStatusString,
+      type: originalTaskData.type,
+      labels: normalizedOriginalLabels,
+      dueDate: originalTaskData.dueDate,
+      estimatedHours: originalTaskData.estimatedHours,
+      comments: originalTaskData.comments,
+      attachments: originalTaskData.attachments,
+    };
+
+    setBoardData(prevBoardData => {
+      const newBoardData = JSON.parse(JSON.stringify(prevBoardData)) as BoardData;
+
+      // Remove the optimistically placed/updated task
+      let removedFromAttemptedCol = false;
+      if (attemptedColumnKey && newBoardData[attemptedColumnKey]) {
+        const taskIndexOptimistic = newBoardData[attemptedColumnKey].tasks.findIndex(t => t.id === attemptedOptimisticTaskData.id);
+        if (taskIndexOptimistic !== -1) {
+          newBoardData[attemptedColumnKey].tasks.splice(taskIndexOptimistic, 1);
+          removedFromAttemptedCol = true;
+        }
+      }
+      if(!removedFromAttemptedCol){
+         for (const colKeyStr in newBoardData) {
+            const currentColumnKey = colKeyStr as keyof BoardData;
+            const taskIndex = newBoardData[currentColumnKey].tasks.findIndex(t => t.id === attemptedOptimisticTaskData.id);
+            if (taskIndex !== -1) {
+              newBoardData[currentColumnKey].tasks.splice(taskIndex, 1);
+              break; 
+            }
+          }
       }
       
-      // Update local state
-      setBoardData(prevData => {
-        if (!prevData) return prevData
-        const newData: BoardData = { ...prevData }
-        newData.columns.forEach(column => {
-          column.tasks = column.tasks.filter(t => t.id !== taskId)
-        })
-        return newData
-      })
-      
-      setSelectedTask(null)
-    } catch (error) {
-      console.error('Error deleting task:', error)
-      // Could show a toast notification here
+      // Add the original task back to its original column
+      if (newBoardData[originalColumnKey]) {
+        const taskExistsInOriginalCol = newBoardData[originalColumnKey].tasks.some(t => t.id === revertedBoardTask.id);
+        if (!taskExistsInOriginalCol) {
+          newBoardData[originalColumnKey].tasks.unshift(revertedBoardTask);
+        } else {
+            const existingIndex = newBoardData[originalColumnKey].tasks.findIndex(t => t.id === revertedBoardTask.id);
+            if(existingIndex !== -1) newBoardData[originalColumnKey].tasks[existingIndex] = revertedBoardTask;
+        }
+      } else {
+        console.error(`ProjectBoard: Original column ${originalColumnKey} not found during revert. Task may be lost from UI.`);
+      }
+      return newBoardData;
+    });
+
+    if (selectedTask && selectedTask.id === originalTaskData.id) {
+      setSelectedTask(revertedBoardTask); 
     }
+
+    console.error(`Task ${originalTaskData.id} update failed and has been reverted on the board.`);
+  }
+
+  // Handle task deletion
+  const handleTaskDeleted = () => {
+    // Refresh board data to remove deleted task
+    fetchBoardData()
+    setTaskDetailOpen(false)
+    setSelectedTask(null)
   }
 
   if (loading) {
@@ -640,356 +761,323 @@ export default function ProjectBoardPage() {
     )
   }
 
-  if (!boardData) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-lg">No board data available</div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-4">
+    <div className={cn("p-4 md:p-6 w-full transition-all duration-300", taskDetailOpen ? "md:pr-[366px]" : "")}>
+      {/* Header Section */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold mb-2">Board</h1>
           <div className="flex items-center gap-2">
-            <LayoutGrid className="h-5 w-5 text-gray-500" />
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              {project?.name || 'Project Board'}
-            </h1>
+            <span className="font-medium">{project?.name || 'Project Board'}</span>
+            <span className="text-sm text-muted-foreground">Synced {lastSynced}</span>
           </div>
-          <Badge variant="secondary" className="text-xs">
-            Last synced: {new Date().toLocaleTimeString()}
-          </Badge>
         </div>
-
-        <div className="flex items-center gap-2">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search tasks..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 w-64"
-            />
-          </div>
-
-          {/* Filters */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <SlidersHorizontal className="h-4 w-4 mr-2" />
-                Filters
-                {(selectedLabels.length > 0 || selectedAssignees.length > 0 || selectedPriority || selectedType) && (
-                  <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
-                    {selectedLabels.length + selectedAssignees.length + (selectedPriority ? 1 : 0) + (selectedType ? 1 : 0)}
-                  </Badge>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-64" align="end">
-              <DropdownMenuLabel>Filter by</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              
-              {/* Labels */}
-              <DropdownMenuLabel className="text-xs font-medium text-gray-500">Labels</DropdownMenuLabel>
-              {getAllLabels().map((label) => (
-                <DropdownMenuCheckboxItem
-                  key={label}
-                  checked={selectedLabels.includes(label)}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      setSelectedLabels([...selectedLabels, label])
-                    } else {
-                      setSelectedLabels(selectedLabels.filter(l => l !== label))
-                    }
-                  }}
-                >
-                  {label}
-                </DropdownMenuCheckboxItem>
-              ))}
-              
-              <DropdownMenuSeparator />
-              
-              {/* Assignees */}
-              <DropdownMenuLabel className="text-xs font-medium text-gray-500">Assignees</DropdownMenuLabel>
-              {getAllAssignees().map((assignee) => (
-                <DropdownMenuCheckboxItem
-                  key={assignee.name}
-                  checked={selectedAssignees.includes(assignee.name)}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      setSelectedAssignees([...selectedAssignees, assignee.name])
-                    } else {
-                      setSelectedAssignees(selectedAssignees.filter(a => a !== assignee.name))
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-4 w-4">
-                      <AvatarFallback className="text-xs">{assignee.initials}</AvatarFallback>
-                    </Avatar>
-                    {assignee.name}
-                  </div>
-                </DropdownMenuCheckboxItem>
-              ))}
-              
-              <DropdownMenuSeparator />
-              
-              {/* Priority */}
-              <DropdownMenuLabel className="text-xs font-medium text-gray-500">Priority</DropdownMenuLabel>
-              <Select value={selectedPriority} onValueChange={setSelectedPriority}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All priorities" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All priorities</SelectItem>
-                  {Object.entries(priorityLevels).map(([key, priority]) => (
-                    <SelectItem key={key} value={key}>
-                      <div className="flex items-center gap-2">
-                        <priority.icon className={cn("h-4 w-4", priority.color)} />
-                        {priority.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <DropdownMenuSeparator />
-              
-              {/* Type */}
-              <DropdownMenuLabel className="text-xs font-medium text-gray-500">Type</DropdownMenuLabel>
-              <Select value={selectedType} onValueChange={setSelectedType}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {Object.entries(taskTypes).map(([key, type]) => (
-                    <SelectItem key={key} value={key}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <DropdownMenuSeparator />
-              
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="w-full">
-                Clear all filters
-              </Button>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* View options */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuCheckboxItem
-                checked={showEmptyColumns}
-                onCheckedChange={setShowEmptyColumns}
-              >
-                Show empty columns
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <Button
+          className="bg-violet-600 hover:bg-violet-700 text-white"
+          onClick={() => {
+            setSelectedColumn("todo")
+            setCreateTaskOpen(true)
+          }}
+        >
+          <Plus className="mr-2 h-4 w-4" /> Add Task
+        </Button>
       </div>
 
-      {/* Board */}
-      <div className="flex-1 overflow-x-auto p-4">
-        <div className="flex gap-6 h-full min-w-max">
-          {boardData.columns.map((column) => {
-            const filteredTasks = filterTasks(column.tasks)
-            const shouldShowColumn = showEmptyColumns || filteredTasks.length > 0
+      {/* Empty State */}
+      {showEmptyState ? (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+          <div className="bg-gray-100 dark:bg-gray-700 rounded-full p-6 mb-4">
+            <LayoutGrid className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+          </div>
+          <h3 className="text-xl font-medium mb-2">No tasks on the board yet</h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
+            Start by adding tasks to your board to track your work visually.
+          </p>
+          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => setCreateTaskOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Create Task
+          </Button>
+        </div>
+      ) : (
+        <>
+          {/* Filters and View Controls */}
+          <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-grow">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tasks..."
+                  className="pl-8"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Select value={filters.type} onValueChange={(value) => setFilters({ ...filters, type: value })}>
+                  <SelectTrigger className="w-[130px] h-9">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    {Object.entries(taskTypes).map(([key, { label }]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-            if (!shouldShowColumn) return null
+                <Select value={filters.assignee} onValueChange={(value) => setFilters({ ...filters, assignee: value })}>
+                  <SelectTrigger className="w-[130px] h-9">
+                    <SelectValue placeholder="Assignee" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Assignees</SelectItem>
+                    {getAllAssignees().map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-            return (
-              <div
-                key={column.id}
-                className={cn(
-                  "flex flex-col w-80 bg-gray-100 dark:bg-gray-800 rounded-lg",
-                  dragOverColumn === column.id && "ring-2 ring-blue-500"
-                )}
-                onDragOver={(e) => handleDragOver(e, column.id)}
-                onDrop={(e) => handleDrop(e, column.id)}
-              >
-                {/* Column Header */}
-                <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100">
-                      {column.title}
-                    </h3>
-                    <Badge variant="secondary" className="text-xs">
-                      {filteredTasks.length}
-                    </Badge>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleOpenCreateTask(column.id)}
-                    className="h-8 w-8 p-0"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Select value={filters.priority} onValueChange={(value) => setFilters({ ...filters, priority: value })}>
+                  <SelectTrigger className="w-[130px] h-9">
+                    <SelectValue placeholder="Priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Priorities</SelectItem>
+                    {Object.entries(priorityLevels).map(([key, { label }]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-                {/* Tasks */}
+                <Select value={filters.label} onValueChange={(value) => setFilters({ ...filters, label: value })}>
+                  <SelectTrigger className="w-[130px] h-9">
+                    <SelectValue placeholder="Label" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Labels</SelectItem>
+                    {getAllLabels().map((label) => (
+                      <SelectItem key={label} value={label}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 px-3">
+                      <SlidersHorizontal className="h-4 w-4 mr-2" />
+                      View
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>View Options</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuCheckboxItem
+                      checked={viewMode === "detailed"}
+                      onCheckedChange={() => setViewMode("detailed")}
+                    >
+                      Detailed View
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
+                      checked={viewMode === "compact"}
+                      onCheckedChange={() => setViewMode("compact")}
+                    >
+                      Compact View
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuCheckboxItem checked={showCompletedTasks} onCheckedChange={setShowCompletedTasks}>
+                      Show Completed Tasks
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button variant="outline" size="sm" className="h-9 px-3 flex items-center gap-1" onClick={clearFilters}>
+                  <X className="h-3.5 w-3.5" />
+                  <span>Clear</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Board */}
+          <div
+            ref={boardRef}
+            className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-300px)]"
+            style={{ scrollBehavior: isScrolling ? "auto" : "smooth" }}
+          >
+            {columnDefinitions.map((column) => {
+              const columnData = boardData[column.id as keyof BoardData]
+              const filteredTasks = filterTasks(columnData.tasks)
+              const isEmpty = filteredTasks.length === 0
+              const ColumnIcon = column.icon
+
+              return (
                 <div
-                  className="flex-1 p-4 space-y-3 overflow-y-auto"
+                  key={column.id}
+                  className={cn(
+                    "flex-shrink-0 w-80 bg-white dark:bg-gray-800 rounded-lg border shadow-sm overflow-hidden",
+                    dragOverColumn === column.id && !dragOverTaskId && "border-violet-500 ring-1 ring-violet-500",
+                  )}
                   onDragOver={(e) => handleDragOver(e, column.id)}
                   onDrop={(e) => handleDrop(e, column.id)}
                 >
-                  {filteredTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, task, column.id)}
-                      onDragEnd={handleDragEnd}
-                      onClick={() => handleOpenTaskDetail(task)}
-                      className={cn(
-                        "bg-white dark:bg-gray-900 rounded-lg p-4 shadow-sm border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow",
-                        draggedTask?.id === task.id && "opacity-50"
-                      )}
+                  <div className="p-3 border-b bg-muted/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ColumnIcon className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-medium">{column.title}</h3>
+                      <Badge
+                        variant="outline"
+                        className="ml-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      >
+                        {filteredTasks.length}
+                      </Badge>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleOpenCreateTask(column.id)}
                     >
-                      {/* Task Header */}
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-medium text-gray-900 dark:text-gray-100 text-sm leading-tight">
-                          {task.title}
-                        </h4>
-                        {task.priority && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                {(() => {
-                                  const PriorityIcon = (priorityLevels as Record<number, any>)[task.priority]?.icon || MoreHorizontal
-                                  return (
-                                    <PriorityIcon 
-                                      className={cn("h-4 w-4 flex-shrink-0", (priorityLevels as Record<number, any>)[task.priority]?.color || "text-gray-500")} 
-                                    />
-                                  )
-                                })()}
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {(priorityLevels as Record<number, any>)[task.priority]?.label || 'Unknown'} Priority
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="p-2 max-h-[calc(100vh-300px)] overflow-y-auto">
+                    {isEmpty ? (
+                      <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+                        <p className="text-muted-foreground text-sm">No tasks in this column.</p>
                       </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredTasks.map((task: Task) => {
+                          const PriorityIcon = priorityLevels[task.priority as keyof typeof priorityLevels]?.icon || Clock
+                          const priorityColor = priorityLevels[task.priority as keyof typeof priorityLevels]?.color || "text-gray-500"
+                          const taskTypeColor = task.type ? taskTypes[task.type as keyof typeof taskTypes]?.color || "" : ""
 
-                      {/* Task Description */}
-                      {task.description && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
+                          return (
+                            <div
+                              key={task.id}
+                              className={cn(
+                                "p-3 bg-white dark:bg-gray-800 rounded-md border shadow-sm hover:shadow-md transition-shadow cursor-pointer",
+                                dragOverTaskId === task.id && "border-violet-500 ring-1 ring-violet-500",
+                                viewMode === "compact" ? "p-2" : "p-3",
+                                taskTypeColor.includes("border") &&
+                                  `border-l-4 ${taskTypeColor.split(" ").find((c: string) => c.startsWith("border-"))}`,
+                              )}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, task, column.id)}
+                              onDragOver={(e) => handleDragOver(e, column.id, task.id)}
+                              onDrop={(e) => handleDrop(e, column.id, task.id)}
+                              onDragEnd={handleDragEnd}
+                              onClick={() => handleOpenTaskDetail(task)}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="font-medium truncate mr-2">{task.title}</div>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <Badge className={task.type ? taskTypes[task.type as keyof typeof taskTypes]?.color || "bg-gray-100" : "bg-gray-100"}>
+                                    {task.type ? taskTypes[task.type as keyof typeof taskTypes]?.label || "Task" : "Task"}
+                                  </Badge>
+                                </div>
+                              </div>
 
-                      {/* Task Type Badge */}
-                      {task.type && taskTypes[task.type as keyof typeof taskTypes] && (
-                        <div className="mb-3">
-                          <Badge 
-                            variant="outline" 
-                            className={cn("text-xs", taskTypes[task.type as keyof typeof taskTypes].color)}
-                          >
-                            {taskTypes[task.type as keyof typeof taskTypes].label}
-                          </Badge>
-                        </div>
-                      )}
+                              {viewMode === "detailed" && task.labels && task.labels.length > 0 && (
+                                <div className="mb-2 flex flex-wrap gap-1">
+                                  {task.labels.map((label: string) => (
+                                    <Badge
+                                      key={label}
+                                      variant="outline"
+                                      className="bg-gray-50 text-gray-700 dark:bg-gray-800 dark:text-gray-300 text-xs"
+                                    >
+                                      {label}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
 
-                      {/* Task Labels */}
-                      {task.labels && Array.isArray(task.labels) && task.labels.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {task.labels.map((label) => (
-                            <Badge key={label} variant="outline" className="text-xs">
-                              {label}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Avatar className="h-6 w-6">
+                                          <AvatarImage src={task.assignee?.image} alt={task.assignee?.name} />
+                                          <AvatarFallback>{task.assignee?.initials}</AvatarFallback>
+                                        </Avatar>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{task.assignee?.name}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
 
-                      {/* Task Footer */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {task.assigneeName && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarFallback className="text-xs">
-                                      {task.assigneeName.charAt(0)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {task.assigneeName}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
+                                  <PriorityIcon className={`h-4 w-4 ${priorityColor}`} />
+                                </div>
 
-                        <div className="flex items-center gap-2 text-gray-500">
-                          {(task.comments ?? 0) > 0 && (
-                            <div className="flex items-center gap-1">
-                              <MessageSquare className="h-3 w-3" />
-                              <span className="text-xs">{task.comments ?? 0}</span>
+                                <div className="flex items-center gap-3 text-muted-foreground">
+                                  {(task.comments || 0) > 0 && (
+                                    <div className="flex items-center gap-1 text-xs">
+                                      <MessageSquare className="h-3.5 w-3.5" />
+                                      <span>{task.comments}</span>
+                                    </div>
+                                  )}
+
+                                  {(task.attachments || 0) > 0 && (
+                                    <div className="flex items-center gap-1 text-xs">
+                                      <Paperclip className="h-3.5 w-3.5" />
+                                      <span>{task.attachments}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          )}
-                          {(task.attachments ?? 0) > 0 && (
-                            <div className="flex items-center gap-1">
-                              <Paperclip className="h-3 w-3" />
-                              <span className="text-xs">{task.attachments ?? 0}</span>
-                            </div>
-                          )}
-                        </div>
+                          )
+                        })}
                       </div>
-                    </div>
-                  ))}
-
-                  {filteredTasks.length === 0 && (
-                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                      <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">No tasks</p>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Task Detail Sidebar */}
-      {selectedTask && (
-        <TaskDetailView
-          open={selectedTask !== null}
-          onOpenChange={(open) => !open && setSelectedTask(null)}
-          task={selectedTask}
-          onTaskUpdated={handleTaskUpdated}
-          onTaskDeleted={(id) => handleTaskDeleted(Number(id))}
-          projectPublicId={projectId}
-        />
+              )
+            })}
+          </div>
+        </>
       )}
 
       {/* Create Task Sidebar */}
       <CreateTaskSidebar
-        open={isCreateTaskOpen}
-        onOpenChange={(open) => {
-          setIsCreateTaskOpen(open)
-          if (!open) setCreateTaskColumnId("")
-        }}
-        initialStage={createTaskColumnId}
+        open={createTaskOpen}
+        onOpenChange={setCreateTaskOpen}
         onTaskCreated={handleTaskCreated}
         projectPublicId={projectId}
+        selectedColumnId={selectedColumn}
+        initialStage={getInitialStageFromColumn(selectedColumn)}
       />
+
+      {/* Task Detail View Sidebar */}
+      {selectedTask && projectId && (
+        <TaskDetailView
+          key={selectedTask.id} // Use stable key to prevent unnecessary remounts
+          open={taskDetailOpen}
+          onOpenChange={setTaskDetailOpen}
+          task={selectedTask}
+          onTaskUpdated={handleTaskUpdated}
+          onTaskDeleted={handleTaskDeleted}
+          onTaskUpdateFailed={handleTaskUpdateFailed}
+          projectPublicId={projectId}
+        />
+      )}
+
+      {/* Demo Controls - Remove in production */}
+      <div className="mt-8 pt-4 border-t">
+        <Button variant="outline" onClick={toggleEmptyState} className="text-xs">
+          Toggle Empty State (Demo)
+        </Button>
+      </div>
     </div>
   )
 } 

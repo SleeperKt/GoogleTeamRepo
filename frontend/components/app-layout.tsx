@@ -80,11 +80,6 @@ const baseNavItems: Omit<NavItem, "children">[] = [
     icon: ListTodo,
   },
   {
-    name: "Board",
-    href: "/board",
-    icon: PanelLeft,
-  },
-  {
     name: "Reports",
     href: "/reports",
     icon: BarChart3,
@@ -144,7 +139,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     },
     {
       name: "Boards",
-      href: "/board",
+      href: "/projects",
       icon: PanelLeft,
       expanded: true,
       children: [
@@ -153,11 +148,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           href: `/projects/${p.publicId}/board`,
           starred: false,
         })),
-        {
-          name: "General Board",
-          href: "/board",
-          icon: PanelLeft,
-        },
       ],
     },
     {

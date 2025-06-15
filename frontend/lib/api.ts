@@ -10,7 +10,7 @@ declare const process: {
 }
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:7001";
 
 interface RequestOptions extends RequestInit {
   /**

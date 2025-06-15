@@ -902,7 +902,7 @@ export default function ProjectBoardPage() {
                       )}
 
                       {/* Task Labels */}
-                      {task.labels && task.labels.length > 0 && (
+                      {task.labels && Array.isArray(task.labels) && task.labels.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-3">
                           {task.labels.map((label) => (
                             <Badge key={label} variant="outline" className="text-xs">

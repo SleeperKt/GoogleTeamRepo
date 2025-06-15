@@ -440,9 +440,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="h-8 gap-2 pl-1">
                     <Avatar className="h-7 w-7">
-                      <AvatarImage src="/placeholder.svg?height=32&width=32" />
-                      <AvatarFallback>
-                        {user ? user.username.slice(0, 2).toUpperCase() : "--"}
+                      <AvatarFallback className="bg-violet-100 text-violet-600 font-semibold">
+                        {user?.username ? user.username[0].toUpperCase() : "U"}
                       </AvatarFallback>
                     </Avatar>
                     <span className="font-medium text-sm">{user ? user.username : "Guest"}</span>

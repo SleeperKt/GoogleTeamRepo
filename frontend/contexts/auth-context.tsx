@@ -43,11 +43,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetch(`${API_BASE_URL}/api/user/me`, {
         headers: { Authorization: `Bearer ${jwt}` },
       })
-      if (!res.ok) throw new Error("Failed to fetch user")
+      
+      if (!res.ok) {
+        if (res.status === 401) {
+          logout()
+          return
+        }
+        const errorBody = await res.text()
+        console.error(`Failed to fetch user: ${res.status} ${res.statusText} - ${errorBody}`)
+        return
+      }
       const data = await res.json()
-      setUser({ id: data.userId, username: data.userName, email: data.email })
+      
+      const userData = { 
+        id: data.userId || data.UserId || '', 
+        username: data.userName || data.UserName || '', 
+        email: data.email || data.Email || '' 
+      }
+      setUser(userData)
     } catch (err) {
-      console.error(err)
+      console.error('Error fetching user:', err)
     }
   }
 

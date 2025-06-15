@@ -672,7 +672,7 @@ export default function BoardPage() {
                                 </div>
                               </div>
 
-                              {viewMode === "detailed" && (
+                              {viewMode === "detailed" && task.labels && task.labels.length > 0 && (
                                 <div className="mb-2 flex flex-wrap gap-1">
                                   {task.labels.map((label) => (
                                     <Badge
@@ -750,6 +750,7 @@ export default function BoardPage() {
           task={selectedTask}
           onTaskUpdated={handleTaskUpdated}
           onTaskDeleted={handleTaskDeleted}
+          projectPublicId={currentProject?.publicId}
         />
       )}
 

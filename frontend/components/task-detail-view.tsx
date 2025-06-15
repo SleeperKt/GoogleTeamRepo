@@ -52,38 +52,6 @@ interface TeamMember {
   initials: string
 }
 
-// Sample fallback data for demo purposes (used when participants cannot be fetched)
-const fallbackTeamMembers: TeamMember[] = [
-  {
-    id: 1,
-    name: "Alex Kim",
-    email: "alex@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "AK",
-  },
-  {
-    id: 2,
-    name: "Sarah Lee",
-    email: "sarah@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "SL",
-  },
-  {
-    id: 3,
-    name: "Michael Johnson",
-    email: "michael@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "MJ",
-  },
-  {
-    id: 4,
-    name: "Jessica Taylor",
-    email: "jessica@example.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "JT",
-  },
-]
-
 const labels = [
   { id: 1, name: "Frontend", color: "#93c5fd" },
   { id: 2, name: "Backend", color: "#86efac" },
@@ -110,63 +78,18 @@ const sampleActivities = [
   {
     id: 1,
     type: "status_change",
-    user: fallbackTeamMembers[0],
+    user: { id: 1, name: "System", email: "", avatar: "", initials: "SY" },
     oldValue: "To Do",
     newValue: "In Progress",
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
   },
-  {
-    id: 2,
-    type: "comment",
-    user: fallbackTeamMembers[1],
-    content: "I've started working on this. Will update the design files soon.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1), // 1 hour ago
-  },
-  {
-    id: 3,
-    type: "assignee_change",
-    user: fallbackTeamMembers[0],
-    oldValue: null,
-    newValue: fallbackTeamMembers[1].name,
-    timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-  },
 ]
 
 // Sample comments
-const sampleComments = [
-  {
-    id: 1,
-    user: fallbackTeamMembers[1],
-    content: "I've started working on this. Will update the design files soon.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1), // 1 hour ago
-  },
-  {
-    id: 2,
-    user: fallbackTeamMembers[2],
-    content: "Let me know if you need any help with the API integration part.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-  },
-]
+const sampleComments: any[] = []
 
 // Sample attachments
-const sampleAttachments = [
-  {
-    id: 1,
-    name: "design-mockup.png",
-    size: "2.4 MB",
-    type: "image",
-    uploadedBy: fallbackTeamMembers[1],
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3), // 3 hours ago
-  },
-  {
-    id: 2,
-    name: "api-documentation.pdf",
-    size: "1.2 MB",
-    type: "document",
-    uploadedBy: fallbackTeamMembers[2],
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-  },
-]
+const sampleAttachments: any[] = []
 
 interface TaskDetailViewProps {
   open: boolean
@@ -225,9 +148,11 @@ export function TaskDetailView({
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
   const [newComment, setNewComment] = useState("")
-  const [comments, setComments] = useState(sampleComments)
-  const [activities, setActivities] = useState(sampleActivities)
-  const [attachments, setAttachments] = useState(sampleAttachments)
+  const [comments, setComments] = useState<any[]>([])
+  const [activities, setActivities] = useState<any[]>([])
+  const [attachments, setAttachments] = useState<any[]>(sampleAttachments)
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [loadingActivities, setLoadingActivities] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -276,16 +201,50 @@ export function TaskDetailView({
     loadParticipants()
   }, [open, projectPublicId])
 
+  // Load comments and activities when task opens
+  useEffect(() => {
+    const loadTaskData = async () => {
+      if (!open || !initialTask?.id || !projectPublicId) return
+
+      // Load comments
+      setLoadingComments(true)
+      try {
+        const commentsData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/comments`)
+        setComments(Array.isArray(commentsData) ? commentsData : [])
+      } catch (err) {
+        console.error("Failed to load task comments", err)
+        setComments([])
+      } finally {
+        setLoadingComments(false)
+      }
+
+      // Load activities
+      setLoadingActivities(true)
+      try {
+        const activitiesData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/activities`)
+        setActivities(Array.isArray(activitiesData) ? activitiesData : [])
+      } catch (err) {
+        console.error("Failed to load task activities", err)
+        setActivities([])
+      } finally {
+        setLoadingActivities(false)
+      }
+    }
+
+    loadTaskData()
+  }, [open, initialTask?.id, projectPublicId])
+
   // Combine dynamic members with fallback (unique by id)
   const availableMembers = React.useMemo(() => {
     const map = new Map<string | number, any>()
-    ;[...teamMembers, ...fallbackTeamMembers].forEach((m) => map.set(m.id, m))
+    ;[...teamMembers].forEach((m) => map.set(m.id, m))
     return Array.from(map.values())
   }, [teamMembers])
 
   // Reset form when task changes
   useEffect(() => {
     if (initialTask) {
+      setTask(initialTask)
       setTitle(initialTask.title || "")
       setDescription(initialTask.description || "")
       setAssignee(initialTask.assigneeId || null)
@@ -350,6 +309,7 @@ export function TaskDetailView({
       priority !== originalPriority ||
       stage !== originalStage ||
       estimate !== initialTask?.estimatedHours ||
+      task?.type !== initialTask?.type ||
       !arraysEqual(
         selectedLabels,
         initialTask?.labels
@@ -364,7 +324,7 @@ export function TaskDetailView({
     } else {
       setHasUnsavedChanges(false)
     }
-  }, [title, description, assignee, selectedLabels, dueDate, priority, stage, estimate, initialTask])
+  }, [title, description, assignee, selectedLabels, dueDate, priority, stage, estimate, initialTask, task])
 
   // Helper function to compare arrays
   const arraysEqual = (a: any[], b: any[]) => {
@@ -375,27 +335,64 @@ export function TaskDetailView({
   }
 
   // Save changes
-  const saveChanges = () => {
+  const saveChanges = async () => {
+    if (!initialTask?.id || !projectPublicId) return
+
     setIsSaving(true)
 
-    // Create updated task object
-    const updatedTask = {
-      ...initialTask,
-      title,
-      description,
-      assigneeId: assignee,
-      labels: selectedLabels.map((id) => {
-        const label = labels.find((l) => l.id === id)
-        return label?.name
-      }),
-      dueDate,
-      priority,
-      status: stage,
-      estimatedHours: estimate,
-    }
+    try {
+      // Prepare payload for API
+      const statusMap: Record<string, number> = {
+        "To Do": 1,
+        "In Progress": 2,
+        "Review": 3,
+        "Done": 4,
+      }
 
-    // Simulate API call
-    setTimeout(() => {
+      const priorityMap: Record<string, number> = {
+        low: 1,
+        medium: 2,
+        high: 3,
+        critical: 4,
+      }
+
+      const payload = {
+        title,
+        description,
+        assigneeId: assignee,
+        status: statusMap[stage] || 1,
+        dueDate,
+        priority: priorityMap[priority || 'medium'] || 2,
+        estimatedHours: estimate,
+        type: task?.type || 'task',
+        labels: selectedLabels.map((id) => {
+          const label = labels.find((l) => l.id === id)
+          return label?.name
+        }).filter(Boolean),
+      }
+
+      const response = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      })
+
+      // Create updated task object for local state
+      const updatedTask = {
+        ...initialTask,
+        title,
+        description,
+        assigneeId: assignee,
+        type: task?.type,
+        labels: selectedLabels.map((id) => {
+          const label = labels.find((l) => l.id === id)
+          return label?.name
+        }),
+        dueDate,
+        priority: priorityMap[priority || 'medium'] || 2,
+        status: statusMap[stage] || 1,
+        estimatedHours: estimate,
+      }
+
       // Call onTaskUpdated callback with updated task
       if (onTaskUpdated) {
         onTaskUpdated(updatedTask)
@@ -404,34 +401,14 @@ export function TaskDetailView({
       // Update local task state
       setTask(updatedTask)
       setHasUnsavedChanges(false)
+
+      console.log('Task updated successfully')
+    } catch (err) {
+      console.error('Failed to save task changes:', err)
+      // Could show a toast notification here
+    } finally {
       setIsSaving(false)
-
-      // Add activity for status change if it changed
-      if (initialTask.status !== stage) {
-        const newActivity = {
-          id: activities.length + 1,
-          type: "status_change",
-          user: availableMembers[0], // Current user (hardcoded for demo)
-          oldValue: initialTask.status,
-          newValue: stage,
-          timestamp: new Date(),
-        }
-        setActivities([newActivity, ...activities])
-      }
-
-      // Add activity for assignee change if it changed
-      if (initialTask.assigneeId !== assignee) {
-        const newActivity = {
-          id: activities.length + 1,
-          type: "assignee_change",
-          user: availableMembers[0], // Current user (hardcoded for demo)
-          oldValue: initialTask.assigneeId ? availableMembers.find((member: any) => member.id === initialTask.assigneeId)?.name : null,
-          newValue: assignee ? availableMembers.find((member: any) => member.id === assignee)?.name : null,
-          timestamp: new Date(),
-        }
-        setActivities([newActivity, ...activities])
-      }
-    }, 500)
+    }
   }
 
   // Handle delete task
@@ -450,33 +427,40 @@ export function TaskDetailView({
   }
 
   // Handle add comment
-  const handleAddComment = () => {
-    if (!newComment.trim()) return
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !initialTask?.id || !projectPublicId) return
 
-    const comment = {
-      id: comments.length + 1,
-      user: availableMembers[0], // Current user (hardcoded for demo)
-      content: newComment,
-      timestamp: new Date(),
-    }
+    try {
+      const commentData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: newComment
+        })
+      })
 
-    setComments([...comments, comment])
+      // Add the new comment to the list
+      setComments([...comments, commentData])
     setNewComment("")
 
-    // Add to activities
-    const activity = {
-      id: activities.length + 1,
-      type: "comment",
-      user: availableMembers[0],
-      content: newComment,
-      timestamp: new Date(),
-    }
-    setActivities([activity, ...activities])
+      // Refresh activities to show the new comment activity
+      try {
+        const activitiesData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/activities`)
+        setActivities(Array.isArray(activitiesData) ? activitiesData : [])
+      } catch (err) {
+        console.error("Failed to refresh activities", err)
+      }
 
     // Focus back on comment input
     setTimeout(() => {
       commentInputRef.current?.focus()
     }, 100)
+    } catch (err) {
+      console.error("Failed to add comment", err)
+      // Could show a toast notification here
+    }
   }
 
   // Get assignee name
@@ -957,15 +941,53 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                         id="labels"
                       >
                         {selectedLabels.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 max-w-[150px] overflow-hidden">
-                            {selectedLabels.map((id) => {
-                              const label = labels.find((l) => l.id === id)
-                              return label ? (
-                                <Badge key={label.id} className="px-1 py-0 h-4 text-[10px]" variant="outline">
-                                  {label.name}
+                          <div className="flex items-center gap-1 flex-1 min-w-0">
+                            {selectedLabels.length <= 2 ? (
+                              selectedLabels.map((id) => {
+                                const label = labels.find((l) => l.id === id)
+                                if (!label) return null
+                                const displayName = label.name.length > 8 ? `${label.name.slice(0, 8)}...` : label.name
+                                return (
+                                  <TooltipProvider key={label.id}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge className="px-1 py-0 h-4 text-[10px] max-w-[60px] truncate" variant="outline">
+                                          {displayName}
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{label.name}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )
+                              })
+                            ) : (
+                              <>
+                                {selectedLabels.slice(0, 1).map((id) => {
+                                  const label = labels.find((l) => l.id === id)
+                                  if (!label) return null
+                                  const displayName = label.name.length > 8 ? `${label.name.slice(0, 8)}...` : label.name
+                                  return (
+                                    <TooltipProvider key={label.id}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge className="px-1 py-0 h-4 text-[10px] max-w-[60px] truncate" variant="outline">
+                                            {displayName}
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>{label.name}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )
+                                })}
+                                <Badge className="px-1 py-0 h-4 text-[10px] flex-shrink-0 bg-gray-100 text-gray-600" variant="outline">
+                                  +{selectedLabels.length - 1}
                                 </Badge>
-                              ) : null
-                            })}
+                              </>
+                            )}
                           </div>
                         ) : (
                           <span className="text-muted-foreground">Select labels</span>
@@ -1094,7 +1116,12 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
 
               {/* Comments list */}
               <div className="space-y-3">
-                {comments.length === 0 ? (
+                {loadingComments ? (
+                  <div className="text-center py-6">
+                    <div className="animate-spin h-6 w-6 border-2 border-violet-500 border-t-transparent rounded-full mx-auto mb-2" />
+                    <p className="text-muted-foreground text-xs">Loading comments...</p>
+                  </div>
+                ) : comments.length === 0 ? (
                   <div className="text-center py-6">
                     <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground opacity-50 mb-2" />
                     <p className="text-muted-foreground text-xs">No comments yet</p>
@@ -1104,12 +1131,15 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                     <div key={comment.id} className="border rounded-md p-3">
                       <div className="flex items-center gap-2 mb-1">
                         <Avatar className="h-6 w-6">
-                          <AvatarImage src={comment.user.avatar} alt={comment.user.name} />
-                          <AvatarFallback className="text-xs">{comment.user.initials}</AvatarFallback>
+                          <AvatarFallback className="text-xs">
+                            {comment.userName?.charAt(0)?.toUpperCase() || "U"}
+                          </AvatarFallback>
                         </Avatar>
                         <div>
-                          <div className="font-medium text-xs">{comment.user.name}</div>
-                          <div className="text-[10px] text-muted-foreground">{formatTimestamp(comment.timestamp)}</div>
+                          <div className="font-medium text-xs">{comment.userName || "Unknown"}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {formatTimestamp(new Date(comment.createdAt))}
+                          </div>
                         </div>
                       </div>
                       <div className="text-xs whitespace-pre-wrap">{comment.content}</div>
@@ -1123,7 +1153,12 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
             <div className="space-y-3">
               <h3 className="text-sm font-medium">Activity</h3>
               <div className="space-y-3">
-                {activities.length === 0 ? (
+                {loadingActivities ? (
+                  <div className="text-center py-6">
+                    <div className="animate-spin h-6 w-6 border-2 border-violet-500 border-t-transparent rounded-full mx-auto mb-2" />
+                    <p className="text-muted-foreground text-xs">Loading activity...</p>
+                  </div>
+                ) : activities.length === 0 ? (
                   <div className="text-center py-6">
                     <Clock className="h-8 w-8 mx-auto text-muted-foreground opacity-50 mb-2" />
                     <p className="text-muted-foreground text-xs">No activity yet</p>
@@ -1138,12 +1173,13 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                         <div className="mb-1">
                           <div className="flex items-center gap-1">
                             <Avatar className="h-5 w-5">
-                              <AvatarImage src={activity.user.avatar} alt={activity.user.name} />
-                              <AvatarFallback className="text-[10px]">{activity.user.initials}</AvatarFallback>
+                              <AvatarFallback className="text-[10px]">
+                                {activity.userName?.charAt(0)?.toUpperCase() || "U"}
+                              </AvatarFallback>
                             </Avatar>
-                            <span className="font-medium text-xs">{activity.user.name}</span>
+                            <span className="font-medium text-xs">{activity.userName || "Unknown"}</span>
 
-                            {activity.type === "status_change" && (
+                            {activity.activityType === "status_change" && (
                               <span className="text-xs">
                                 changed status from{" "}
                                 <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
@@ -1156,7 +1192,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                               </span>
                             )}
 
-                            {activity.type === "assignee_change" && (
+                            {activity.activityType === "assignee_change" && (
                               <span className="text-xs">
                                 {activity.oldValue ? (
                                   <>
@@ -1171,16 +1207,32 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                               </span>
                             )}
 
-                            {activity.type === "comment" && <span className="text-xs">added a comment</span>}
+                            {activity.activityType === "priority_change" && (
+                              <span className="text-xs">
+                                changed priority from{" "}
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                                  {activity.oldValue}
+                                </Badge>{" "}
+                                to{" "}
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                                  {activity.newValue}
+                                </Badge>
+                              </span>
+                            )}
+
+                            {activity.activityType === "comment" && <span className="text-xs">added a comment</span>}
+                            {activity.activityType === "created" && <span className="text-xs">created this task</span>}
+                            {activity.activityType === "deleted" && <span className="text-xs">deleted this task</span>}
+                            
+                            {/* Generic description fallback */}
+                            {!["status_change", "assignee_change", "priority_change", "comment", "created", "deleted"].includes(activity.activityType) && (
+                              <span className="text-xs">{activity.description || activity.activityType}</span>
+                            )}
                           </div>
                           <div className="text-[10px] text-muted-foreground mt-1">
-                            {formatTimestamp(activity.timestamp)}
+                            {formatTimestamp(new Date(activity.createdAt))}
                           </div>
                         </div>
-
-                        {activity.type === "comment" && (
-                          <div className="bg-muted/30 rounded-md p-2 text-xs mt-1">{activity.content}</div>
-                        )}
                       </div>
                     ))}
                   </div>

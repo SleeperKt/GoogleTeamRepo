@@ -101,6 +101,27 @@ interface TaskDetailViewProps {
   projectPublicId?: string
 }
 
+// Helper to derive stage string from status value (number or string)
+const mapStatusToStage = (statusValue: any): string => {
+  if (typeof statusValue === 'number') {
+    switch (statusValue) {
+      case 1: return 'To Do'
+      case 2: return 'In Progress'
+      case 3: return 'In Review'
+      case 4: return 'Done'
+      default: return 'To Do'
+    }
+  }
+  if (typeof statusValue === 'string') {
+    const s = statusValue.toLowerCase()
+    if (s === 'todo') return 'To Do'
+    if (s === 'inprogress') return 'In Progress'
+    if (s === 'in review' || s === 'inreview') return 'In Review'
+    if (s === 'done') return 'Done'
+  }
+  return 'To Do'
+}
+
 export function TaskDetailView({
   open,
   onOpenChange,
@@ -147,10 +168,7 @@ export function TaskDetailView({
     : undefined
   )
   const [stage, setStage] = useState(
-    initialTask?.status === 1 ? "To Do" :
-    initialTask?.status === 2 ? "In Progress" :
-    initialTask?.status === 3 ? "In Review" :
-    initialTask?.status === 4 ? "Done" : "To Do"
+    mapStatusToStage(initialTask?.status)
   )
   const [estimate, setEstimate] = useState<number | undefined>(initialTask?.estimatedHours || undefined)
 
@@ -300,12 +318,7 @@ export function TaskDetailView({
           initialTask.priority === 4 ? "critical" : "medium"
         : undefined
       )
-      setStage(
-        initialTask.status === 1 ? "To Do" :
-        initialTask.status === 2 ? "In Progress" :
-        initialTask.status === 3 ? "In Review" :
-        initialTask.status === 4 ? "Done" : "To Do"
-      )
+      setStage(mapStatusToStage(initialTask.status))
       setEstimate(initialTask.estimatedHours || undefined)
       setHasUnsavedChanges(false)
     }
@@ -329,10 +342,7 @@ export function TaskDetailView({
       initialTask.priority === 3 ? "high" :
       initialTask.priority === 4 ? "critical" : "medium"
     : undefined
-    const originalStage = initialTask?.status === 1 ? "To Do" :
-      initialTask?.status === 2 ? "In Progress" :
-      initialTask?.status === 3 ? "In Review" :
-      initialTask?.status === 4 ? "Done" : "To Do"
+    const originalStage = mapStatusToStage(initialTask?.status)
     
     const dueDateChanged = dueDate?.getTime() !== originalDueDate?.getTime()
     
@@ -422,7 +432,7 @@ export function TaskDetailView({
       priority: priorityMap[priority || 'medium'] || 2,
       status: statusMap[stage] || 1,
       estimatedHours: estimate,
-      comments: initialTask?.comments,
+      comments: comments.length,
       attachments: initialTask?.attachments,
     };
 
@@ -470,6 +480,16 @@ export function TaskDetailView({
       setHasUnsavedChanges(false);
       onOpenChange(false);
 
+      // Note: Comment count updates are handled in the main task update above
+
+      // Refresh activities to include the new comment activity
+      try {
+        const activitiesData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/activities`)
+        setActivities(Array.isArray(activitiesData) ? activitiesData : [])
+      } catch (err) {
+        console.error('Failed to refresh activities', err)
+      }
+
     } catch (err) {
       console.error('Failed to save task changes:', err);
       if (onTaskUpdateFailed) {
@@ -482,10 +502,16 @@ export function TaskDetailView({
   };
 
   // Handle delete task
-  const handleDeleteTask = () => {
-    // Simulate API call
-    setTimeout(() => {
-      // Call onTaskDeleted callback
+  const handleDeleteTask = async () => {
+    if (!initialTask?.id || !projectPublicId) return
+
+    try {
+      // Make API call to delete the task
+      await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}`, {
+        method: 'DELETE'
+      })
+
+      // Call onTaskDeleted callback on successful deletion
       if (onTaskDeleted) {
         onTaskDeleted(initialTask.id)
       }
@@ -493,7 +519,11 @@ export function TaskDetailView({
       // Close sidebar
       onOpenChange(false)
       setDeleteDialogOpen(false)
-    }, 500)
+    } catch (err) {
+      console.error('Failed to delete task:', err)
+      // You could show a toast notification here for error feedback
+      setDeleteDialogOpen(false)
+    }
   }
 
   // Handle add comment
@@ -512,15 +542,28 @@ export function TaskDetailView({
       })
 
       // Add the new comment to the list
-      setComments([...comments, commentData])
-    setNewComment("")
+      const newCommentsArray = [...comments, commentData]
+      setComments(newCommentsArray)
 
-      // Refresh activities to show the new comment activity
+      // Notify board page of the new comments count so badge updates
+      if (onTaskUpdated && initialTask?.id) {
+        try {
+          const optimisticTaskUpdate = {
+            ...task, // Use current task state, not initialTask
+            comments: newCommentsArray.length,
+          }
+          onTaskUpdated(optimisticTaskUpdate, true)
+        } catch (err) {
+          console.error('Failed to send optimistic comment count update:', err)
+        }
+      }
+
+      // Refresh activities to include the new comment activity
       try {
         const activitiesData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/activities`)
         setActivities(Array.isArray(activitiesData) ? activitiesData : [])
       } catch (err) {
-        console.error("Failed to refresh activities", err)
+        console.error('Failed to refresh activities', err)
       }
 
     // Focus back on comment input

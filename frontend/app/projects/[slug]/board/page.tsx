@@ -578,11 +578,29 @@ export default function ProjectBoardPage() {
       1: "Todo", 2: "InProgress", 3: "InReview", 4: "Done",
     };
 
-    const targetColumnKey = statusIdToColumnKey[updatedTaskData.status];
-    const newDisplayStatusString = statusIdToDisplayStatusString[updatedTaskData.status];
+    // Handle both numeric and string status formats
+    const statusStringToId: Record<string, number> = {
+      "Todo": 1,
+      "InProgress": 2,
+      "InReview": 3,
+      "Done": 4,
+    };
 
-    if (!targetColumnKey || !newDisplayStatusString) {
-      console.error(`ProjectBoard: Invalid status ID ${updatedTaskData.status} from updated task. Refetching board data.`);
+    // Normalize status to numeric ID
+    let statusId: number;
+    if (typeof updatedTaskData.status === 'number') {
+      statusId = updatedTaskData.status;
+    } else if (typeof updatedTaskData.status === 'string') {
+      statusId = statusStringToId[updatedTaskData.status] || 0;
+    } else {
+      statusId = 0;
+    }
+
+    const targetColumnKey = statusIdToColumnKey[statusId];
+    const newDisplayStatusString = statusIdToDisplayStatusString[statusId];
+
+    if (!targetColumnKey || !newDisplayStatusString || statusId === 0) {
+      console.error(`ProjectBoard: Invalid status "${updatedTaskData.status}" from updated task. Refetching board data.`);
       fetchBoardData();
       return;
     }
@@ -658,13 +676,39 @@ export default function ProjectBoardPage() {
     const statusIdToDisplayStatusString: Record<number, string | undefined> = {
       1: "Todo", 2: "InProgress", 3: "InReview", 4: "Done",
     };
+
+    // Handle both numeric and string status formats
+    const statusStringToId: Record<string, number> = {
+      "Todo": 1,
+      "InProgress": 2,
+      "InReview": 3,
+      "Done": 4,
+    };
+
+    // Normalize original status to numeric ID
+    let originalNumericStatus: number;
+    if (typeof originalTaskData.status === 'number') {
+      originalNumericStatus = originalTaskData.status;
+    } else if (typeof originalTaskData.status === 'string') {
+      originalNumericStatus = statusStringToId[originalTaskData.status] || 1;
+    } else {
+      originalNumericStatus = 1;
+    }
     
     // Determine original and attempted column keys from their numeric statuses
-    const originalNumericStatus = originalTaskData.status;
     const originalColumnKey = statusIdToColumnKey[originalNumericStatus];
     const originalDisplayStatusString = statusIdToDisplayStatusString[originalNumericStatus];
 
-    const attemptedNumericStatus = attemptedOptimisticTaskData.status;
+    // Normalize attempted status to numeric ID
+    let attemptedNumericStatus: number;
+    if (typeof attemptedOptimisticTaskData.status === 'number') {
+      attemptedNumericStatus = attemptedOptimisticTaskData.status;
+    } else if (typeof attemptedOptimisticTaskData.status === 'string') {
+      attemptedNumericStatus = statusStringToId[attemptedOptimisticTaskData.status] || 1;
+    } else {
+      attemptedNumericStatus = 1;
+    }
+
     const attemptedColumnKey = statusIdToColumnKey[attemptedNumericStatus];
 
     if (!originalColumnKey || !originalDisplayStatusString) {
@@ -914,7 +958,18 @@ export default function ProjectBoardPage() {
             {columnDefinitions.map((column) => {
               const columnData = boardData[column.id as keyof BoardData]
               const filteredTasks = filterTasks(columnData.tasks)
-              const isEmpty = filteredTasks.length === 0
+
+              // Deduplicate tasks by id to avoid duplicate key warnings (can occur with rapid drag/drop)
+              const uniqueTasks: Task[] = []
+              const seenIds = new Set<number>()
+              for (const t of filteredTasks) {
+                if (!seenIds.has(t.id)) {
+                  uniqueTasks.push(t)
+                  seenIds.add(t.id)
+                }
+              }
+
+              const isEmpty = uniqueTasks.length === 0
               const ColumnIcon = column.icon
 
               return (
@@ -935,7 +990,7 @@ export default function ProjectBoardPage() {
                         variant="outline"
                         className="ml-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
                       >
-                        {filteredTasks.length}
+                        {uniqueTasks.length}
                       </Badge>
                     </div>
                     <Button
@@ -955,7 +1010,7 @@ export default function ProjectBoardPage() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {filteredTasks.map((task: Task) => {
+                        {uniqueTasks.map((task: Task) => {
                           const PriorityIcon = priorityLevels[task.priority as keyof typeof priorityLevels]?.icon || Clock
                           const priorityColor = priorityLevels[task.priority as keyof typeof priorityLevels]?.color || "text-gray-500"
                           const taskTypeColor = task.type ? taskTypes[task.type as keyof typeof taskTypes]?.color || "" : ""

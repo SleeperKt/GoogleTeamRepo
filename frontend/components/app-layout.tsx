@@ -13,6 +13,9 @@ import {
   ListTodo,
   PanelLeft,
   Plus,
+  Activity,
+  Calendar,
+  Folder,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -102,10 +105,7 @@ function SidebarConditionalTrigger() {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
-    Projects: true, // Projects is expanded by default
-    Boards: true, // Boards is expanded by default
-  })
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({})
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [notifications, setNotifications] = useState<Array<{
@@ -116,44 +116,61 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     read: boolean
   }>>([])
   const { user, logout, token } = useAuth()
-  const { projects, refreshProjects } = useProject()
+  const { currentProject, projects, refreshProjects } = useProject()
 
-  const navItems: NavItem[] = [
+  // Generate navigation items based on current project
+  const navItems: NavItem[] = currentProject ? [
+    // Current Project Section
     {
-      name: "Projects",
-      href: "/projects",
+      name: currentProject.name,
+      href: `/projects/${currentProject.publicId}`,
       icon: FolderKanban,
       expanded: true,
       children: [
-        ...projects.map((p) => ({
-          name: p.name,
-          href: `/projects/${p.publicId}`,
-          starred: false,
-        })),
+        {
+          name: "Board",
+          href: `/projects/${currentProject.publicId}/board`,
+          icon: PanelLeft,
+        },
+        {
+          name: "Backlog",
+          href: `/projects/${currentProject.publicId}/backlog`,
+          icon: ListTodo,
+        },
+        {
+          name: "Reports",
+          href: `/projects/${currentProject.publicId}/reports`,
+          icon: BarChart3,
+        },
+        {
+          name: "Activities",
+          href: `/projects/${currentProject.publicId}/activities`,
+          icon: Activity,
+        },
       ],
     },
+    // Global Navigation
     {
-      name: "Boards",
-      href: "/boards",
-      icon: PanelLeft,
-      expanded: true,
-      children: [
-        ...projects.map((p) => ({
-          name: p.name,
-          href: `/projects/${p.publicId}/board`,
-          starred: false,
-        })),
-      ],
+      name: "All Projects",
+      href: "/projects",
+      icon: Folder,
     },
     {
-      name: "Backlog",
-      href: "/backlog",
-      icon: ListTodo,
+      name: "Timeline",
+      href: "/timeline",
+      icon: Calendar,
     },
     {
-      name: "Reports",
-      href: "/reports",
-      icon: BarChart3,
+      name: "Settings",
+      href: "/settings",
+      icon: Cog,
+    },
+  ] : [
+    // Fallback when no project is selected
+    {
+      name: "All Projects",
+      href: "/projects",
+      icon: Folder,
     },
     {
       name: "Settings",
@@ -238,94 +255,33 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           className="h-8 w-8 p-0 hover:bg-muted"
                           onClick={() => toggleExpanded(item.name)}
                         >
-                          {expandedItems[item.name] ? (
+                          {expandedItems[item.name] !== false ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
                             <ChevronRight className="h-4 w-4" />
                           )}
                           <span className="sr-only">Toggle {item.name}</span>
                         </Button>
-
-                        {/* Create Project Button */}
-                        {/* <Dialog open={createProjectOpen} onOpenChange={setCreateProjectOpen}>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 ml-1 hover:bg-muted"
-                              onClick={(e) => {
-                                e.stopPropagation() // Prevent event bubbling
-                                setCreateProjectOpen(true)
-                              }}
-                            >
-                              <Plus className="h-4 w-4" />
-                              <span className="sr-only">Create Project</span>
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <form onSubmit={handleCreateProject}>
-                              <DialogHeader>
-                                <DialogTitle>Create New Project</DialogTitle>
-                                <DialogDescription>Add a new project to your workspace.</DialogDescription>
-                              </DialogHeader>
-                              <div className="grid gap-4 py-4">
-                                <div className="grid gap-2">
-                                  <Label htmlFor="name">Project name</Label>
-                                  <Input id="name" placeholder="Enter project name" required />
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label htmlFor="description">Description</Label>
-                                  <Input id="description" placeholder="Enter project description" />
-                                </div>
-                              </div>
-                              <DialogFooter>
-                                <Button type="button" variant="outline" onClick={() => setCreateProjectOpen(false)}>
-                                  Cancel
-                                </Button>
-                                <Button type="submit">Create Project</Button>
-                              </DialogFooter>
-                            </form>
-                          </DialogContent>
-                        </Dialog> */}
                       </div>
 
                       {/* Expanded content */}
-                      {expandedItems[item.name] && (
+                      {expandedItems[item.name] !== false && (
                         <div className="pl-4 mt-1">
-                          {item.children.some((child) => child.starred) && (
-                            <div className="mb-2">
-                              <p className="text-xs text-muted-foreground ml-2 mb-1">Starred</p>
-                              {item.children
-                                .filter((child) => child.starred)
-                                .map((child) => (
-                                  <Link
-                                    key={child.name}
-                                    href={child.href}
-                                    className="flex items-center gap-2 px-2 py-1 text-sm rounded-md hover:bg-muted"
-                                  >
-                                    <Avatar className="h-5 w-5">
-                                      <AvatarImage src="/placeholder.svg?height=32&width=32" />
-                                      <AvatarFallback className="text-[10px] bg-violet-100 text-violet-600">
-                                        TP
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <span>{child.name}</span>
-                                  </Link>
-                                ))}
-                            </div>
-                          )}
-                          {item.children
-                            .filter((child) => !child.starred)
-                            .map((child) => (
-                              <Link
-                                key={child.name}
-                                href={child.href}
-                                className="flex items-center gap-2 px-2 py-1 text-sm rounded-md hover:bg-muted"
-                              >
-                                {child.icon && <child.icon className="h-4 w-4" />}
-                                <span>{child.name}</span>
-                              </Link>
-                            ))}
+                          {item.children.map((child) => (
+                            <Link
+                              key={child.name}
+                              href={child.href}
+                              className={cn(
+                                "flex items-center gap-2 px-2 py-1 text-sm rounded-md hover:bg-muted",
+                                pathname === child.href || pathname.startsWith(child.href)
+                                  ? "bg-muted text-foreground font-medium"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {child.icon && <child.icon className="h-4 w-4" />}
+                              <span>{child.name}</span>
+                            </Link>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -334,7 +290,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       href={item.href}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
-                        pathname.startsWith(item.href)
+                        pathname === item.href || pathname.startsWith(item.href)
                           ? "bg-muted text-foreground"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}

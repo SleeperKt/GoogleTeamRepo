@@ -40,6 +40,7 @@ interface Task {
   id: number
   title: string
   description?: string
+  assigneeId?: string | null
   assigneeName?: string
   assignee?: {
     name: string
@@ -390,11 +391,29 @@ export default function BoardPage() {
         done: 4         // Done
       }
 
+      // Find the task to preserve its current labels and other data
+      let currentTask: Task | undefined;
+      Object.values(boardData).forEach(column => {
+        const task = column.tasks.find((t: Task) => t.id === taskId);
+        if (task) currentTask = task;
+      });
+
+      const payload = {
+        status: statusMap[newColumnId],
+        // Preserve existing labels and other fields to prevent data loss
+        ...(currentTask?.labels && { labels: currentTask.labels }),
+        ...(currentTask?.title && { title: currentTask.title }),
+        ...(currentTask?.description && { description: currentTask.description }),
+        ...(currentTask?.priority && { priority: currentTask.priority }),
+        ...(currentTask?.type && { type: currentTask.type }),
+        ...(currentTask?.estimatedHours && { estimatedHours: currentTask.estimatedHours }),
+        // Handle assignee properly - preserve the assigneeId (which can be null for unassigned)
+        assigneeId: currentTask?.assigneeId || null
+      };
+
       await apiRequest(`/api/projects/public/${currentProject.publicId}/tasks/${taskId}`, {
         method: 'PUT',
-        body: JSON.stringify({
-          status: statusMap[newColumnId]
-        })
+        body: JSON.stringify(payload)
       })
 
       // Update selected task if it's the one being moved
@@ -411,8 +430,8 @@ export default function BoardPage() {
         })
       }
 
-      // Refresh board data
-      fetchBoardData()
+      // Don't immediately refresh board data to avoid race conditions with optimistic updates
+      // The data will be refreshed through the task detail view callbacks
     } catch (err) {
       console.error('Error updating task status:', err)
     }

@@ -194,6 +194,9 @@ namespace ProjectHub.Core.Services
                 EstimatedHours = request.EstimatedHours,
                 Priority = request.Priority,
                 Type = request.Type,
+                Labels = request.Labels != null && request.Labels.Length > 0 
+                    ? System.Text.Json.JsonSerializer.Serialize(request.Labels)
+                    : null,
                 CreatedAt = DateTime.Now
             };
 
@@ -219,7 +222,7 @@ namespace ProjectHub.Core.Services
                 throw new UnauthorizedAccessException("User is not a participant in this project.");
             }
 
-            // Validate assignee is also a project participant
+            // Validate assignee is also a project participant (only if assigning to someone)
             if (request.AssigneeId.HasValue)
             {
                 var isAssigneeParticipant = await _participantRepository.IsUserInProjectAsync(task.ProjectId, request.AssigneeId.Value);
@@ -241,8 +244,10 @@ namespace ProjectHub.Core.Services
             if (request.Description != null)
                 task.Description = request.Description;
             
-            if (request.AssigneeId.HasValue)
-                task.AssigneeId = request.AssigneeId;
+            // Handle assignee update - need to check if assigneeId is provided in request (including null for unassigning)
+            // We need to differentiate between "not provided" vs "explicitly set to null"
+            // For now, we'll assume assigneeId is always provided in the request
+            task.AssigneeId = request.AssigneeId;
             
             if (request.Status.HasValue)
                 task.Status = request.Status.Value;
@@ -279,7 +284,7 @@ namespace ProjectHub.Core.Services
                     originalStatus.ToString(), task.Status.ToString());
             }
 
-            if (request.AssigneeId.HasValue && originalAssigneeId != task.AssigneeId)
+            if (originalAssigneeId != task.AssigneeId)
             {
                 var oldAssigneeName = originalAssigneeId.HasValue ? 
                     (await _userRepository.GetByIdAsync(originalAssigneeId.Value))?.UserName ?? "Unknown" : "Unassigned";

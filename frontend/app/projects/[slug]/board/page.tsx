@@ -338,7 +338,9 @@ export default function ProjectBoardPage() {
           priority: draggedTask.priority,
           assigneeId: draggedTask.assigneeId,
           dueDate: draggedTask.dueDate,
-          estimatedHours: draggedTask.estimatedHours
+          estimatedHours: draggedTask.estimatedHours,
+          labels: draggedTask.labels || [],
+          type: draggedTask.type || 'task'
         })
       })
       
@@ -551,6 +553,7 @@ export default function ProjectBoardPage() {
         priority: priorityMap[updatedTask.priority ?? 1] ?? undefined,
         estimatedHours: updatedTask.estimatedHours ?? undefined,
         type: updatedTask.type ?? 'task',
+        labels: updatedTask.labels || [],
       }
 
       const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/tasks/${updatedTask.id}`, {

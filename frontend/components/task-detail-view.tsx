@@ -116,16 +116,24 @@ export function TaskDetailView({
   const [description, setDescription] = useState(initialTask?.description || "")
   const [assignee, setAssignee] = useState<string | number | null>(initialTask?.assigneeId || null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
-  const [selectedLabels, setSelectedLabels] = useState<number[]>(
-    (initialTask?.labels || [])
+  const [selectedLabels, setSelectedLabels] = useState<number[]>(() => {
+    if (!initialTask?.labels || !Array.isArray(initialTask.labels)) {
+      return []
+    }
+    
+    return initialTask.labels
       .map((label: any) => {
+        if (!label) return null
+        
         // label can be a string (name) or an object with a name field
         const labelName = typeof label === 'string' ? label : (label?.name ?? '')
-        const foundLabel = labels.find((l) => l.name === labelName)
-        return foundLabel?.id
+        if (!labelName || typeof labelName !== 'string') return null
+        
+        const foundLabel = labels.find((l) => l.name === labelName.trim())
+        return foundLabel?.id || null
       })
-      .filter(Boolean) as number[],
-  )
+      .filter((id: any): id is number => typeof id === 'number')
+  })
   const [dueDate, setDueDate] = useState<Date | undefined>(
     initialTask?.dueDate ? new Date(initialTask.dueDate) : undefined
   )
@@ -263,16 +271,24 @@ export function TaskDetailView({
       setTitle(initialTask.title || "")
       setDescription(initialTask.description || "")
       setAssignee(initialTask.assigneeId || null)
-      setSelectedLabels(
-        (initialTask.labels || [])
+      setSelectedLabels(() => {
+        if (!initialTask.labels || !Array.isArray(initialTask.labels)) {
+          return []
+        }
+        
+        return initialTask.labels
           .map((label: any) => {
+            if (!label) return null
+            
             // label can be a string (name) or an object with a name field
             const labelName = typeof label === 'string' ? label : (label?.name ?? '')
-            const foundLabel = labels.find((l) => l.name === labelName)
-            return foundLabel?.id
+            if (!labelName || typeof labelName !== 'string') return null
+            
+            const foundLabel = labels.find((l) => l.name === labelName.trim())
+            return foundLabel?.id || null
           })
-          .filter(Boolean) as number[],
-      )
+          .filter((id: any): id is number => typeof id === 'number')
+      })
       setDueDate(initialTask.dueDate ? new Date(initialTask.dueDate) : undefined)
       setPriority(
         initialTask.priority ? 
@@ -329,14 +345,24 @@ export function TaskDetailView({
       task?.type !== initialTask?.type ||
       !arraysEqual(
         selectedLabels,
-        (initialTask?.labels || [])
-          .map((label: any) => {
-            // label can be a string (name) or an object with a name field
-            const labelName = typeof label === 'string' ? label : (label?.name ?? '')
-            const foundLabel = labels.find((l) => l.name === labelName)
-            return foundLabel?.id
-          })
-          .filter(Boolean) as number[],
+        (() => {
+          if (!initialTask?.labels || !Array.isArray(initialTask.labels)) {
+            return []
+          }
+          
+          return initialTask.labels
+            .map((label: any) => {
+              if (!label) return null
+              
+              // label can be a string (name) or an object with a name field
+              const labelName = typeof label === 'string' ? label : (label?.name ?? '')
+              if (!labelName || typeof labelName !== 'string') return null
+              
+              const foundLabel = labels.find((l) => l.name === labelName.trim())
+              return foundLabel?.id || null
+            })
+            .filter((id: any): id is number => typeof id === 'number')
+        })()
       )
     ) {
       setHasUnsavedChanges(true)
@@ -383,10 +409,13 @@ export function TaskDetailView({
         initials: updatedAssigneeDetails.initials,
       } : (currentAssigneeId === null ? null : initialTask?.assignee),
       type: task?.type || initialTask?.type,
-      labels: selectedLabels.map((id) => {
-        const label = labels.find((l) => l.id === id);
-        return label?.name;
-      }).filter(Boolean),
+      labels: selectedLabels
+        .map((id) => {
+          if (!id || typeof id !== 'number') return null
+          const label = labels.find((l) => l.id === id)
+          return label?.name || null
+        })
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0),
       dueDate,
       priority: priorityMap[priority || 'medium'] || 2,
       status: statusMap[stage] || 1,
@@ -407,10 +436,13 @@ export function TaskDetailView({
         priority: priorityMap[priority || 'medium'] || 2,
         estimatedHours: estimate,
         type: task?.type || 'task',
-        labels: selectedLabels.map((id) => {
-          const label = labels.find((l) => l.id === id);
-          return label?.name;
-        }).filter(Boolean),
+        labels: selectedLabels
+          .map((id) => {
+            if (!id || typeof id !== 'number') return null
+            const label = labels.find((l) => l.id === id)
+            return label?.name || null
+          })
+          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0),
       };
 
       await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}`, {

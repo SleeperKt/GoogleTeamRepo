@@ -50,6 +50,21 @@ namespace ProjectHub.Core.Services
             return await _participantRepository.IsUserInProjectAsync(projectId, user.UserId);
         }
 
+        private static string GetUserInitials(string userName)
+        {
+            if (string.IsNullOrWhiteSpace(userName))
+                return "??";
+
+            var parts = userName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return "??";
+
+            if (parts.Length == 1)
+                return parts[0].Length > 0 ? parts[0][0].ToString().ToUpper() : "?";
+
+            return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpper();
+        }
+
         private async Task<TaskResponse> MapToTaskResponseAsync(ProjectTask task)
         {
             var createdByUser = await _userRepository.GetByIdAsync(task.CreatedById);
@@ -78,6 +93,18 @@ namespace ProjectHub.Core.Services
                 }
             }
 
+            // Create assignee info object if assignee exists
+            DataTransferObjects.AssigneeInfo? assigneeInfo = null;
+            if (assigneeUser != null)
+            {
+                assigneeInfo = new DataTransferObjects.AssigneeInfo
+                {
+                    Name = assigneeUser.UserName ?? "Unknown",
+                    Image = null, // We don't have user images yet, could be added later
+                    Initials = GetUserInitials(assigneeUser.UserName ?? "Unknown")
+                };
+            }
+
             return new TaskResponse
             {
                 Id = task.Id,
@@ -86,6 +113,7 @@ namespace ProjectHub.Core.Services
                 ProjectId = task.ProjectId,
                 AssigneeId = task.AssigneeId,
                 AssigneeName = assigneeUser?.UserName,
+                Assignee = assigneeInfo,
                 Status = task.Status,
                 Stage = task.Stage,
                 CreatedById = task.CreatedById,

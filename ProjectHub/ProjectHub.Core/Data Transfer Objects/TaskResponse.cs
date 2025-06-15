@@ -3,6 +3,12 @@ using System;
 
 namespace ProjectHub.Core.DataTransferObjects
 {
+    public class AssigneeInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Image { get; set; }
+        public string Initials { get; set; } = string.Empty;
+    }
     public class TaskResponse
     {
         public int Id { get; set; }
@@ -10,6 +16,7 @@ namespace ProjectHub.Core.DataTransferObjects
         public string Description { get; set; } = string.Empty;
         public int ProjectId { get; set; }        public Guid? AssigneeId { get; set; }
         public string? AssigneeName { get; set; }
+        public AssigneeInfo? Assignee { get; set; }
         public ProjectHub.Core.Entities.TaskStatus Status { get; set; }
         public TaskStage Stage { get; set; }
         public Guid CreatedById { get; set; }

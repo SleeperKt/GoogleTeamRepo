@@ -92,3 +92,41 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Add these performance optimizations to the end of the file */
+
+/* GPU acceleration utilities */
+.transform-gpu {
+  transform: translate3d(0, 0, 0);
+}
+
+/* Prevent layout thrashing for animating elements */
+.will-change-transform {
+  will-change: transform;
+}
+
+/* Optimize sidebar animations */
+.sidebar-slide {
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Prevent text selection during animations */
+.no-select-during-animation {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Optimize scrollable content */
+.optimized-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-scrolling: touch;
+}
+
+/* Force hardware acceleration for critical animations */
+.hw-accelerate {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}

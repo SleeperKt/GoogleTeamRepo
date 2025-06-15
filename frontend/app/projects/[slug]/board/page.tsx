@@ -952,7 +952,7 @@ export default function ProjectBoardPage() {
           {/* Board */}
           <div
             ref={boardRef}
-            className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-300px)]"
+            className="flex gap-4 pb-4 min-h-[calc(100vh-300px)] w-full"
             style={{ scrollBehavior: isScrolling ? "auto" : "smooth" }}
           >
             {columnDefinitions.map((column) => {
@@ -976,7 +976,7 @@ export default function ProjectBoardPage() {
                 <div
                   key={column.id}
                   className={cn(
-                    "flex-shrink-0 w-80 bg-white dark:bg-gray-800 rounded-lg border shadow-sm overflow-hidden",
+                    "flex-1 min-w-0 bg-white dark:bg-gray-800 rounded-lg border shadow-sm overflow-hidden",
                     dragOverColumn === column.id && !dragOverTaskId && "border-violet-500 ring-1 ring-violet-500",
                   )}
                   onDragOver={(e) => handleDragOver(e, column.id)}

@@ -229,7 +229,12 @@ export function TaskDetailView({
       }
     }
 
-    loadParticipants()
+    // Defer loading participants to prevent animation stuttering
+    const timeoutId = setTimeout(() => {
+      loadParticipants()
+    }, 350)
+    
+    return () => clearTimeout(timeoutId)
   }, [open, projectPublicId])
 
   // Function to refresh activities
@@ -256,11 +261,27 @@ export function TaskDetailView({
     }
   }, [initialTask?.id, projectPublicId])
 
-  // Load comments and activities when task opens
-  useEffect(() => {
-    const loadTaskData = async () => {
-      if (!open || !initialTask?.id || !projectPublicId) return
+  // Throttle the refreshActivities function to prevent excessive calls
+  const throttledRefreshActivities = React.useCallback(
+    React.useMemo(() => {
+      let timeout: NodeJS.Timeout | null = null
+      return () => {
+        if (timeout) return
+        timeout = setTimeout(() => {
+          refreshActivities()
+          timeout = null
+        }, 300)
+      }
+    }, [refreshActivities]),
+    [refreshActivities]
+  )
 
+  // Load comments and activities when task opens - deferred to prevent animation stuttering
+  useEffect(() => {
+    if (!open || !initialTask?.id || !projectPublicId) return
+
+    // Defer heavy operations until after the animation completes (300ms)
+    const loadTaskData = async () => {
       // Load comments
       setLoadingComments(true)
       try {
@@ -293,27 +314,30 @@ export function TaskDetailView({
       }
     }
 
-    loadTaskData()
+    // Delay data loading until animation completes
+    const timeoutId = setTimeout(loadTaskData, 350) // Slightly longer than animation duration
+    
+    return () => clearTimeout(timeoutId)
   }, [open, initialTask?.id, projectPublicId, refreshActivities])
 
   // Refresh activities when task is updated externally (like via drag & drop)
   useEffect(() => {
     if (!open || !initialTask?.id) return
     
-    // Add a small delay to ensure backend processing is complete
+    // Use a ref to prevent excessive calls
     const timeoutId = setTimeout(() => {
-      refreshActivities()
+      throttledRefreshActivities()
     }, 200)
 
     return () => clearTimeout(timeoutId)
-  }, [open, initialTask?.status, initialTask?.assigneeName, initialTask?.priority, refreshActivities])
+  }, [open, initialTask?.id, initialTask?.status, refreshActivities])
 
   // Periodic activity refresh while detail view is open (every 10 seconds)
   useEffect(() => {
     if (!open || !initialTask?.id) return
 
     const intervalId = setInterval(() => {
-      refreshActivities()
+      throttledRefreshActivities()
     }, 10000) // Refresh every 10 seconds
 
     return () => clearInterval(intervalId)
@@ -367,17 +391,22 @@ export function TaskDetailView({
     }
   }, [initialTask])
 
-  // Focus on title input when sidebar opens
+  // Focus on title input when sidebar opens - defer to prevent animation stuttering
   useEffect(() => {
     if (open) {
-      setTimeout(() => {
-        titleInputRef.current?.focus()
-      }, 100)
+      // Use requestAnimationFrame to ensure focus happens after rendering is complete
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          titleInputRef.current?.focus()
+        }, 350) // After animation completes
+      })
     }
   }, [open])
 
-  // Mark changes as unsaved when any field changes
-  useEffect(() => {
+  // Mark changes as unsaved when any field changes - optimized with useMemo
+  const hasChanges = React.useMemo(() => {
+    if (!initialTask) return false
+    
     const originalDueDate = initialTask?.dueDate ? new Date(initialTask.dueDate) : undefined
     const originalPriority = initialTask?.priority ? 
       initialTask.priority === 1 ? "low" :
@@ -389,7 +418,25 @@ export function TaskDetailView({
     
     const dueDateChanged = dueDate?.getTime() !== originalDueDate?.getTime()
     
-    if (
+    const originalLabels = (() => {
+      if (!initialTask?.labels || !Array.isArray(initialTask.labels)) {
+        return []
+      }
+      
+      return initialTask.labels
+        .map((label: any) => {
+          if (!label) return null
+          
+          const labelName = typeof label === 'string' ? label : (label?.name ?? '')
+          if (!labelName || typeof labelName !== 'string') return null
+          
+          const foundLabel = labels.find((l) => l.name === labelName.trim())
+          return foundLabel?.id || null
+        })
+        .filter((id: any): id is number => typeof id === 'number')
+    })()
+    
+    return (
       title !== initialTask?.title ||
       description !== initialTask?.description ||
       assignee !== initialTask?.assigneeId ||
@@ -398,33 +445,14 @@ export function TaskDetailView({
       stage !== originalStage ||
       estimate !== initialTask?.estimatedHours ||
       task?.type !== initialTask?.type ||
-      !arraysEqual(
-        selectedLabels,
-        (() => {
-          if (!initialTask?.labels || !Array.isArray(initialTask.labels)) {
-            return []
-          }
-          
-          return initialTask.labels
-            .map((label: any) => {
-              if (!label) return null
-              
-              // label can be a string (name) or an object with a name field
-              const labelName = typeof label === 'string' ? label : (label?.name ?? '')
-              if (!labelName || typeof labelName !== 'string') return null
-              
-              const foundLabel = labels.find((l) => l.name === labelName.trim())
-              return foundLabel?.id || null
-            })
-            .filter((id: any): id is number => typeof id === 'number')
-        })()
-      )
-    ) {
-      setHasUnsavedChanges(true)
-    } else {
-      setHasUnsavedChanges(false)
-    }
-  }, [title, description, assignee, selectedLabels, dueDate, priority, stage, estimate, initialTask, task])
+      !arraysEqual(selectedLabels, originalLabels)
+    )
+  }, [title, description, assignee, selectedLabels, dueDate, priority, stage, estimate, initialTask, task, labels])
+
+  // Update unsaved changes state when computed value changes
+  useEffect(() => {
+    setHasUnsavedChanges(hasChanges)
+  }, [hasChanges])
 
   // Helper function to compare arrays
   const arraysEqual = (a: any[], b: any[]) => {
@@ -780,6 +808,21 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
     }, 1000)
   }
 
+  // Animation state management
+  const [isAnimating, setIsAnimating] = React.useState(false)
+  
+  // Track animation state
+  React.useEffect(() => {
+    if (open) {
+      setIsAnimating(true)
+      // Clear animation state after animation completes
+      const timeoutId = setTimeout(() => setIsAnimating(false), 350)
+      return () => clearTimeout(timeoutId)
+    } else {
+      setIsAnimating(false)
+    }
+  }, [open])
+
   // If not open, don't render anything
   if (!open) return null
 
@@ -788,9 +831,10 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
       {/* Sidebar Layout */}
       <div
         className={cn(
-          "fixed top-0 right-0 h-full w-[350px] bg-white dark:bg-gray-800 border-l shadow-lg z-50 flex flex-col transition-transform duration-300 ease-in-out",
+          "fixed top-0 right-0 h-full w-[350px] bg-white dark:bg-gray-800 border-l shadow-lg z-50 flex flex-col transition-transform duration-300 ease-in-out will-change-transform transform-gpu sidebar-slide hw-accelerate",
           open ? "translate-x-0" : "translate-x-full",
           "md:w-[350px] sm:w-[320px]",
+          !open && "no-select-during-animation",
         )}
       >
         {/* Header with back button and title */}
@@ -820,8 +864,22 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
         </div>
 
         {/* Main content area - single scrollable panel */}
-        <div className="flex-1 overflow-auto">
-          <div className="p-2 space-y-4">
+        <div className="flex-1 overflow-auto optimized-scroll">
+          {isAnimating ? (
+            // Simplified view during animation to prevent stuttering
+            <div className="p-2 space-y-4">
+              <div className="space-y-2">
+                <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                <div className="h-20 bg-gray-200 rounded animate-pulse"></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+                <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+              </div>
+              <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+            </div>
+          ) : (
+            <div className="p-2 space-y-4">
             {/* Description Section */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -1473,6 +1531,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer with actions */}
@@ -1525,7 +1584,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
       {/* Backdrop for mobile */}
       <div
         className={cn(
-          "fixed inset-0 bg-black/20 z-40 md:hidden",
+          "fixed inset-0 bg-black/20 z-40 md:hidden transition-opacity duration-300 ease-in-out will-change-transform",
           open ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
         onClick={() => onOpenChange(false)}

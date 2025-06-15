@@ -1061,12 +1061,14 @@ export default function ProjectBoardPage() {
                                     <Tooltip>
                                       <TooltipTrigger asChild>
                                         <Avatar className="h-6 w-6">
-                                          <AvatarImage src={task.assignee?.image} alt={task.assignee?.name} />
-                                          <AvatarFallback>{task.assignee?.initials}</AvatarFallback>
+                                          <AvatarImage src={task.assignee?.image} alt={task.assignee?.name || task.assigneeName} />
+                                          <AvatarFallback className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs">
+                                            {task.assignee?.initials || (task.assigneeName ? task.assigneeName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?')}
+                                          </AvatarFallback>
                                         </Avatar>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p>{task.assignee?.name}</p>
+                                        <p>{task.assignee?.name || task.assigneeName || 'Unassigned'}</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>

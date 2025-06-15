@@ -63,7 +63,6 @@ namespace ProjectHub.Infrastructure.Repositories
         public async Task<IEnumerable<ProjectTask>> GetFilteredTasksAsync(int projectId, string? searchTerm = null, ProjectHub.Core.Entities.TaskStatus? status = null, TaskStage? stage = null, Guid? assigneeId = null, string? assigneeName = null, int? priority = null, DateTime? dueDateFrom = null, DateTime? dueDateTo = null, string? taskType = null, string[]? labels = null, int pageNumber = 1, int pageSize = 10)
         {
             var query = _context.Tasks
-                .Include(t => t.Assignee)
                 .Where(t => t.ProjectId == projectId);
 
             // Search functionality
@@ -83,11 +82,7 @@ namespace ProjectHub.Infrastructure.Repositories
             if (assigneeId.HasValue)
                 query = query.Where(t => t.AssigneeId == assigneeId.Value);
 
-            // Filter by assignee name if provided instead of ID
-            if (!string.IsNullOrWhiteSpace(assigneeName))
-            {
-                query = query.Where(t => t.Assignee != null && t.Assignee.UserName == assigneeName);
-            }
+            // Note: assigneeName filtering not implemented - use assigneeId instead
 
             if (priority.HasValue)
                 query = query.Where(t => t.Priority == priority.Value);
@@ -98,7 +93,10 @@ namespace ProjectHub.Infrastructure.Repositories
             if (dueDateTo.HasValue)
                 query = query.Where(t => t.DueDate <= dueDateTo.Value);
 
-            // TODO: Add task type filtering when TaskType property is added to ProjectTask entity
+            // Filter by task type if provided
+            if (!string.IsNullOrWhiteSpace(taskType))
+                query = query.Where(t => t.Type == taskType);
+
             // TODO: Add labels filtering when Labels property is added to ProjectTask entity
 
             return await query
@@ -175,7 +173,6 @@ namespace ProjectHub.Infrastructure.Repositories
         public async Task<int> GetTotalCountAsync(int projectId, string? searchTerm = null, ProjectHub.Core.Entities.TaskStatus? status = null, TaskStage? stage = null, Guid? assigneeId = null, string? assigneeName = null, int? priority = null, DateTime? dueDateFrom = null, DateTime? dueDateTo = null, string? taskType = null, string[]? labels = null)
         {
             var query = _context.Tasks
-                .Include(t => t.Assignee)
                 .Where(t => t.ProjectId == projectId);
 
             // Search functionality
@@ -195,11 +192,7 @@ namespace ProjectHub.Infrastructure.Repositories
             if (assigneeId.HasValue)
                 query = query.Where(t => t.AssigneeId == assigneeId.Value);
 
-            // Filter by assignee name if provided instead of ID
-            if (!string.IsNullOrWhiteSpace(assigneeName))
-            {
-                query = query.Where(t => t.Assignee != null && t.Assignee.UserName == assigneeName);
-            }
+            // Note: assigneeName filtering not implemented - use assigneeId instead
 
             if (priority.HasValue)
                 query = query.Where(t => t.Priority == priority.Value);
@@ -210,7 +203,10 @@ namespace ProjectHub.Infrastructure.Repositories
             if (dueDateTo.HasValue)
                 query = query.Where(t => t.DueDate <= dueDateTo.Value);
 
-            // TODO: Add task type filtering when TaskType property is added to ProjectTask entity
+            // Filter by task type if provided
+            if (!string.IsNullOrWhiteSpace(taskType))
+                query = query.Where(t => t.Type == taskType);
+
             // TODO: Add labels filtering when Labels property is added to ProjectTask entity
 
             return await query.CountAsync();

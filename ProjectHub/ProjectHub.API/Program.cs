@@ -34,6 +34,10 @@ builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService
 builder.Services.AddScoped<ITaskRepository, TaskRepository>();
 builder.Services.AddScoped<ITaskService, TaskService>();
 
+// Регистрация сервисов и репозиториев для комментариев и активности задач
+builder.Services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
+builder.Services.AddScoped<ITaskActivityRepository, TaskActivityRepository>();
+
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
@@ -43,6 +47,7 @@ builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>()
 builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
 builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
+builder.Services.AddScoped<IValidator<CreateTaskCommentRequest>, CreateTaskCommentRequestValidator>();
 
 builder.Services.AddEndpointsApiExplorer();
 var jwtKey = builder.Configuration["Jwt:Key"];

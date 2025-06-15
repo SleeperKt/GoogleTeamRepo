@@ -14,17 +14,23 @@ namespace ProjectHub.Core.Services
         private readonly IProjectParticipantRepository _participantRepository;
         private readonly IUserRepository _userRepository;
         private readonly IProjectRepository _projectRepository;
+        private readonly ITaskCommentRepository _commentRepository;
+        private readonly ITaskActivityRepository _activityRepository;
 
         public TaskService(
             ITaskRepository taskRepository,
             IProjectParticipantRepository participantRepository,
             IUserRepository userRepository,
-            IProjectRepository projectRepository)
+            IProjectRepository projectRepository,
+            ITaskCommentRepository commentRepository,
+            ITaskActivityRepository activityRepository)
         {
             _taskRepository = taskRepository;
             _participantRepository = participantRepository;
             _userRepository = userRepository;
             _projectRepository = projectRepository;
+            _commentRepository = commentRepository;
+            _activityRepository = activityRepository;
         }
 
         private async Task<User?> FindUserByIdOrEmailAsync(string userIdOrEmail)
@@ -54,6 +60,10 @@ namespace ProjectHub.Core.Services
                 assigneeUser = await _userRepository.GetByIdAsync(task.AssigneeId.Value);
             }
 
+            // Get comment and activity counts
+            var commentCount = await _commentRepository.GetCommentCountByTaskIdAsync(task.Id);
+            var activityCount = await _activityRepository.GetActivityCountByTaskIdAsync(task.Id);
+
             return new TaskResponse
             {
                 Id = task.Id,
@@ -70,7 +80,10 @@ namespace ProjectHub.Core.Services
                 UpdatedAt = task.UpdatedAt,
                 DueDate = task.DueDate,
                 EstimatedHours = task.EstimatedHours,
-                Priority = task.Priority
+                Priority = task.Priority,
+                Type = task.Type,
+                Comments = commentCount,
+                Activities = activityCount
             };
         }
 
@@ -165,10 +178,15 @@ namespace ProjectHub.Core.Services
                 DueDate = request.DueDate,
                 EstimatedHours = request.EstimatedHours,
                 Priority = request.Priority,
+                Type = request.Type,
                 CreatedAt = DateTime.UtcNow
             };
 
             await _taskRepository.AddAsync(task);
+            
+            // Log activity
+            await LogTaskActivityAsync(task.Id, "created", createdByUserId, $"Created task '{task.Title}'");
+            
             return await MapToTaskResponseAsync(task);
         }
 
@@ -196,6 +214,11 @@ namespace ProjectHub.Core.Services
                 }
             }
 
+            // Store original values for activity logging
+            var originalStatus = task.Status;
+            var originalAssigneeId = task.AssigneeId;
+            var originalPriority = task.Priority;
+
             // Update only provided fields
             if (!string.IsNullOrEmpty(request.Title))
                 task.Title = request.Title;
@@ -220,8 +243,43 @@ namespace ProjectHub.Core.Services
             
             if (request.Priority.HasValue)
                 task.Priority = request.Priority.Value;
+            
+            if (!string.IsNullOrEmpty(request.Type))
+                task.Type = request.Type;
 
             await _taskRepository.UpdateAsync(task);
+
+            // Log activities for significant changes
+            if (request.Status.HasValue && originalStatus != task.Status)
+            {
+                await LogTaskActivityAsync(id, "status_change", requestingUserId, 
+                    $"Changed status from {originalStatus} to {task.Status}", 
+                    originalStatus.ToString(), task.Status.ToString());
+            }
+
+            if (request.AssigneeId.HasValue && originalAssigneeId != task.AssigneeId)
+            {
+                var oldAssigneeName = originalAssigneeId.HasValue ? 
+                    (await _userRepository.GetByIdAsync(originalAssigneeId.Value))?.UserName ?? "Unknown" : "Unassigned";
+                var newAssigneeName = task.AssigneeId.HasValue ? 
+                    (await _userRepository.GetByIdAsync(task.AssigneeId.Value))?.UserName ?? "Unknown" : "Unassigned";
+                
+                await LogTaskActivityAsync(id, "assignee_change", requestingUserId, 
+                    $"Changed assignee from {oldAssigneeName} to {newAssigneeName}", 
+                    oldAssigneeName, newAssigneeName);
+            }
+
+            if (request.Priority.HasValue && originalPriority != task.Priority)
+            {
+                var priorityNames = new Dictionary<int, string> { {1, "Low"}, {2, "Medium"}, {3, "High"}, {4, "Critical"} };
+                var oldPriorityName = priorityNames.GetValueOrDefault(originalPriority, "Unknown");
+                var newPriorityName = priorityNames.GetValueOrDefault(task.Priority, "Unknown");
+                
+                await LogTaskActivityAsync(id, "priority_change", requestingUserId, 
+                    $"Changed priority from {oldPriorityName} to {newPriorityName}", 
+                    oldPriorityName, newPriorityName);
+            }
+
             return await MapToTaskResponseAsync(task);
         }
 
@@ -249,6 +307,9 @@ namespace ProjectHub.Core.Services
                 throw new UnauthorizedAccessException("Only project owner or task creator can delete this task.");
             }
 
+            // Log activity before deletion
+            await LogTaskActivityAsync(id, "deleted", requestingUserId, $"Deleted task '{task.Title}'");
+
             await _taskRepository.DeleteAsync(id);
         }
 
@@ -262,7 +323,7 @@ namespace ProjectHub.Core.Services
 
             if (filter == null)
             {
-                return await _taskRepository.GetTotalCountAsync(projectId);
+                return await _taskRepository.GetTotalCountAsync(projectId, null, null, null, null, null, null, null);
             }
 
             return await _taskRepository.GetTotalCountAsync(
@@ -296,6 +357,170 @@ namespace ProjectHub.Core.Services
             }
 
             return taskResponses;
+        }
+
+        // Comment methods
+        public async Task<TaskCommentResponse> AddCommentAsync(int taskId, CreateTaskCommentRequest request, string userId)
+        {
+            var task = await _taskRepository.GetByIdAsync(taskId);
+            if (task == null)
+            {
+                throw new ArgumentException("Task not found.");
+            }
+
+            // Check if user is participant in the project
+            if (!await IsUserProjectParticipantAsync(task.ProjectId, userId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            var user = await FindUserByIdOrEmailAsync(userId);
+            if (user == null)
+            {
+                throw new ArgumentException("Invalid user ID or email", nameof(userId));
+            }
+
+            var comment = new TaskComment
+            {
+                TaskId = taskId,
+                UserId = user.UserId,
+                Content = request.Content,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _commentRepository.AddAsync(comment);
+
+            // Log activity
+            await LogTaskActivityAsync(taskId, "comment", userId, $"Added a comment");
+
+            return new TaskCommentResponse
+            {
+                Id = comment.Id,
+                TaskId = comment.TaskId,
+                UserId = comment.UserId,
+                UserName = user.UserName,
+                Content = comment.Content,
+                CreatedAt = comment.CreatedAt,
+                UpdatedAt = comment.UpdatedAt
+            };
+        }
+
+        public async Task<IEnumerable<TaskCommentResponse>> GetTaskCommentsAsync(int taskId, string requestingUserId)
+        {
+            var task = await _taskRepository.GetByIdAsync(taskId);
+            if (task == null)
+            {
+                throw new ArgumentException("Task not found.");
+            }
+
+            // Check if user is participant in the project
+            if (!await IsUserProjectParticipantAsync(task.ProjectId, requestingUserId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            var comments = await _commentRepository.GetByTaskIdAsync(taskId);
+            var commentResponses = new List<TaskCommentResponse>();
+
+            foreach (var comment in comments)
+            {
+                var user = await _userRepository.GetByIdAsync(comment.UserId);
+                commentResponses.Add(new TaskCommentResponse
+                {
+                    Id = comment.Id,
+                    TaskId = comment.TaskId,
+                    UserId = comment.UserId,
+                    UserName = user?.UserName ?? "Unknown",
+                    Content = comment.Content,
+                    CreatedAt = comment.CreatedAt,
+                    UpdatedAt = comment.UpdatedAt
+                });
+            }
+
+            return commentResponses;
+        }
+
+        public async Task<int> GetTaskCommentCountAsync(int taskId, string requestingUserId)
+        {
+            var task = await _taskRepository.GetByIdAsync(taskId);
+            if (task == null)
+            {
+                throw new ArgumentException("Task not found.");
+            }
+
+            // Check if user is participant in the project
+            if (!await IsUserProjectParticipantAsync(task.ProjectId, requestingUserId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            return await _commentRepository.GetCommentCountByTaskIdAsync(taskId);
+        }
+
+        // Activity methods
+        public async Task<IEnumerable<TaskActivityResponse>> GetTaskActivitiesAsync(int taskId, string requestingUserId)
+        {
+            var task = await _taskRepository.GetByIdAsync(taskId);
+            if (task == null)
+            {
+                throw new ArgumentException("Task not found.");
+            }
+
+            // Check if user is participant in the project
+            if (!await IsUserProjectParticipantAsync(task.ProjectId, requestingUserId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            var activities = await _activityRepository.GetByTaskIdAsync(taskId, 50); // Limit to 50 activities
+            var activityResponses = new List<TaskActivityResponse>();
+
+            foreach (var activity in activities)
+            {
+                var user = await _userRepository.GetByIdAsync(activity.UserId);
+                activityResponses.Add(new TaskActivityResponse
+                {
+                    Id = activity.Id,
+                    TaskId = activity.TaskId,
+                    UserId = activity.UserId,
+                    UserName = user?.UserName ?? "Unknown",
+                    ActivityType = activity.ActivityType,
+                    Description = activity.Description,
+                    OldValue = activity.OldValue,
+                    NewValue = activity.NewValue,
+                    CreatedAt = activity.CreatedAt
+                });
+            }
+
+            return activityResponses;
+        }
+
+        public async Task LogTaskActivityAsync(int taskId, string activityType, string userId, string? description = null, string? oldValue = null, string? newValue = null)
+        {
+            var task = await _taskRepository.GetByIdAsync(taskId);
+            if (task == null)
+            {
+                throw new ArgumentException("Task not found.");
+            }
+
+            var user = await FindUserByIdOrEmailAsync(userId);
+            if (user == null)
+            {
+                throw new ArgumentException("Invalid user ID or email", nameof(userId));
+            }
+
+            var activity = new TaskActivity
+            {
+                TaskId = taskId,
+                UserId = user.UserId,
+                ActivityType = activityType,
+                Description = description,
+                OldValue = oldValue,
+                NewValue = newValue,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _activityRepository.AddAsync(activity);
         }
     }
 }

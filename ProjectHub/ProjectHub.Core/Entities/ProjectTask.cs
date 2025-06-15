@@ -36,5 +36,8 @@ namespace ProjectHub.Core.Entities
         public int? EstimatedHours { get; set; }
         
         public int Priority { get; set; } = 1; // 1=Low, 2=Medium, 3=High, 4=Critical
+        
+        [MaxLength(50)]
+        public string Type { get; set; } = "task"; // task, bug, feature, story, epic
     }
 }

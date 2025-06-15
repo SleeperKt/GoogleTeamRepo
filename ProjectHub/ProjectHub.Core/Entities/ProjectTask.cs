@@ -39,5 +39,8 @@ namespace ProjectHub.Core.Entities
         
         [MaxLength(50)]
         public string Type { get; set; } = "task"; // task, bug, feature, story, epic
+        
+        [MaxLength(500)]
+        public string? Labels { get; set; } // JSON string of labels: ["Frontend", "Bug"]
     }
 }

@@ -64,6 +64,20 @@ namespace ProjectHub.Core.Services
             var commentCount = await _commentRepository.GetCommentCountByTaskIdAsync(task.Id);
             var activityCount = await _activityRepository.GetActivityCountByTaskIdAsync(task.Id);
 
+            string[]? labels = null;
+            if (!string.IsNullOrEmpty(task.Labels))
+            {
+                try
+                {
+                    labels = System.Text.Json.JsonSerializer.Deserialize<string[]>(task.Labels);
+                }
+                catch
+                {
+                    // If deserialization fails, ignore labels
+                    labels = null;
+                }
+            }
+
             return new TaskResponse
             {
                 Id = task.Id,
@@ -82,6 +96,7 @@ namespace ProjectHub.Core.Services
                 EstimatedHours = task.EstimatedHours,
                 Priority = task.Priority,
                 Type = task.Type,
+                Labels = labels,
                 Comments = commentCount,
                 Activities = activityCount
             };
@@ -246,6 +261,13 @@ namespace ProjectHub.Core.Services
             
             if (!string.IsNullOrEmpty(request.Type))
                 task.Type = request.Type;
+            
+            if (request.Labels != null)
+            {
+                task.Labels = request.Labels.Length > 0 
+                    ? System.Text.Json.JsonSerializer.Serialize(request.Labels)
+                    : null;
+            }
 
             await _taskRepository.UpdateAsync(task);
 

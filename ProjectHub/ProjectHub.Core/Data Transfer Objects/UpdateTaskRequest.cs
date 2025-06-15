@@ -13,5 +13,6 @@ namespace ProjectHub.Core.DataTransferObjects
         public int? EstimatedHours { get; set; }
         public int? Priority { get; set; }
         public string? Type { get; set; }
+        public string[]? Labels { get; set; }
     }
 }

@@ -189,6 +189,7 @@ const TaskDetailViewComponent = function TaskDetailView({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [showAllActivities, setShowAllActivities] = useState(false)
   const [expandedSections, setExpandedSections] = useState<string[]>(["description", "details", "ai"])
 
   // Refs
@@ -1422,7 +1423,19 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
 
             {/* Activity Section */}
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Activity</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">Activity</h3>
+                {activities.length > 3 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAllActivities(!showAllActivities)}
+                    className="h-6 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {showAllActivities ? 'Show less' : `View all (${activities.length})`}
+                  </Button>
+                )}
+              </div>
               <div className="space-y-3">
                 {loadingActivities ? (
                   <div className="text-center py-8">
@@ -1436,7 +1449,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   </div>
                 ) : (
                   <div className="relative border-l-2 border-border pl-6 ml-3 space-y-6">
-                    {activities.map((activity) => (
+                    {(showAllActivities ? activities : activities.slice(0, 3)).map((activity) => (
                       <div key={activity.id} className="relative">
                         {/* Timeline dot */}
                         <div className="absolute -left-[25px] top-1 h-3 w-3 rounded-full bg-violet-500 border-2 border-background shadow-sm" />

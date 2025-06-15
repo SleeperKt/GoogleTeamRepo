@@ -1330,88 +1330,94 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
             </div>
 
             {/* Activity Section */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium">Activity</h3>
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Activity</h3>
               <div className="space-y-3">
                 {loadingActivities ? (
-                  <div className="text-center py-6">
-                    <div className="animate-spin h-6 w-6 border-2 border-violet-500 border-t-transparent rounded-full mx-auto mb-2" />
-                    <p className="text-muted-foreground text-xs">Loading activity...</p>
+                  <div className="text-center py-8">
+                    <div className="animate-spin h-6 w-6 border-2 border-violet-500 border-t-transparent rounded-full mx-auto mb-3" />
+                    <p className="text-muted-foreground text-sm">Loading activity...</p>
                   </div>
                 ) : activities.length === 0 ? (
-                  <div className="text-center py-6">
-                    <Clock className="h-8 w-8 mx-auto text-muted-foreground opacity-50 mb-2" />
-                    <p className="text-muted-foreground text-xs">No activity yet</p>
+                  <div className="text-center py-8">
+                    <Clock className="h-8 w-8 mx-auto text-muted-foreground opacity-50 mb-3" />
+                    <p className="text-muted-foreground text-sm">No activity yet</p>
                   </div>
                 ) : (
-                  <div className="relative border-l-2 border-muted pl-4 ml-2 space-y-4">
+                  <div className="relative border-l-2 border-border pl-6 ml-3 space-y-6">
                     {activities.map((activity) => (
                       <div key={activity.id} className="relative">
                         {/* Timeline dot */}
-                        <div className="absolute -left-[21px] top-0 h-3 w-3 rounded-full bg-violet-500 border-2 border-background" />
+                        <div className="absolute -left-[25px] top-1 h-3 w-3 rounded-full bg-violet-500 border-2 border-background shadow-sm" />
 
-                        <div className="mb-1">
-                          <div className="flex items-center gap-1">
-                            <Avatar className="h-5 w-5">
-                              <AvatarFallback className="text-[10px]">
+                        <div className="space-y-1">
+                          <div className="flex items-start gap-2">
+                            <Avatar className="h-6 w-6 mt-0.5">
+                              <AvatarFallback className="text-xs font-medium">
                                 {activity.userName?.charAt(0)?.toUpperCase() || "U"}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="font-medium text-xs">{activity.userName || "Unknown"}</span>
-
-                            {activity.activityType === "status_change" && (
-                              <span className="text-xs">
-                                changed status from{" "}
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                                  {activity.oldValue}
-                                </Badge>{" "}
-                                to{" "}
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                                  {activity.newValue}
-                                </Badge>
-                              </span>
-                            )}
-
-                            {activity.activityType === "assignee_change" && (
-                              <span className="text-xs">
-                                {activity.oldValue ? (
-                                  <>
-                                    changed assignee from <span className="font-medium">{activity.oldValue}</span> to{" "}
-                                    <span className="font-medium">{activity.newValue}</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    assigned to <span className="font-medium">{activity.newValue}</span>
-                                  </>
-                                )}
-                              </span>
-                            )}
-
-                            {activity.activityType === "priority_change" && (
-                              <span className="text-xs">
-                                changed priority from{" "}
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                                  {activity.oldValue}
-                                </Badge>{" "}
-                                to{" "}
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                                  {activity.newValue}
-                                </Badge>
-                              </span>
-                            )}
-
-                            {activity.activityType === "comment" && <span className="text-xs">added a comment</span>}
-                            {activity.activityType === "created" && <span className="text-xs">created this task</span>}
-                            {activity.activityType === "updated" && <span className="text-xs">updated this task</span>}
-                            {activity.activityType === "deleted" && <span className="text-xs">deleted this task</span>}
                             
-                            {/* Generic description fallback */}
-                            {!["status_change", "assignee_change", "priority_change", "comment", "created", "updated", "deleted"].includes(activity.activityType) && (
-                              <span className="text-xs">{activity.description || activity.activityType}</span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground mt-1">
-                            {formatTimestamp(new Date(activity.createdAt))}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-medium text-sm text-foreground">{activity.userName || "Unknown"}</span>
+
+                                {activity.activityType === "status_change" && (
+                                  <span className="text-sm text-muted-foreground">
+                                    changed status from{" "}
+                                    <Badge variant="secondary" className="text-xs px-2 py-0.5 font-medium">
+                                      {activity.oldValue}
+                                    </Badge>{" "}
+                                    to{" "}
+                                    <Badge variant="secondary" className="text-xs px-2 py-0.5 font-medium">
+                                      {activity.newValue}
+                                    </Badge>
+                                  </span>
+                                )}
+
+                                {activity.activityType === "assignee_change" && (
+                                  <span className="text-sm text-muted-foreground">
+                                    {activity.oldValue ? (
+                                      <>
+                                        changed assignee from <span className="font-medium text-foreground">{activity.oldValue}</span> to{" "}
+                                        <span className="font-medium text-foreground">{activity.newValue}</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        assigned to <span className="font-medium text-foreground">{activity.newValue}</span>
+                                      </>
+                                    )}
+                                  </span>
+                                )}
+
+                                {activity.activityType === "priority_change" && (
+                                  <span className="text-sm text-muted-foreground">
+                                    changed priority from{" "}
+                                    <Badge variant="secondary" className="text-xs px-2 py-0.5 font-medium">
+                                      {activity.oldValue}
+                                    </Badge>{" "}
+                                    to{" "}
+                                    <Badge variant="secondary" className="text-xs px-2 py-0.5 font-medium">
+                                      {activity.newValue}
+                                    </Badge>
+                                  </span>
+                                )}
+
+                                {activity.activityType === "comment" && <span className="text-sm text-muted-foreground">added a comment</span>}
+                                {activity.activityType === "created" && <span className="text-sm text-muted-foreground">created this task</span>}
+                                {activity.activityType === "updated" && <span className="text-sm text-muted-foreground">updated this task</span>}
+                                {activity.activityType === "deleted" && <span className="text-sm text-muted-foreground">deleted this task</span>}
+                                
+                                {/* Generic description fallback */}
+                                {!["status_change", "assignee_change", "priority_change", "comment", "created", "updated", "deleted"].includes(activity.activityType) && (
+                                  <span className="text-sm text-muted-foreground">{activity.description || activity.activityType}</span>
+                                )}
+                              </div>
+                              
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {formatTimestamp(new Date(activity.createdAt))}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>

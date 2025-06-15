@@ -130,11 +130,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           href: `/projects/${p.publicId}`,
           starred: false,
         })),
-        {
-          name: "View all projects",
-          href: "/projects",
-          icon: ListTodo,
-        },
       ],
     },
     {

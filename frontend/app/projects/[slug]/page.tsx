@@ -20,7 +20,8 @@ import {
   TrendingUp,
   Activity,
   Star,
-  Target
+  Target,
+  AlertCircle
 } from "lucide-react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
@@ -57,6 +58,48 @@ import {
 import { useAuth } from "@/contexts/auth-context"
 import { API_BASE_URL } from "@/lib/api"
 
+// Interface definitions
+interface TeamMember {
+  userId: string
+  userName: string
+  role: string
+  joinedAt: string
+  initials: string
+  status?: string
+}
+
+interface TaskStatistics {
+  projectId: number
+  taskCounts: {
+    todo: number
+    inProgress: number
+    inReview: number
+    done: number
+    cancelled: number
+    total: number
+  }
+}
+
+interface RecentTask {
+  id: number
+  title: string
+  status: number
+  assigneeName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface ProjectActivity {
+  id: string
+  type: string
+  user: string
+  action: string
+  target: string
+  timestamp: string
+  icon: any
+  color: string
+}
+
 // Status colors
 const statusColors: Record<string, string> = {
   Active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
@@ -71,102 +114,92 @@ const priorityColors: Record<string, string> = {
   Low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
 }
 
-// Sample team members data (replace with API data)
-const sampleTeamMembers = [
-  {
-    id: 1,
-    name: "Alex Johnson",
-    email: "alex@example.com",
-    role: "Project Manager",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "AJ",
-    status: "online"
-  },
-  {
-    id: 2,
-    name: "Sarah Chen",
-    email: "sarah@example.com",
-    role: "Developer",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "SC",
-    status: "away"
-  },
-  {
-    id: 3,
-    name: "Mike Rodriguez",
-    email: "mike@example.com",
-    role: "Designer",
-    avatar: "/placeholder.svg?height=32&width=32",
-    initials: "MR",
-    status: "online"
-  }
-]
-
-// Sample activity data (replace with API data)
-const sampleActivity = [
-  {
-    id: 1,
-    type: "task_completed",
-    user: "Sarah Chen",
-    action: "completed task",
-    target: "Update user authentication",
-    timestamp: "2 hours ago",
-    icon: CheckCircle2,
-    color: "text-green-600"
-  },
-  {
-    id: 2,
-    type: "task_created",
-    user: "Alex Johnson",
-    action: "created new task",
-    target: "Design review meeting",
-    timestamp: "4 hours ago",
-    icon: Plus,
-    color: "text-blue-600"
-  },
-  {
-    id: 3,
-    type: "comment",
-    user: "Mike Rodriguez",
-    action: "commented on",
-    target: "Frontend improvements",
-    timestamp: "1 day ago",
-    icon: Activity,
-    color: "text-purple-600"
-  }
-]
+// Task status mapping
+const TaskStatusMap: Record<number, string> = {
+  0: "To Do",
+  1: "In Progress", 
+  2: "In Review",
+  3: "Done",
+  4: "Cancelled"
+}
 
 // Metric card data
-const getMetricCards = (metrics: any) => [
+const getMetricCards = (statistics: TaskStatistics | null, teamMembersCount: number) => [
   {
     label: "Total Tasks",
-    value: metrics.totalTasks || 0,
+    value: statistics?.taskCounts.total || 0,
     icon: FileText,
     color: "bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-300",
     change: "+12%"
   },
   {
     label: "Completed",
-    value: metrics.completedTasks || 0,
+    value: statistics?.taskCounts.done || 0,
     icon: CheckCircle2,
     color: "bg-green-50 text-green-600 dark:bg-green-900 dark:text-green-300",
     change: "+5%"
   },
   {
     label: "In Progress",
-    value: metrics.inProgressTasks || 0,
+    value: statistics?.taskCounts.inProgress || 0,
     icon: PlayCircle,
     color: "bg-violet-50 text-violet-600 dark:bg-violet-900 dark:text-violet-300",
     change: "-2%"
   },
   {
     label: "Team Members",
-    value: metrics.teamMembers || sampleTeamMembers.length,
+    value: teamMembersCount,
     icon: Users,
     color: "bg-amber-50 text-amber-600 dark:bg-amber-900 dark:text-amber-300",
     change: "0%"
   },
 ]
+
+// Generate activity from recent tasks
+const generateActivityFromTasks = (tasks: RecentTask[]): ProjectActivity[] => {
+  const activities: ProjectActivity[] = []
+  
+  tasks.slice(0, 10).forEach((task, index) => {
+    const isRecent = new Date(task.updatedAt) > new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const timeDiff = Date.now() - new Date(task.updatedAt).getTime()
+    let timeAgo = ""
+    
+    if (timeDiff < 60 * 60 * 1000) {
+      timeAgo = `${Math.floor(timeDiff / (60 * 1000))} minutes ago`
+    } else if (timeDiff < 24 * 60 * 60 * 1000) {
+      timeAgo = `${Math.floor(timeDiff / (60 * 60 * 1000))} hours ago`
+    } else {
+      timeAgo = `${Math.floor(timeDiff / (24 * 60 * 60 * 1000))} days ago`
+    }
+
+    let action = "updated"
+    let icon = Edit
+    let color = "text-blue-600"
+
+    if (task.status === 3) { // Done
+      action = "completed"
+      icon = CheckCircle2
+      color = "text-green-600"
+    } else if (task.status === 1) { // In Progress
+      action = "started work on"
+      icon = PlayCircle
+      color = "text-violet-600"
+    }
+
+    activities.push({
+      id: `task-${task.id}`,
+      type: "task_update",
+      user: task.assigneeName || "Someone",
+      action,
+      target: task.title,
+      timestamp: timeAgo,
+      icon,
+      color
+    })
+  })
+
+  return activities
+}
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -175,54 +208,149 @@ export default function ProjectDetailPage() {
   const publicId = params.slug as string
 
   const [project, setProject] = useState<any | null>(null)
+  const [statistics, setStatistics] = useState<TaskStatistics | null>(null)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [recentTasks, setRecentTasks] = useState<RecentTask[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("overview")
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchProject = async () => {
+    const fetchProjectData = async () => {
       if (!token) {
         setLoading(false)
         return
       }
+
       try {
-        const res = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}`, {
+        setLoading(true)
+        setError(null)
+
+        // 1. Fetch basic project data
+        const projectRes = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-        if (res.ok) {
-          const data = await res.json()
-          // convert to shape expected by UI, add placeholder metrics
-          const adapted = {
-            ...data,
-            status: "Active",
-            priority: "High",
-            lastUpdated: new Date(data.createdAt).toLocaleString(),
-            owner: "Me",
-            initials: data.name.slice(0, 2).toUpperCase(),
-            progress: 67, // Sample progress
-            metrics: { 
-              totalTasks: 24, 
-              completedTasks: 16, 
-              inProgressTasks: 6, 
-              overdueTasks: 2, 
-              teamMembers: sampleTeamMembers.length 
-            },
-            team: sampleTeamMembers,
-            recentActivity: sampleActivity,
-            startDate: "2024-01-15",
-            endDate: "2024-06-30"
-          }
-          setProject(adapted)
-        } else {
+
+        if (!projectRes.ok) {
           setProject(null)
+          setLoading(false)
+          return
         }
+
+        const projectData = await projectRes.json()
+        
+        // 2. Fetch additional data in parallel
+        const [statisticsRes, participantsRes, tasksRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/tasks/statistics/${projectData.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_BASE_URL}/api/projects/${projectData.id}/participants`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_BASE_URL}/api/projects/public/${publicId}/tasks?pageSize=20`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        ])
+
+                 // Process statistics
+         let statsData: TaskStatistics | null = null
+         if (statisticsRes.ok) {
+           statsData = await statisticsRes.json()
+           setStatistics(statsData)
+         }
+
+         // Process team members
+         if (participantsRes.ok) {
+           const participantsData = await participantsRes.json()
+           console.log('Participants data:', participantsData)
+           
+           // Handle different response formats
+           let participantsArray: any[] = []
+           if (Array.isArray(participantsData)) {
+             participantsArray = participantsData
+           } else if (participantsData && Array.isArray(participantsData.$values)) {
+             participantsArray = participantsData.$values
+           }
+
+           const members: TeamMember[] = participantsArray.map((participant) => ({
+             userId: participant.userId || participant.UserId,
+             userName: participant.userName || participant.UserName,
+             role: participant.role || participant.Role,
+             joinedAt: participant.joinedAt || participant.JoinedAt,
+             initials: (participant.userName || participant.UserName || "")
+               .split(" ")
+               .map((n: string) => n[0])
+               .join("")
+               .toUpperCase(),
+             status: "online" // Default status since we don't have real-time presence
+           }))
+
+           setTeamMembers(members)
+         }
+
+         // Process recent tasks
+         if (tasksRes.ok) {
+           const tasksData = await tasksRes.json()
+           console.log('Tasks data:', tasksData)
+           
+           // Handle different response formats
+           let tasksArray: any[] = []
+           if (Array.isArray(tasksData)) {
+             tasksArray = tasksData
+           } else if (tasksData && Array.isArray(tasksData.tasks)) {
+             tasksArray = tasksData.tasks
+           } else if (tasksData && Array.isArray(tasksData.data)) {
+             tasksArray = tasksData.data
+           } else if (tasksData && Array.isArray(tasksData.$values)) {
+             tasksArray = tasksData.$values
+           }
+
+           const tasks: RecentTask[] = tasksArray.map((task) => ({
+             id: task.id,
+             title: task.title,
+             status: task.status,
+             assigneeName: task.assigneeName,
+             createdAt: task.createdAt,
+             updatedAt: task.updatedAt
+           }))
+
+           // Sort by most recently updated
+           tasks.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+           
+           setRecentTasks(tasks)
+         }
+
+         // Calculate completion percentage based on the statistics we just fetched
+         let completionPercentage = 0
+         if (statsData && statsData.taskCounts.total > 0) {
+           completionPercentage = Math.round((statsData.taskCounts.done / statsData.taskCounts.total) * 100)
+         }
+
+         // Set enhanced project data
+         const enhancedProject = {
+           ...projectData,
+           status: "Active",
+           priority: "High",
+           lastUpdated: new Date(projectData.createdAt).toLocaleString(),
+           owner: "Me",
+           initials: projectData.name.slice(0, 2).toUpperCase(),
+           progress: completionPercentage,
+           startDate: new Date(projectData.createdAt).toLocaleDateString(),
+           endDate: "2024-12-31" // Default end date, could be made configurable
+         }
+
+         setProject(enhancedProject)
+
       } catch (err) {
-        console.error(err)
+        console.error('Error fetching project data:', err)
+        setError(err instanceof Error ? err.message : 'Failed to fetch project data')
         setProject(null)
       } finally {
         setLoading(false)
       }
     }
-    fetchProject()
+
+    fetchProjectData()
   }, [token, publicId])
 
   if (loading) {
@@ -243,7 +371,7 @@ export default function ProjectDetailPage() {
     )
   }
 
-  if (!project) {
+  if (error || !project) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-violet-50 to-white">
         <div className="container mx-auto px-4 py-8">
@@ -256,11 +384,17 @@ export default function ProjectDetailPage() {
           
           <div className="text-center mt-20">
             <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <FileText className="w-10 h-10 text-gray-400" />
+              {error ? (
+                <AlertCircle className="w-10 h-10 text-red-400" />
+              ) : (
+                <FileText className="w-10 h-10 text-gray-400" />
+              )}
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Project Not Found</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">
+              {error ? 'Error Loading Project' : 'Project Not Found'}
+            </h1>
             <p className="text-lg text-gray-600 mb-8 max-w-md mx-auto">
-              The project you're looking for doesn't exist or you don't have permission to view it.
+              {error || "The project you're looking for doesn't exist or you don't have permission to view it."}
             </p>
             <Button asChild size="lg">
               <Link href="/projects">
@@ -274,7 +408,8 @@ export default function ProjectDetailPage() {
     )
   }
 
-  const metricCards = getMetricCards(project.metrics)
+  const metricCards = getMetricCards(statistics, teamMembers.length)
+  const projectActivity = generateActivityFromTasks(recentTasks)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-violet-50 to-white">
@@ -379,7 +514,7 @@ export default function ProjectDetailPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
           <TabsList className="bg-white border">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
+            <TabsTrigger value="team">Team ({teamMembers.length})</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
         </Tabs>
@@ -458,7 +593,7 @@ export default function ProjectDetailPage() {
               <CardTitle className="flex items-center justify-between">
                 <div className="flex items-center">
                   <Users className="mr-2 h-5 w-5" />
-                  Team Members ({sampleTeamMembers.length})
+                  Team Members ({teamMembers.length})
                 </div>
                 <Button size="sm">
                   <Plus className="mr-2 h-4 w-4" />
@@ -470,30 +605,37 @@ export default function ProjectDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {sampleTeamMembers.map((member) => (
-                  <div key={member.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <Avatar>
-                        <AvatarImage src={member.avatar} alt={member.name} />
-                        <AvatarFallback className="bg-violet-100 text-violet-600">
-                          {member.initials}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium text-gray-900">{member.name}</p>
-                        <p className="text-sm text-gray-500">{member.email}</p>
+              {teamMembers.length > 0 ? (
+                <div className="space-y-4">
+                  {teamMembers.map((member) => (
+                    <div key={member.userId} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <Avatar>
+                          <AvatarImage src="" alt={member.userName} />
+                          <AvatarFallback className="bg-violet-100 text-violet-600">
+                            {member.initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium text-gray-900">{member.userName}</p>
+                          <p className="text-sm text-gray-500">Joined {new Date(member.joinedAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <Badge variant="outline">{member.role}</Badge>
+                        <div className={`w-2 h-2 rounded-full ${
+                          member.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
+                        }`}></div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <Badge variant="outline">{member.role}</Badge>
-                      <div className={`w-2 h-2 rounded-full ${
-                        member.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
-                      }`}></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No team members found</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -511,23 +653,30 @@ export default function ProjectDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {sampleActivity.map((activity, index) => (
-                  <div key={activity.id} className="flex items-start space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                    <div className={`p-2 rounded-full bg-gray-100 ${activity.color}`}>
-                      <activity.icon className="h-4 w-4" />
+              {projectActivity.length > 0 ? (
+                <div className="space-y-4">
+                  {projectActivity.map((activity) => (
+                    <div key={activity.id} className="flex items-start space-x-3 p-3 hover:bg-gray-50 rounded-lg">
+                      <div className={`p-2 rounded-full bg-gray-100 ${activity.color}`}>
+                        <activity.icon className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm">
+                          <span className="font-medium text-gray-900">{activity.user}</span>
+                          <span className="text-gray-600"> {activity.action} </span>
+                          <span className="font-medium text-gray-900">{activity.target}</span>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">{activity.timestamp}</p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm">
-                        <span className="font-medium text-gray-900">{activity.user}</span>
-                        <span className="text-gray-600"> {activity.action} </span>
-                        <span className="font-medium text-gray-900">{activity.target}</span>
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">{activity.timestamp}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Activity className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No recent activity</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

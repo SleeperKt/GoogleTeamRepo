@@ -41,11 +41,19 @@ interface Task {
   title: string
   description?: string
   assigneeName?: string
+  assignee?: {
+    name: string
+    image?: string
+    initials: string
+  }
   priority: number
   status: string
+  type?: string
   labels?: string[]
   comments?: number
   attachments?: number
+  dueDate?: string | Date
+  estimatedHours?: number
 }
 
 interface Column {
@@ -227,9 +235,9 @@ export default function BoardPage() {
   const getAllLabels = (): string[] => {
     const labels = new Set<string>()
     Object.values(boardData).forEach((column) => {
-      column.tasks.forEach((task) => {
+      column.tasks.forEach((task: Task) => {
         if (task.labels) {
-          task.labels.forEach((label) => {
+          task.labels.forEach((label: string) => {
             labels.add(label)
           })
         }
@@ -244,10 +252,10 @@ export default function BoardPage() {
   }
 
   // Filter tasks based on search and filters
-  const filterTasks = (tasks) => {
+  const filterTasks = (tasks: Task[]) => {
     if (!tasks) return []
 
-    return tasks.filter((task) => {
+    return tasks.filter((task: Task) => {
       // Search filter
       const matchesSearch = searchQuery === "" || task.title.toLowerCase().includes(searchQuery.toLowerCase())
 
@@ -258,7 +266,7 @@ export default function BoardPage() {
       const matchesAssignee = filters.assignee === "all" || (task.assignee && task.assignee.name === filters.assignee)
 
       // Priority filter
-      const matchesPriority = filters.priority === "all" || task.priority === filters.priority
+      const matchesPriority = filters.priority === "all" || task.priority.toString() === filters.priority
 
       // Label filter
       const matchesLabel = filters.label === "all" || (task.labels && task.labels.includes(filters.label))
@@ -375,19 +383,33 @@ export default function BoardPage() {
     if (!currentProject?.publicId) return
 
     try {
-      const statusMap: Record<string, string> = {
-        todo: "Todo",
-        inprogress: "InProgress", 
-        inreview: "InReview",
-        done: "Done"
+      const statusMap: Record<string, number> = {
+        todo: 1,        // Todo
+        inprogress: 2,  // InProgress
+        inreview: 3,    // InReview
+        done: 4         // Done
       }
 
       await apiRequest(`/api/projects/public/${currentProject.publicId}/tasks/${taskId}`, {
         method: 'PUT',
         body: JSON.stringify({
-          Status: statusMap[newColumnId]
+          status: statusMap[newColumnId]
         })
       })
+
+      // Update selected task if it's the one being moved
+      if (selectedTask && selectedTask.id === taskId) {
+        const statusNames: Record<number, string> = {
+          1: "To Do",
+          2: "In Progress", 
+          3: "In Review",
+          4: "Done"
+        }
+        setSelectedTask({
+          ...selectedTask,
+          status: statusNames[statusMap[newColumnId]]
+        })
+      }
 
       // Refresh board data
       fetchBoardData()
@@ -433,10 +455,194 @@ export default function BoardPage() {
     setTaskDetailOpen(true)
   }
 
-  // Handle task update
-  const handleTaskUpdated = () => {
-    // Refresh board data to show updated task
-    fetchBoardData()
+  // Handle task update (called optimistically and on success from TaskDetailView)
+  const handleTaskUpdated = (updatedTaskData?: any, isOptimistic?: boolean) => {
+    if (!updatedTaskData || typeof updatedTaskData.id === 'undefined') {
+      console.warn('BoardPage: handleTaskUpdated called with invalid data:', updatedTaskData);
+      fetchBoardData(); 
+      return;
+    }
+
+    // console.log(`BoardPage: handleTaskUpdated (isOptimistic: ${isOptimistic}) with:`, updatedTaskData);
+
+    const statusIdToColumnKey: Record<number, keyof BoardData | undefined> = {
+      1: "todo", 2: "inprogress", 3: "inreview", 4: "done",
+    };
+    const statusIdToDisplayStatusString: Record<number, string | undefined> = {
+      1: "Todo", 2: "InProgress", 3: "InReview", 4: "Done",
+    };
+
+    const targetColumnKey = statusIdToColumnKey[updatedTaskData.status];
+    const newDisplayStatusString = statusIdToDisplayStatusString[updatedTaskData.status];
+
+    if (!targetColumnKey || !newDisplayStatusString) {
+      console.error(`BoardPage: Invalid status ID ${updatedTaskData.status} from updated task. Refetching board data.`);
+      fetchBoardData();
+      return;
+    }
+
+    const normalizedLabels: string[] = (updatedTaskData.labels || []).map((lbl: any) =>
+      typeof lbl === 'string' ? lbl : lbl?.name ?? ''
+    ).filter(Boolean);
+
+    const boardPageTask: Task = {
+      id: updatedTaskData.id,
+      title: updatedTaskData.title,
+      description: updatedTaskData.description,
+      assigneeName: updatedTaskData.assigneeName,
+      assignee: updatedTaskData.assignee,
+      priority: updatedTaskData.priority,
+      status: newDisplayStatusString,
+      type: updatedTaskData.type,
+      labels: normalizedLabels,
+      dueDate: updatedTaskData.dueDate,
+      estimatedHours: updatedTaskData.estimatedHours,
+      comments: updatedTaskData.comments,
+      attachments: updatedTaskData.attachments,
+    };
+
+    setBoardData(prevBoardData => {
+      const newBoardData = JSON.parse(JSON.stringify(prevBoardData)) as BoardData;
+
+      // Locate the task and remember its current column & index
+      let previousColumnKey: keyof BoardData | undefined;
+      let previousIndex = -1;
+      for (const colKeyStr in newBoardData) {
+        const columnKey = colKeyStr as keyof BoardData;
+        const idx = newBoardData[columnKey].tasks.findIndex(t => t.id === boardPageTask.id);
+        if (idx !== -1) {
+          previousColumnKey = columnKey;
+          previousIndex = idx;
+          break;
+        }
+      }
+
+      // If found in the same column we are saving to, just replace in place
+      if (previousColumnKey && previousColumnKey === targetColumnKey && previousIndex !== -1) {
+        newBoardData[targetColumnKey].tasks[previousIndex] = boardPageTask;
+      } else {
+        // Otherwise remove it from wherever it was and insert at top of new column
+        if (previousColumnKey && previousIndex !== -1) {
+          newBoardData[previousColumnKey].tasks.splice(previousIndex, 1);
+        }
+        if (newBoardData[targetColumnKey]) {
+          newBoardData[targetColumnKey].tasks.unshift(boardPageTask);
+        } else {
+          console.error(`BoardPage: Target column ${targetColumnKey} not found in boardData during update.`);
+        }
+      }
+
+      return newBoardData;
+    });
+
+    if (selectedTask && selectedTask.id === boardPageTask.id) {
+      setSelectedTask(boardPageTask);
+    }
+    
+    // IMPORTANT: Do NOT close TaskDetailView here if the update is optimistic.
+    // TaskDetailView will handle its own closure based on its API call result.
+    // if (!isOptimistic) {
+    //   setTaskDetailOpen(false);
+    // }
+  }
+
+  // Handle task update failure (to revert optimistic update)
+  const handleTaskUpdateFailed = (originalTaskData: any, attemptedOptimisticTaskData: any) => {
+    console.warn('BoardPage: Task update failed. Reverting optimistic changes for task ID:', originalTaskData.id);
+
+    const statusIdToColumnKey: Record<number, keyof BoardData | undefined> = {
+      1: "todo", 2: "inprogress", 3: "inreview", 4: "done",
+    };
+    const statusIdToDisplayStatusString: Record<number, string | undefined> = {
+      1: "Todo", 2: "InProgress", 3: "InReview", 4: "Done",
+    };
+    
+    // Determine original and attempted column keys from their numeric statuses
+    const originalNumericStatus = originalTaskData.status; // status from originalTaskForRevert in TaskDetailView
+    const originalColumnKey = statusIdToColumnKey[originalNumericStatus];
+    const originalDisplayStatusString = statusIdToDisplayStatusString[originalNumericStatus];
+
+    const attemptedNumericStatus = attemptedOptimisticTaskData.status; // status from optimisticUpdatedTask in TaskDetailView
+    const attemptedColumnKey = statusIdToColumnKey[attemptedNumericStatus];
+
+
+    if (!originalColumnKey || !originalDisplayStatusString) {
+      console.error(`BoardPage: Invalid original status ID ${originalNumericStatus} during revert. Board may be inconsistent.`);
+      fetchBoardData(); // Fallback
+      return;
+    }
+
+    const normalizedOriginalLabels: string[] = (originalTaskData.labels || []).map((lbl: any)=> typeof lbl === 'string'? lbl : lbl?.name ?? '').filter(Boolean);
+
+    const revertedBoardTask: Task = {
+      id: originalTaskData.id,
+      title: originalTaskData.title,
+      description: originalTaskData.description,
+      assigneeName: originalTaskData.assigneeName,
+      assignee: originalTaskData.assignee,
+      priority: originalTaskData.priority,
+      status: originalDisplayStatusString, // Use string status for board
+      type: originalTaskData.type,
+      labels: normalizedOriginalLabels,
+      dueDate: originalTaskData.dueDate,
+      estimatedHours: originalTaskData.estimatedHours,
+      comments: originalTaskData.comments,
+      attachments: originalTaskData.attachments,
+    };
+
+    setBoardData(prevBoardData => {
+      const newBoardData = JSON.parse(JSON.stringify(prevBoardData)) as BoardData;
+
+      // 1. Remove the optimistically placed/updated task
+      // It has the same ID (attemptedOptimisticTaskData.id)
+      let removedFromAttemptedCol = false;
+      if (attemptedColumnKey && newBoardData[attemptedColumnKey]) {
+        const taskIndexOptimistic = newBoardData[attemptedColumnKey].tasks.findIndex(t => t.id === attemptedOptimisticTaskData.id);
+        if (taskIndexOptimistic !== -1) {
+          newBoardData[attemptedColumnKey].tasks.splice(taskIndexOptimistic, 1);
+          removedFromAttemptedCol = true;
+        }
+      }
+      // If not found in specific attemptedColumn (e.g., if status didn't change column or attemptedColumnKey was bad)
+      // search all columns to ensure its removal if it was updated in place.
+      if(!removedFromAttemptedCol){
+         for (const colKeyStr in newBoardData) {
+            const currentColumnKey = colKeyStr as keyof BoardData;
+            const taskIndex = newBoardData[currentColumnKey].tasks.findIndex(t => t.id === attemptedOptimisticTaskData.id);
+            if (taskIndex !== -1) {
+              newBoardData[currentColumnKey].tasks.splice(taskIndex, 1);
+              break; 
+            }
+          }
+      }
+      
+      // 2. Add the original task back to its original column
+      if (newBoardData[originalColumnKey]) {
+        // Ensure not to add duplicates if removal somehow failed or task was in same column
+        const taskExistsInOriginalCol = newBoardData[originalColumnKey].tasks.some(t => t.id === revertedBoardTask.id);
+        if (!taskExistsInOriginalCol) {
+          newBoardData[originalColumnKey].tasks.unshift(revertedBoardTask);
+        } else {
+            // If it exists, make sure it's the *reverted* version
+            const existingIndex = newBoardData[originalColumnKey].tasks.findIndex(t => t.id === revertedBoardTask.id);
+            if(existingIndex !== -1) newBoardData[originalColumnKey].tasks[existingIndex] = revertedBoardTask;
+        }
+      } else {
+        console.error(`BoardPage: Original column ${originalColumnKey} not found during revert. Task may be lost from UI.`);
+        // As a fallback, try adding to 'todo' or a default column if original is somehow invalid
+        // For now, it might disappear from the UI if the original column is invalid.
+      }
+      return newBoardData;
+    });
+
+    if (selectedTask && selectedTask.id === originalTaskData.id) {
+      setSelectedTask(revertedBoardTask); 
+    }
+
+    console.error(`Task ${originalTaskData.id} update failed and has been reverted on the board.`);
+    // Consider alerting the user via a toast message here.
+    // TaskDetailView is expected to remain open with unsaved changes.
+    // Its 'initialTask' prop won't change, so it should reflect its pre-API call state.
   }
 
   // Handle task deletion
@@ -598,7 +804,7 @@ export default function BoardPage() {
             style={{ scrollBehavior: isScrolling ? "auto" : "smooth" }}
           >
             {columnDefinitions.map((column) => {
-              const columnData = boardData[column.id]
+              const columnData = boardData[column.id as keyof BoardData]
               const filteredTasks = filterTasks(columnData.tasks)
               const isEmpty = filteredTasks.length === 0
               const ColumnIcon = column.icon
@@ -641,10 +847,10 @@ export default function BoardPage() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {filteredTasks.map((task) => {
-                          const PriorityIcon = priorityLevels[task.priority]?.icon || Clock
-                          const priorityColor = priorityLevels[task.priority]?.color || "text-gray-500"
-                          const taskTypeColor = taskTypes[task.type]?.color || ""
+                        {filteredTasks.map((task: Task) => {
+                          const PriorityIcon = priorityLevels[task.priority as keyof typeof priorityLevels]?.icon || Clock
+                          const priorityColor = priorityLevels[task.priority as keyof typeof priorityLevels]?.color || "text-gray-500"
+                          const taskTypeColor = task.type ? taskTypes[task.type as keyof typeof taskTypes]?.color || "" : ""
 
                           return (
                             <div
@@ -654,7 +860,7 @@ export default function BoardPage() {
                                 dragOverTaskId === task.id && "border-violet-500 ring-1 ring-violet-500",
                                 viewMode === "compact" ? "p-2" : "p-3",
                                 taskTypeColor.includes("border") &&
-                                  `border-l-4 ${taskTypeColor.split(" ").find((c) => c.startsWith("border-"))}`,
+                                  `border-l-4 ${taskTypeColor.split(" ").find((c: string) => c.startsWith("border-"))}`,
                               )}
                               draggable
                               onDragStart={(e) => handleDragStart(e, task, column.id)}
@@ -666,15 +872,15 @@ export default function BoardPage() {
                               <div className="flex items-start justify-between mb-2">
                                 <div className="font-medium truncate mr-2">{task.title}</div>
                                 <div className="flex items-center gap-1 flex-shrink-0">
-                                  <Badge className={taskTypes[task.type]?.color || "bg-gray-100"}>
-                                    {taskTypes[task.type]?.label || "Task"}
+                                  <Badge className={task.type ? taskTypes[task.type as keyof typeof taskTypes]?.color || "bg-gray-100" : "bg-gray-100"}>
+                                    {task.type ? taskTypes[task.type as keyof typeof taskTypes]?.label || "Task" : "Task"}
                                   </Badge>
                                 </div>
                               </div>
 
                               {viewMode === "detailed" && task.labels && task.labels.length > 0 && (
                                 <div className="mb-2 flex flex-wrap gap-1">
-                                  {task.labels.map((label) => (
+                                  {task.labels.map((label: string) => (
                                     <Badge
                                       key={label}
                                       variant="outline"
@@ -692,12 +898,12 @@ export default function BoardPage() {
                                     <Tooltip>
                                       <TooltipTrigger asChild>
                                         <Avatar className="h-6 w-6">
-                                          <AvatarImage src={task.assignee.image} alt={task.assignee.name} />
-                                          <AvatarFallback>{task.assignee.initials}</AvatarFallback>
+                                          <AvatarImage src={task.assignee?.image} alt={task.assignee?.name} />
+                                          <AvatarFallback>{task.assignee?.initials}</AvatarFallback>
                                         </Avatar>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p>{task.assignee.name}</p>
+                                        <p>{task.assignee?.name}</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
@@ -706,14 +912,14 @@ export default function BoardPage() {
                                 </div>
 
                                 <div className="flex items-center gap-3 text-muted-foreground">
-                                  {task.comments > 0 && (
+                                  {(task.comments || 0) > 0 && (
                                     <div className="flex items-center gap-1 text-xs">
                                       <MessageSquare className="h-3.5 w-3.5" />
                                       <span>{task.comments}</span>
                                     </div>
                                   )}
 
-                                  {task.attachments > 0 && (
+                                  {(task.attachments || 0) > 0 && (
                                     <div className="flex items-center gap-1 text-xs">
                                       <Paperclip className="h-3.5 w-3.5" />
                                       <span>{task.attachments}</span>
@@ -738,19 +944,22 @@ export default function BoardPage() {
       <CreateTaskSidebar
         open={createTaskOpen}
         onOpenChange={setCreateTaskOpen}
-        initialStage={columnDefinitions.find((col) => col.id === selectedColumn)?.title || "To Do"}
         onTaskCreated={handleTaskCreated}
+        projectPublicId={currentProject?.publicId}
+        selectedColumnId={selectedColumn}
       />
 
-      {/* Task Detail View */}
-      {selectedTask && (
+      {/* Task Detail View Sidebar */}
+      {selectedTask && currentProject?.publicId && (
         <TaskDetailView
+          key={selectedTask.id + (selectedTask.status || '') + (selectedTask.title || '')} // More robust key for re-renders on change
           open={taskDetailOpen}
           onOpenChange={setTaskDetailOpen}
           task={selectedTask}
           onTaskUpdated={handleTaskUpdated}
           onTaskDeleted={handleTaskDeleted}
-          projectPublicId={currentProject?.publicId}
+          onTaskUpdateFailed={handleTaskUpdateFailed} // Pass the new handler
+          projectPublicId={currentProject.publicId}
         />
       )}
 

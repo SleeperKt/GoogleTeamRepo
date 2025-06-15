@@ -89,7 +89,11 @@ export default function RegisterPage() {
             title: "Account created!",
             description: "Welcome to ProjectHub!",
           })
-          router.push("/projects")
+          
+          // Redirect to intended destination or default to projects
+          const redirectPath = localStorage.getItem("redirectAfterLogin") || "/projects"
+          localStorage.removeItem("redirectAfterLogin")
+          router.push(redirectPath)
         } else {
           throw new Error("Login response missing token")
         }

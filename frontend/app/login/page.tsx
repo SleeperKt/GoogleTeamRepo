@@ -46,7 +46,11 @@ export default function LoginPage() {
             title: "Welcome back!",
             description: "You have successfully signed in.",
           })
-          router.push("/projects")
+          
+          // Redirect to intended destination or default to projects
+          const redirectPath = localStorage.getItem("redirectAfterLogin") || "/projects"
+          localStorage.removeItem("redirectAfterLogin")
+          router.push(redirectPath)
         } else {
           throw new Error("Response did not contain token")
         }

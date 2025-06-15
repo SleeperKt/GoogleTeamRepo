@@ -6,6 +6,7 @@ import { API_BASE_URL } from "@/lib/api"
 interface AuthContextType {
   token: string | null
   user: { id: string; username: string; email: string } | null
+  isLoading: boolean
   login: (token: string) => void
   logout: () => void
 }
@@ -15,11 +16,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null)
   const [user, setUser] = useState<{ id: string; username: string; email: string } | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (typeof window === "undefined") return
     const stored = localStorage.getItem("token")
-    if (stored) setToken(stored)
+    if (stored) {
+      setToken(stored)
+    } else {
+      setIsLoading(false)
+    }
   }, [])
 
   const login = (t: string) => {
@@ -51,6 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         const errorBody = await res.text()
         console.error(`Failed to fetch user: ${res.status} ${res.statusText} - ${errorBody}`)
+        setIsLoading(false)
         return
       }
       const data = await res.json()
@@ -61,8 +68,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: data.email || data.Email || '' 
       }
       setUser(userData)
+      setIsLoading(false)
     } catch (err) {
       console.error('Error fetching user:', err)
+      setIsLoading(false)
     }
   }
 
@@ -70,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (token) fetchUser(token)
   }, [token])
 
-  return <AuthContext.Provider value={{ token, user, login, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ token, user, login, logout, isLoading }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

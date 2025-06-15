@@ -66,10 +66,10 @@ const priorities = [
   { value: "low", label: "Low", color: "text-blue-500" },
 ]
 
-const stages = [
+const statuses = [
   { id: 1, name: "To Do" },
   { id: 2, name: "In Progress" },
-  { id: 3, name: "Review" },
+  { id: 3, name: "In Review" },
   { id: 4, name: "Done" },
 ]
 
@@ -95,8 +95,9 @@ interface TaskDetailViewProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   task: any
-  onTaskUpdated?: (updatedTask: any) => void
+  onTaskUpdated?: (updatedTask: any, isOptimistic?: boolean) => void
   onTaskDeleted?: (taskId: string | number) => void
+  onTaskUpdateFailed?: (originalTask: any, attemptedChanges: any) => void
   projectPublicId?: string
 }
 
@@ -106,6 +107,7 @@ export function TaskDetailView({
   task: initialTask,
   onTaskUpdated,
   onTaskDeleted,
+  onTaskUpdateFailed,
   projectPublicId,
 }: TaskDetailViewProps) {
   // Task state
@@ -115,12 +117,14 @@ export function TaskDetailView({
   const [assignee, setAssignee] = useState<string | number | null>(initialTask?.assigneeId || null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [selectedLabels, setSelectedLabels] = useState<number[]>(
-    initialTask?.labels
-      ?.map((label: string) => {
-        const foundLabel = labels.find((l) => l.name === label)
+    (initialTask?.labels || [])
+      .map((label: any) => {
+        // label can be a string (name) or an object with a name field
+        const labelName = typeof label === 'string' ? label : (label?.name ?? '')
+        const foundLabel = labels.find((l) => l.name === labelName)
         return foundLabel?.id
       })
-      .filter(Boolean) || [],
+      .filter(Boolean) as number[],
   )
   const [dueDate, setDueDate] = useState<Date | undefined>(
     initialTask?.dueDate ? new Date(initialTask.dueDate) : undefined
@@ -136,7 +140,7 @@ export function TaskDetailView({
   const [stage, setStage] = useState(
     initialTask?.status === 1 ? "To Do" :
     initialTask?.status === 2 ? "In Progress" :
-    initialTask?.status === 3 ? "Review" :
+    initialTask?.status === 3 ? "In Review" :
     initialTask?.status === 4 ? "Done" : "To Do"
   )
   const [estimate, setEstimate] = useState<number | undefined>(initialTask?.estimatedHours || undefined)
@@ -210,7 +214,18 @@ export function TaskDetailView({
       setLoadingComments(true)
       try {
         const commentsData = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}/comments`)
-        setComments(Array.isArray(commentsData) ? commentsData : [])
+        
+        // Handle different response formats
+        let comments = []
+        if (Array.isArray(commentsData)) {
+          comments = commentsData
+        } else if (commentsData && Array.isArray((commentsData as any).$values)) {
+          comments = (commentsData as any).$values
+        } else if (commentsData && (commentsData as any).comments && Array.isArray((commentsData as any).comments)) {
+          comments = (commentsData as any).comments
+        }
+        
+        setComments(comments)
       } catch (err) {
         console.error("Failed to load task comments", err)
         setComments([])
@@ -249,12 +264,14 @@ export function TaskDetailView({
       setDescription(initialTask.description || "")
       setAssignee(initialTask.assigneeId || null)
       setSelectedLabels(
-        initialTask.labels
-          ?.map((label: string) => {
-            const foundLabel = labels.find((l) => l.name === label)
+        (initialTask.labels || [])
+          .map((label: any) => {
+            // label can be a string (name) or an object with a name field
+            const labelName = typeof label === 'string' ? label : (label?.name ?? '')
+            const foundLabel = labels.find((l) => l.name === labelName)
             return foundLabel?.id
           })
-          .filter(Boolean) || [],
+          .filter(Boolean) as number[],
       )
       setDueDate(initialTask.dueDate ? new Date(initialTask.dueDate) : undefined)
       setPriority(
@@ -268,7 +285,7 @@ export function TaskDetailView({
       setStage(
         initialTask.status === 1 ? "To Do" :
         initialTask.status === 2 ? "In Progress" :
-        initialTask.status === 3 ? "Review" :
+        initialTask.status === 3 ? "In Review" :
         initialTask.status === 4 ? "Done" : "To Do"
       )
       setEstimate(initialTask.estimatedHours || undefined)
@@ -296,7 +313,7 @@ export function TaskDetailView({
     : undefined
     const originalStage = initialTask?.status === 1 ? "To Do" :
       initialTask?.status === 2 ? "In Progress" :
-      initialTask?.status === 3 ? "Review" :
+      initialTask?.status === 3 ? "In Review" :
       initialTask?.status === 4 ? "Done" : "To Do"
     
     const dueDateChanged = dueDate?.getTime() !== originalDueDate?.getTime()
@@ -312,12 +329,14 @@ export function TaskDetailView({
       task?.type !== initialTask?.type ||
       !arraysEqual(
         selectedLabels,
-        initialTask?.labels
-          ?.map((label: string) => {
-            const foundLabel = labels.find((l) => l.name === label)
+        (initialTask?.labels || [])
+          .map((label: any) => {
+            // label can be a string (name) or an object with a name field
+            const labelName = typeof label === 'string' ? label : (label?.name ?? '')
+            const foundLabel = labels.find((l) => l.name === labelName)
             return foundLabel?.id
           })
-          .filter(Boolean) || [],
+          .filter(Boolean) as number[],
       )
     ) {
       setHasUnsavedChanges(true)
@@ -336,26 +355,49 @@ export function TaskDetailView({
 
   // Save changes
   const saveChanges = async () => {
-    if (!initialTask?.id || !projectPublicId) return
+    if (!initialTask?.id || !projectPublicId || !onTaskUpdated) return;
 
-    setIsSaving(true)
+    const originalTaskForRevert = JSON.parse(JSON.stringify(initialTask));
+
+    setIsSaving(true);
+
+    const statusMap: Record<string, number> = {
+      "To Do": 1, "In Progress": 2, "In Review": 3, "Done": 4,
+    };
+    const priorityMap: Record<string, number> = {
+      low: 1, medium: 2, high: 3, critical: 4,
+    };
+
+    const currentAssigneeId = assignee;
+    const updatedAssigneeDetails = currentAssigneeId ? teamMembers.find(m => m.id === currentAssigneeId) : null;
+
+    const optimisticUpdatedTask = {
+      ...initialTask,
+      title,
+      description,
+      assigneeId: currentAssigneeId,
+      assigneeName: updatedAssigneeDetails ? updatedAssigneeDetails.name : (currentAssigneeId === null ? "Unassigned" : initialTask?.assigneeName),
+      assignee: updatedAssigneeDetails ? {
+        name: updatedAssigneeDetails.name,
+        image: updatedAssigneeDetails.avatar,
+        initials: updatedAssigneeDetails.initials,
+      } : (currentAssigneeId === null ? null : initialTask?.assignee),
+      type: task?.type || initialTask?.type,
+      labels: selectedLabels.map((id) => {
+        const label = labels.find((l) => l.id === id);
+        return label?.name;
+      }).filter(Boolean),
+      dueDate,
+      priority: priorityMap[priority || 'medium'] || 2,
+      status: statusMap[stage] || 1,
+      estimatedHours: estimate,
+      comments: initialTask?.comments,
+      attachments: initialTask?.attachments,
+    };
+
+    onTaskUpdated(optimisticUpdatedTask, true);
 
     try {
-      // Prepare payload for API
-      const statusMap: Record<string, number> = {
-        "To Do": 1,
-        "In Progress": 2,
-        "Review": 3,
-        "Done": 4,
-      }
-
-      const priorityMap: Record<string, number> = {
-        low: 1,
-        medium: 2,
-        high: 3,
-        critical: 4,
-      }
-
       const payload = {
         title,
         description,
@@ -366,50 +408,30 @@ export function TaskDetailView({
         estimatedHours: estimate,
         type: task?.type || 'task',
         labels: selectedLabels.map((id) => {
-          const label = labels.find((l) => l.id === id)
-          return label?.name
+          const label = labels.find((l) => l.id === id);
+          return label?.name;
         }).filter(Boolean),
-      }
+      };
 
-      const response = await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}`, {
+      await apiRequest(`/api/projects/public/${projectPublicId}/tasks/${initialTask.id}`, {
         method: 'PUT',
         body: JSON.stringify(payload)
-      })
+      });
 
-      // Create updated task object for local state
-      const updatedTask = {
-        ...initialTask,
-        title,
-        description,
-        assigneeId: assignee,
-        type: task?.type,
-        labels: selectedLabels.map((id) => {
-          const label = labels.find((l) => l.id === id)
-          return label?.name
-        }),
-        dueDate,
-        priority: priorityMap[priority || 'medium'] || 2,
-        status: statusMap[stage] || 1,
-        estimatedHours: estimate,
-      }
+      setTask(optimisticUpdatedTask);
+      setHasUnsavedChanges(false);
+      onOpenChange(false);
 
-      // Call onTaskUpdated callback with updated task
-      if (onTaskUpdated) {
-        onTaskUpdated(updatedTask)
-      }
-
-      // Update local task state
-      setTask(updatedTask)
-      setHasUnsavedChanges(false)
-
-      console.log('Task updated successfully')
     } catch (err) {
-      console.error('Failed to save task changes:', err)
-      // Could show a toast notification here
+      console.error('Failed to save task changes:', err);
+      if (onTaskUpdateFailed) {
+        onTaskUpdateFailed(originalTaskForRevert, optimisticUpdatedTask);
+      }
+      setHasUnsavedChanges(true);
     } finally {
-      setIsSaving(false)
+      setIsSaving(false);
     }
-  }
+  };
 
   // Handle delete task
   const handleDeleteTask = () => {
@@ -476,6 +498,7 @@ export function TaskDetailView({
   // Toggle label selection
   const toggleLabel = (id: number) => {
     setSelectedLabels((prev) => (prev.includes(id) ? prev.filter((labelId) => labelId !== id) : [...prev, id]))
+    setHasUnsavedChanges(true)
   }
 
   // Format timestamp
@@ -486,12 +509,20 @@ export function TaskDetailView({
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-    if (diffMins < 60) {
+    // Handle negative differences (future dates) or very small differences
+    if (diffMs < 0) {
+      return "just now"
+    } else if (diffMins < 1) {
+      return "just now"
+    } else if (diffMins < 60) {
       return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`
     } else if (diffHours < 24) {
       return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`
-    } else {
+    } else if (diffDays < 7) {
       return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`
+    } else {
+      // For older dates, show the actual date
+      return date.toLocaleDateString()
     }
   }
 
@@ -835,12 +866,18 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   <Label htmlFor="status" className="text-xs font-medium">
                     Status
                   </Label>
-                  <Select value={stage} onValueChange={setStage}>
+                  <Select 
+                    value={stage} 
+                    onValueChange={(value) => {
+                      setStage(value);
+                      setHasUnsavedChanges(true);
+                    }}
+                  >
                     <SelectTrigger id="status" className="h-8 text-xs">
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      {stages.map((s) => (
+                      {statuses.map((s) => (
                         <SelectItem key={s.id} value={s.name} className="text-xs">
                           {s.name}
                         </SelectItem>
@@ -893,6 +930,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                               onSelect={() => {
                                 setAssignee(null)
                                 setAssigneeOpen(false)
+                                setHasUnsavedChanges(true)
                               }}
                               className="flex items-center gap-2 text-xs"
                             >
@@ -908,6 +946,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                                 onSelect={() => {
                                   setAssignee(member.id)
                                   setAssigneeOpen(false)
+                                  setHasUnsavedChanges(true)
                                 }}
                                 className="flex items-center gap-2 text-xs"
                               >
@@ -1041,6 +1080,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                         onSelect={(date) => {
                           setDueDate(date)
                           setDateOpen(false)
+                          setHasUnsavedChanges(true)
                         }}
                         initialFocus
                       />
@@ -1053,7 +1093,13 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   <Label htmlFor="priority" className="text-xs font-medium">
                     Priority
                   </Label>
-                  <Select value={priority} onValueChange={setPriority}>
+                  <Select 
+                    value={priority} 
+                    onValueChange={(value) => {
+                      setPriority(value)
+                      setHasUnsavedChanges(true)
+                    }}
+                  >
                     <SelectTrigger id="priority" className="h-8 text-xs">
                       <SelectValue placeholder="Select priority" />
                     </SelectTrigger>
@@ -1081,7 +1127,10 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                     min="0"
                     step="0.5"
                     value={estimate || ""}
-                    onChange={(e) => setEstimate(Number.parseFloat(e.target.value) || undefined)}
+                    onChange={(e) => {
+                      setEstimate(Number.parseFloat(e.target.value) || undefined)
+                      setHasUnsavedChanges(true)
+                    }}
                     placeholder="Enter estimate"
                     className="h-8 text-xs"
                   />
@@ -1300,15 +1349,15 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
               <Select
                 value={stage}
                 onValueChange={(value) => {
-                  setStage(value)
-                  saveChanges()
+                  setStage(value);
+                  setHasUnsavedChanges(true);
                 }}
               >
                 <SelectTrigger className="w-[110px] h-7 text-xs">
                   <SelectValue placeholder="Move to..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {stages.map((s) => (
+                                          {statuses.map((s) => (
                     <SelectItem key={s.id} value={s.name} className="text-xs">
                       {s.name}
                     </SelectItem>

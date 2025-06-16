@@ -41,3 +41,8 @@ publish/
 
 # DotEnv files
 .env
+
+*.db
+
+*.db-shm
+*.db-wal

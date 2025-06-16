@@ -1,35 +1,149 @@
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using ProjectHub.API.Middlewares;
+using ProjectHub.API.Validator;
+using ProjectHub.Core.DataTransferObjects;
+using ProjectHub.Core.Interfaces;
+using ProjectHub.Core.Services;
+using ProjectHub.Infrastructure.Data;
+using ProjectHub.Infrastructure.Repositories;
+using ProjectHub.Infrastructure.Services;
+using System.Text;
 using System.Text.Json.Serialization;
 
-var builder = WebApplication.CreateSlimBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.ConfigureHttpJsonOptions(options =>
+// DbContext и SQLite
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<PasswordService>();
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+// Регистрация сервисов и репозиториев для проектов
+builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
+builder.Services.AddScoped<IProjectService, ProjectService>();
+
+// Регистрация сервисов и репозиториев для участников проектов
+builder.Services.AddScoped<IProjectParticipantRepository, ProjectParticipantRepository>();
+builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService>();
+
+// Регистрация сервисов и репозиториев для задач
+builder.Services.AddScoped<ITaskRepository, TaskRepository>();
+builder.Services.AddScoped<ITaskService, TaskService>();
+
+// Регистрация сервисов и репозиториев для комментариев и активности задач
+builder.Services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
+builder.Services.AddScoped<ITaskActivityRepository, TaskActivityRepository>();
+
+builder.Services.AddControllers().AddJsonOptions(options =>
 {
-    options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
+});
+
+builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>();
+builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
+builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
+builder.Services.AddScoped<IValidator<CreateTaskCommentRequest>, CreateTaskCommentRequestValidator>();
+
+builder.Services.AddEndpointsApiExplorer();
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+    throw new InvalidOperationException("JWT secret key must be configured and at least 32 characters long.");
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() { Title = "Auth API", Version = "v1" });
+
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Enter JWT token :"
+    });
+
+    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+builder.Services.AddAuthentication("Bearer")
+    .AddJwtBearer("Bearer", options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
 });
 
 var app = builder.Build();
 
-var sampleTodos = new Todo[] {
-    new(1, "Walk the dog"),
-    new(2, "Do the dishes", DateOnly.FromDateTime(DateTime.Now)),
-    new(3, "Do the laundry", DateOnly.FromDateTime(DateTime.Now.AddDays(1))),
-    new(4, "Clean the bathroom"),
-    new(5, "Clean the car", DateOnly.FromDateTime(DateTime.Now.AddDays(2)))
-};
+// Apply pending migrations and expose Swagger UI only in Development
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    context.Database.Migrate();
 
-var todosApi = app.MapGroup("/todos");
-todosApi.MapGet("/", () => sampleTodos);
-todosApi.MapGet("/{id}", (int id) =>
-    sampleTodos.FirstOrDefault(a => a.Id == id) is { } todo
-        ? Results.Ok(todo)
-        : Results.NotFound());
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Auth API V1");
+        c.RoutePrefix = string.Empty;
+    });
+}
+
+app.UseRouting();
+
+app.UseCors("Frontend");
+
+// Use Middlewares
+app.UseWhen(context =>
+    context.Request.Path.StartsWithSegments("/api/auth/register") &&
+    context.Request.Method == "POST",
+    appBuilder => appBuilder.UseMiddleware<RegisterValidationMiddleware>());
+
+app.UseWhen(context =>
+    context.Request.Path.StartsWithSegments("/api/auth/login") &&
+    context.Request.Method == "POST",
+    appBuilder => appBuilder.UseMiddleware<LoginValidationMiddleware>());
+
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
 
 app.Run();
-
-public record Todo(int Id, string? Title, DateOnly? DueBy = null, bool IsComplete = false);
-
-[JsonSerializable(typeof(Todo[]))]
-internal partial class AppJsonSerializerContext : JsonSerializerContext
-{
-
-}

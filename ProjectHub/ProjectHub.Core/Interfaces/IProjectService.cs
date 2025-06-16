@@ -8,6 +8,7 @@ namespace ProjectHub.Core.Interfaces
     {
         Task<Project?> GetProjectByIdAsync(int id);
         Task<IEnumerable<Project>> GetProjectsByOwnerAsync(string ownerId);
+        Task<IEnumerable<Project>> GetProjectsByUserAsync(string userIdOrEmail);
         Task<Project> CreateProjectAsync(Project project, string ownerId);
         Task UpdateProjectAsync(Project project, string currentUserId);
         Task DeleteProjectAsync(int id, string currentUserId);

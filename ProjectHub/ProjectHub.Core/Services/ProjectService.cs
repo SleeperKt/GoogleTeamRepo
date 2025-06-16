@@ -2,6 +2,7 @@ using ProjectHub.Core.Entities;
 using ProjectHub.Core.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace ProjectHub.Core.Services
@@ -27,6 +28,36 @@ namespace ProjectHub.Core.Services
         public async Task<IEnumerable<Project>> GetProjectsByOwnerAsync(string ownerId)
         {
             return await _projectRepository.GetByOwnerIdAsync(ownerId);
+        }
+
+        public async Task<IEnumerable<Project>> GetProjectsByUserAsync(string userIdOrEmail)
+        {
+            // Find user by email or ID
+            var user = await _userRepository.GetByEmailAsync(userIdOrEmail);
+            if (user == null && Guid.TryParse(userIdOrEmail, out Guid userId))
+            {
+                user = await _userRepository.GetByIdAsync(userId);
+            }
+
+            if (user == null)
+            {
+                return new List<Project>();
+            }
+
+            // Get all projects where user is a participant (including owner)
+            var participations = await _participantRepository.GetUserProjectsAsync(user.UserId);
+            var projects = new List<Project>();
+            
+            foreach (var participation in participations)
+            {
+                var project = await _projectRepository.GetByIdAsync(participation.ProjectId);
+                if (project != null)
+                {
+                    projects.Add(project);
+                }
+            }
+            
+            return projects.OrderByDescending(p => p.CreatedAt);
         }
 
         public async Task<Project> CreateProjectAsync(Project project, string ownerId)

@@ -53,7 +53,7 @@ namespace ProjectHub.API.Controllers
         public async Task<IActionResult> GetProjects()
         {
             var userEmail = GetCurrentUserEmail();
-            var projects = await _projectService.GetProjectsByOwnerAsync(userEmail);
+            var projects = await _projectService.GetProjectsByUserAsync(userEmail);
             return Ok(projects);
         }
 

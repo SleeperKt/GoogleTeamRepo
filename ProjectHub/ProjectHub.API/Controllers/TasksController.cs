@@ -150,6 +150,50 @@ namespace ProjectHub.API.Controllers
             }
         }
 
+        [HttpPut("~/api/projects/public/{publicId:guid}/tasks/{taskId}/reorder")]
+        public async Task<IActionResult> ReorderTaskByPublicId(Guid publicId, int taskId, [FromBody] TaskReorderRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var userEmail = GetCurrentUserEmail();
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+                return NotFound();
+            
+            var hasAccess = await _projectService.UserHasAccessAsync(internalId.Value, userEmail);
+            if (!hasAccess)
+                return Forbid();
+
+            var userId = GetCurrentUserId();
+            try
+            {
+                var task = await _taskService.ReorderTaskAsync(taskId, request, userId);
+                
+                // Verify task belongs to the specified project
+                if (task.ProjectId != internalId.Value)
+                {
+                    return BadRequest("Task does not belong to the specified project.");
+                }
+
+                return Ok(task);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, "An error occurred while reordering the task.");
+            }
+        }
+
         [HttpDelete("~/api/projects/public/{publicId:guid}/tasks/{taskId}")]
         public async Task<IActionResult> DeleteTaskByPublicId(Guid publicId, int taskId)
         {

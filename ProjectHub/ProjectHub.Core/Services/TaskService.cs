@@ -65,6 +65,18 @@ namespace ProjectHub.Core.Services
             return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpper();
         }
 
+        private async Task<double> CalculateNewTaskPositionAsync(int projectId, Entities.TaskStatus status)
+        {
+            var allTasks = await _taskRepository.GetAllByProjectIdAsync(projectId);
+            var tasksInColumn = allTasks.Where(t => t.Status == status).ToList();
+            
+            if (!tasksInColumn.Any())
+                return 1000; // First task in column
+            
+            var maxPosition = tasksInColumn.Max(t => t.Position);
+            return maxPosition + 1000; // Add new task at the end
+        }
+
         private async Task<TaskResponse> MapToTaskResponseAsync(ProjectTask task)
         {
             var createdByUser = await _userRepository.GetByIdAsync(task.CreatedById);
@@ -126,7 +138,8 @@ namespace ProjectHub.Core.Services
                 Type = task.Type,
                 Labels = labels,
                 Comments = commentCount,
-                Activities = activityCount
+                Activities = activityCount,
+                Position = task.Position
             };
         }
 
@@ -209,6 +222,9 @@ namespace ProjectHub.Core.Services
                 throw new ArgumentException("Invalid user ID or email", nameof(createdByUserId));
             }
 
+            // Calculate position for new task (at the end of the current status column)
+            double position = request.Position ?? await CalculateNewTaskPositionAsync(projectId, request.Status);
+
             var task = new ProjectTask
             {
                 Title = request.Title,
@@ -225,6 +241,7 @@ namespace ProjectHub.Core.Services
                 Labels = request.Labels != null && request.Labels.Length > 0 
                     ? System.Text.Json.JsonSerializer.Serialize(request.Labels)
                     : null,
+                Position = position,
                 CreatedAt = DateTime.Now
             };
 
@@ -302,6 +319,9 @@ namespace ProjectHub.Core.Services
                     : null;
             }
 
+            if (request.Position.HasValue)
+                task.Position = request.Position.Value;
+
             await _taskRepository.UpdateAsync(task);
 
             // Track if any activities were logged
@@ -346,6 +366,38 @@ namespace ProjectHub.Core.Services
             if (!activityLogged)
             {
                 await LogTaskActivityAsync(id, "updated", requestingUserId, "Updated task details");
+            }
+
+            return await MapToTaskResponseAsync(task);
+        }
+
+        public async Task<TaskResponse> ReorderTaskAsync(int taskId, TaskReorderRequest request, string requestingUserId)
+        {
+            var task = await _taskRepository.GetByIdAsync(taskId);
+            if (task == null)
+            {
+                throw new ArgumentException("Task not found.");
+            }
+
+            // Check if user is participant in the project
+            if (!await IsUserProjectParticipantAsync(task.ProjectId, requestingUserId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            // Update task status and position
+            var originalStatus = task.Status;
+            task.Status = request.Status;
+            task.Position = request.Position;
+
+            await _taskRepository.UpdateAsync(task);
+
+            // Log activity if status changed
+            if (originalStatus != task.Status)
+            {
+                await LogTaskActivityAsync(taskId, "status_change", requestingUserId, 
+                    $"Moved task from {originalStatus} to {task.Status}", 
+                    originalStatus.ToString(), task.Status.ToString());
             }
 
             return await MapToTaskResponseAsync(task);

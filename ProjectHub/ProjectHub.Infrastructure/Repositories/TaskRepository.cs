@@ -27,7 +27,8 @@ namespace ProjectHub.Infrastructure.Repositories
         {
             return await _context.Tasks
                 .Where(t => t.ProjectId == projectId)
-                .OrderByDescending(t => t.CreatedAt)
+                .OrderBy(t => t.Position)
+                .ThenByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
 
@@ -54,7 +55,8 @@ namespace ProjectHub.Infrastructure.Repositories
                 query = query.Where(t => t.DueDate <= dueDateTo.Value);
 
             return await query
-                .OrderByDescending(t => t.CreatedAt)
+                .OrderBy(t => t.Position)
+                .ThenByDescending(t => t.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
@@ -100,7 +102,8 @@ namespace ProjectHub.Infrastructure.Repositories
             // TODO: Add labels filtering when Labels property is added to ProjectTask entity
 
             return await query
-                .OrderByDescending(t => t.CreatedAt)
+                .OrderBy(t => t.Position)
+                .ThenByDescending(t => t.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();

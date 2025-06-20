@@ -1130,6 +1130,7 @@ export default function ProjectBoardPage() {
                                 "p-3 bg-white dark:bg-gray-800 rounded-md border shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer",
                                 dragOverTaskId === task.id && "border-violet-500 ring-2 ring-violet-500 ring-opacity-50 bg-violet-50 dark:bg-violet-950/20",
                                 draggedTask?.task.id === task.id && "opacity-40 scale-95 shadow-none",
+                                selectedTask?.id === task.id && taskDetailOpen && "border-violet-600 ring-2 ring-violet-600 ring-opacity-40 bg-violet-50 dark:bg-violet-950/30 shadow-lg",
                                 viewMode === "compact" ? "p-2" : "p-3",
                                 taskTypeColor.includes("border") &&
                                   `border-l-4 ${taskTypeColor.split(" ").find((c: string) => c.startsWith("border-"))}`,

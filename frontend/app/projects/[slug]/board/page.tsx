@@ -55,6 +55,7 @@ interface Task {
   attachments?: number
   dueDate?: string | Date
   estimatedHours?: number
+  position: number
 }
 
 interface Column {
@@ -409,6 +410,33 @@ export default function ProjectBoardPage() {
     setScrollDirection(null)
   }
 
+  // Calculate position for reordering
+  const calculatePosition = (targetColumnId: string, targetTaskId: number | null): number => {
+    const targetColumn = boardData[targetColumnId as keyof BoardData]
+    if (!targetColumn) return 1000
+    
+    const tasks = targetColumn.tasks.sort((a, b) => a.position - b.position)
+    
+    if (!targetTaskId) {
+      // Dropped at the end of the column
+      return tasks.length > 0 ? tasks[tasks.length - 1].position + 1000 : 1000
+    }
+    
+    // Find the position to insert before targetTaskId
+    const targetIndex = tasks.findIndex(t => t.id === targetTaskId)
+    if (targetIndex === -1) return 1000
+    
+    if (targetIndex === 0) {
+      // Insert at the beginning
+      return tasks[0].position / 2
+    }
+    
+    // Insert between two tasks
+    const prevTask = tasks[targetIndex - 1]
+    const nextTask = tasks[targetIndex]
+    return (prevTask.position + nextTask.position) / 2
+  }
+
   // Handle drop
   const handleDrop = (e: React.DragEvent, targetColumnId: string, targetTaskId: number | null = null) => {
     e.preventDefault()
@@ -427,15 +455,18 @@ export default function ProjectBoardPage() {
       dropTarget.style.transform = "scale(1)"
     }, 150)
     
-    // Don't do anything if dropped in the same position
-    if (sourceColumnId === targetColumnId && !targetTaskId) {
+    // Calculate new position
+    const newPosition = calculatePosition(targetColumnId, targetTaskId)
+    
+    // Don't do anything if dropped in the same position (same column and same task)
+    if (sourceColumnId === targetColumnId && targetTaskId === task.id) {
       setDraggedTask(null)
       setDragOverColumn(null)
       setDragOverTaskId(null)
       return
     }
     
-    updateTaskStatus(task.id, targetColumnId)
+    reorderTask(task.id, targetColumnId, newPosition)
     
     // Clear drag state immediately for visual feedback, but with a slight delay to ensure all operations complete
     setTimeout(() => {
@@ -445,8 +476,8 @@ export default function ProjectBoardPage() {
     }, 10)
   }
 
-  // Update task status via API
-  const updateTaskStatus = async (taskId: number, newColumnId: string) => {
+  // Reorder task with position
+  const reorderTask = async (taskId: number, newColumnId: string, newPosition: number) => {
     if (!projectId) return
 
     const statusMap: Record<string, number> = {
@@ -475,19 +506,15 @@ export default function ProjectBoardPage() {
     }
 
     if (!currentTask || !sourceColumnId) {
-      console.error('Task not found for status update')
-      return
-    }
-
-    // Don't update if already in the target column
-    if (sourceColumnId === newColumnId) {
+      console.error('Task not found for reordering')
       return
     }
 
     // Create optimistic update data
     const optimisticTask: Task = {
       ...currentTask,
-      status: statusNames[statusMap[newColumnId]]
+      status: statusNames[statusMap[newColumnId]],
+      position: newPosition
     }
 
     // Apply optimistic update immediately
@@ -500,10 +527,13 @@ export default function ProjectBoardPage() {
         tasks: newBoardData[sourceColumnId as keyof BoardData].tasks.filter(t => t.id !== taskId)
       }
       
-      // Add task to target column
+      // Add task to target column and sort by position
+      const targetTasks = [...newBoardData[newColumnId as keyof BoardData].tasks, optimisticTask]
+      targetTasks.sort((a, b) => a.position - b.position)
+      
       newBoardData[newColumnId as keyof BoardData] = {
         ...newBoardData[newColumnId as keyof BoardData],
-        tasks: [optimisticTask, ...newBoardData[newColumnId as keyof BoardData].tasks]
+        tasks: targetTasks
       }
       
       return newBoardData
@@ -511,34 +541,27 @@ export default function ProjectBoardPage() {
 
     // Delay selected task update to prevent UI lag during drag
     if (selectedTask && selectedTask.id === taskId) {
-      // Use a small delay to ensure drag operation completes smoothly
       setTimeout(() => {
         setSelectedTask(optimisticTask)
       }, 100)
     }
 
     try {
+      // Use the new reorder API endpoint
       const payload = {
+        taskId: taskId,
         status: statusMap[newColumnId],
-        // Preserve existing labels and other fields to prevent data loss
-        ...(currentTask?.labels && { labels: currentTask.labels }),
-        ...(currentTask?.title && { title: currentTask.title }),
-        ...(currentTask?.description && { description: currentTask.description }),
-        ...(currentTask?.priority && { priority: currentTask.priority }),
-        ...(currentTask?.type && { type: currentTask.type }),
-        ...(currentTask?.estimatedHours && { estimatedHours: currentTask.estimatedHours }),
-        // Handle assignee properly - preserve the assigneeId (which can be null for unassigned)
-        assigneeId: currentTask?.assigneeId || null
+        position: newPosition
       };
 
-      await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}`, {
+      await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}/reorder`, {
         method: 'PUT',
         body: JSON.stringify(payload)
       })
 
-      console.log('✅ Task status updated successfully via drag and drop')
+      console.log('✅ Task reordered successfully via drag and drop')
     } catch (err) {
-      console.error('❌ Error updating task status via drag and drop:', err)
+      console.error('❌ Error reordering task via drag and drop:', err)
       
       // Revert optimistic update on failure
       setBoardData(prevBoardData => {
@@ -550,10 +573,13 @@ export default function ProjectBoardPage() {
           tasks: newBoardData[newColumnId as keyof BoardData].tasks.filter(t => t.id !== taskId)
         }
         
-        // Add task back to source column
+        // Add task back to source column and sort by position
+        const sourceTasks = [...newBoardData[sourceColumnId as keyof BoardData].tasks, currentTask]
+        sourceTasks.sort((a, b) => a.position - b.position)
+        
         newBoardData[sourceColumnId as keyof BoardData] = {
           ...newBoardData[sourceColumnId as keyof BoardData],
-          tasks: [currentTask, ...newBoardData[sourceColumnId as keyof BoardData].tasks]
+          tasks: sourceTasks
         }
         
         return newBoardData
@@ -704,6 +730,7 @@ export default function ProjectBoardPage() {
       estimatedHours: updatedTaskData.estimatedHours,
       comments: updatedTaskData.comments,
       attachments: updatedTaskData.attachments,
+      position: updatedTaskData.position || 0,
     };
 
     setBoardData(prevBoardData => {
@@ -825,6 +852,7 @@ export default function ProjectBoardPage() {
       estimatedHours: originalTaskData.estimatedHours,
       comments: originalTaskData.comments,
       attachments: originalTaskData.attachments,
+      position: originalTaskData.position || 0,
     };
 
     setBoardData(prevBoardData => {
@@ -1075,6 +1103,9 @@ export default function ProjectBoardPage() {
                   seenIds.add(t.id)
                 }
               }
+
+              // Sort tasks by position
+              uniqueTasks.sort((a, b) => a.position - b.position)
 
               const isEmpty = uniqueTasks.length === 0
               const ColumnIcon = column.icon

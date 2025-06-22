@@ -625,7 +625,7 @@ function ProjectCard({
           </div>
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
-              <AvatarImage src={`/placeholder.svg?height=32&width=32`} alt={project.owner} />
+              <AvatarImage src="/placeholder-user.jpg" alt={project.owner} />
               <AvatarFallback className="text-xs bg-violet-100 text-violet-600">{project.initials}</AvatarFallback>
             </Avatar>
             <span className="text-sm text-gray-500 dark:text-gray-400">Updated {project.lastUpdated}</span>

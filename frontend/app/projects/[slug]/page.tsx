@@ -465,9 +465,11 @@ export default function ProjectDetailPage() {
                   <Edit className="mr-2 h-4 w-4" />
                   Edit Project
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
+                <DropdownMenuItem asChild>
+                  <Link href={`/projects/${publicId}/settings`}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -590,10 +592,12 @@ export default function ProjectDetailPage() {
                     </Link>
                   </Button>
                   
-                  <Button variant="outline" className="h-auto p-4 flex flex-col items-start">
-                    <Settings className="h-5 w-5 mb-2" />
-                    <span className="font-medium">Project Settings</span>
-                    <span className="text-xs text-gray-500">Configure project options</span>
+                  <Button variant="outline" className="h-auto p-4 flex flex-col items-start" asChild>
+                    <Link href={`/projects/${publicId}/settings`}>
+                      <Settings className="h-5 w-5 mb-2" />
+                      <span className="font-medium">Project Settings</span>
+                      <span className="text-xs text-gray-500">Configure project options</span>
+                    </Link>
                   </Button>
                 </div>
               </CardContent>

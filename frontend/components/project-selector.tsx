@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Check, ChevronDown, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils"
 export function ProjectSelector() {
   const { currentProject, projects, setCurrentProject } = useProject()
   const [open, setOpen] = useState(false)
+  const router = useRouter()
 
   if (!currentProject) {
     return (
@@ -89,7 +91,13 @@ export function ProjectSelector() {
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="flex items-center gap-2 p-3 cursor-pointer text-violet-600">
+          <DropdownMenuItem 
+            className="flex items-center gap-2 p-3 cursor-pointer text-violet-600"
+            onClick={() => {
+              setOpen(false)
+              router.push("/projects?create=true")
+            }}
+          >
             <div className="h-8 w-8 rounded-full border-2 border-dashed border-violet-300 flex items-center justify-center">
               <Plus className="h-4 w-4" />
             </div>

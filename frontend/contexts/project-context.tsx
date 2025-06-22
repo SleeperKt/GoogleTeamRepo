@@ -5,12 +5,16 @@ import type React from "react"
 import { createContext, useContext, useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { API_BASE_URL } from "@/lib/api"
+import { PROJECT_STATUSES, PROJECT_PRIORITIES } from "@/lib/task-constants"
 
 interface Project {
   id: number
   name: string
   description: string
   status?: string
+  statusValue?: number
+  priority?: string
+  priorityValue?: number
   lastUpdated?: string
   currentSprint?: string | null
   avatar?: string
@@ -27,6 +31,17 @@ interface ProjectContextType {
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined)
+
+// Helper functions to map enum values to labels
+const getStatusLabel = (statusValue: number): string => {
+  const status = PROJECT_STATUSES.find(s => s.value === statusValue)
+  return status ? status.label : "Active"
+}
+
+const getPriorityLabel = (priorityValue: number): string => {
+  const priority = PROJECT_PRIORITIES.find(p => p.value === priorityValue)
+  return priority ? priority.label : "Medium"
+}
 
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const { token, isHydrated } = useAuth()
@@ -66,7 +81,10 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         id: p.id,
         name: p.name,
         description: p.description,
-        status: "Active",
+        status: getStatusLabel(p.status || 1),
+        statusValue: p.status || 1,
+        priority: getPriorityLabel(p.priority || 2),
+        priorityValue: p.priority || 2,
         lastUpdated: new Date(p.createdAt ?? Date.now()).toLocaleDateString(),
         currentSprint: null,
         avatar: p.name.substring(0, 2).toUpperCase(),

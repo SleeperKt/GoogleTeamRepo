@@ -7,6 +7,7 @@ interface AuthContextType {
   token: string | null
   user: { id: string; username: string; email: string } | null
   isLoading: boolean
+  isHydrated: boolean
   login: (token: string) => void
   logout: () => void
 }
@@ -16,20 +17,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null)
   const [user, setUser] = useState<{ id: string; username: string; email: string } | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false) // Start as false to prevent hydration mismatch
+  const [isHydrated, setIsHydrated] = useState(false) // Track if we've hydrated
 
+  // Handle hydration and localStorage access
   useEffect(() => {
-    if (typeof window === "undefined") return
+    // Mark as hydrated and check for stored token
+    setIsHydrated(true)
+    
     const stored = localStorage.getItem("token")
     if (stored) {
       setToken(stored)
-    } else {
-      setIsLoading(false)
+      setIsLoading(true) // Only start loading after hydration
     }
   }, [])
 
   const login = (t: string) => {
     setToken(t)
+    setIsLoading(true)
     fetchUser(t)
     if (typeof window !== "undefined") {
       localStorage.setItem("token", t)
@@ -39,6 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setToken(null)
     setUser(null)
+    setIsLoading(false)
     if (typeof window !== "undefined") {
       localStorage.removeItem("token")
     }
@@ -52,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (!res.ok) {
         if (res.status === 401) {
+          console.log("Token expired or invalid, logging out")
           logout()
           return
         }
@@ -60,6 +67,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoading(false)
         return
       }
+      
       const data = await res.json()
       
       const userData = { 
@@ -68,18 +76,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: data.email || data.Email || '' 
       }
       setUser(userData)
-      setIsLoading(false)
     } catch (err) {
       console.error('Error fetching user:', err)
+      // On network error, still try to set user with token for offline usage
+      if (jwt) {
+        console.log("Network error but token exists, proceeding...")
+      }
+    } finally {
+      // Always ensure loading is set to false
       setIsLoading(false)
     }
   }
 
+  // Only fetch user data after hydration when we have a token
   useEffect(() => {
-    if (token) fetchUser(token)
-  }, [token])
+    if (isHydrated && token && !user) {
+      setIsLoading(true)
+      fetchUser(token)
+    } else if (isHydrated && !token) {
+      setIsLoading(false)
+    }
+  }, [isHydrated, token, user])
 
-  return <AuthContext.Provider value={{ token, user, login, logout, isLoading }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ token, user, login, logout, isLoading, isHydrated }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

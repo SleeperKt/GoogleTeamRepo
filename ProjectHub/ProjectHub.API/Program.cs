@@ -38,6 +38,12 @@ builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
 builder.Services.AddScoped<ITaskActivityRepository, TaskActivityRepository>();
 
+// Регистрация сервисов и репозиториев для настроек проектов
+builder.Services.AddScoped<IProjectSettingsRepository, ProjectSettingsRepository>();
+builder.Services.AddScoped<IProjectLabelRepository, ProjectLabelRepository>();
+builder.Services.AddScoped<IProjectWorkflowRepository, ProjectWorkflowRepository>();
+builder.Services.AddScoped<IProjectSettingsService, ProjectSettingsService>();
+
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;

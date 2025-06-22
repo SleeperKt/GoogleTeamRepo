@@ -16,6 +16,9 @@ namespace ProjectHub.Infrastructure.Data
         public DbSet<ProjectTask> Tasks { get; set; } = null!;
         public DbSet<TaskComment> TaskComments { get; set; } = null!;
         public DbSet<TaskActivity> TaskActivities { get; set; } = null!;
+        public DbSet<ProjectSettings> ProjectSettings { get; set; } = null!;
+        public DbSet<ProjectLabel> ProjectLabels { get; set; } = null!;
+        public DbSet<ProjectWorkflowStage> ProjectWorkflowStages { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -151,6 +154,53 @@ namespace ProjectHub.Infrastructure.Data
             modelBuilder.Entity<TaskActivity>()
                 .Property(ta => ta.NewValue)
                 .HasMaxLength(100);
+
+            // Configure ProjectSettings entity
+            modelBuilder.Entity<ProjectSettings>()
+                .HasKey(ps => ps.Id);
+
+            modelBuilder.Entity<ProjectSettings>()
+                .Property(ps => ps.ProjectId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectSettings>()
+                .HasIndex(ps => ps.ProjectId)
+                .IsUnique();
+
+            // Configure ProjectLabel entity
+            modelBuilder.Entity<ProjectLabel>()
+                .HasKey(pl => pl.Id);
+
+            modelBuilder.Entity<ProjectLabel>()
+                .Property(pl => pl.ProjectId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectLabel>()
+                .Property(pl => pl.Name)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectLabel>()
+                .Property(pl => pl.Color)
+                .HasMaxLength(7)
+                .IsRequired();
+
+            // Configure ProjectWorkflowStage entity
+            modelBuilder.Entity<ProjectWorkflowStage>()
+                .HasKey(pws => pws.Id);
+
+            modelBuilder.Entity<ProjectWorkflowStage>()
+                .Property(pws => pws.ProjectId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectWorkflowStage>()
+                .Property(pws => pws.Name)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectWorkflowStage>()
+                .Property(pws => pws.Color)
+                .HasMaxLength(7);
         }
     }
 }

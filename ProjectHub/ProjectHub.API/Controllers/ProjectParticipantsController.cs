@@ -16,13 +16,22 @@ namespace ProjectHub.API.Controllers
     public class ProjectParticipantsController : ControllerBase
     {
         private readonly IProjectParticipantService _participantService;
+        private readonly IProjectService _projectService;
 
-        public ProjectParticipantsController(IProjectParticipantService participantService)
+        public ProjectParticipantsController(IProjectParticipantService participantService, IProjectService projectService)
         {
             _participantService = participantService;
-        }        private string GetCurrentUserId()
+            _projectService = projectService;
+        }
+
+        private string GetCurrentUserId()
         {
             return User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        }
+
+        private string GetCurrentUserEmail()
+        {
+            return User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
         }
 
         [HttpGet]
@@ -36,8 +45,41 @@ namespace ProjectHub.API.Controllers
                 {
                     UserId = p.UserId,
                     UserName = p.UserName,
+                    Email = p.Email,
                     Role = p.Role,
                     JoinedAt = p.JoinedAt
+                });
+                return Ok(participantResponses);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+        }
+
+        [HttpGet("~/api/projects/public/{publicId:guid}/participants")]
+        public async Task<IActionResult> GetProjectParticipantsByPublicId(Guid publicId)
+        {
+            var userEmail = GetCurrentUserEmail();
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+                return NotFound();
+            
+            var hasAccess = await _projectService.UserHasAccessAsync(internalId.Value, userEmail);
+            if (!hasAccess)
+                return Forbid();
+
+            var userId = GetCurrentUserId();
+            try
+            {
+                var participantDetails = await _participantService.GetProjectParticipantDetailsAsync(internalId.Value, userId);
+                var participantResponses = participantDetails.Select(p => new ParticipantResponse
+                {
+                    UserId = p.UserId,
+                    UserName = p.UserName,
+                    Role = p.Role,
+                    JoinedAt = p.JoinedAt,
+                    Email = p.Email // Add email to the response
                 });
                 return Ok(participantResponses);
             }

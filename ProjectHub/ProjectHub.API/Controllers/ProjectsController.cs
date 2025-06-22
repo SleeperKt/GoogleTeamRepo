@@ -17,11 +17,13 @@ namespace ProjectHub.API.Controllers
     {
         private readonly IProjectService _projectService;
         private readonly ITaskService _taskService;
+        private readonly IProjectSettingsService _projectSettingsService;
 
-        public ProjectsController(IProjectService projectService, ITaskService taskService)
+        public ProjectsController(IProjectService projectService, ITaskService taskService, IProjectSettingsService projectSettingsService)
         {
             _projectService = projectService;
             _taskService = taskService;
+            _projectSettingsService = projectSettingsService;
         }
         private string GetCurrentUserId()
         {
@@ -154,39 +156,48 @@ namespace ProjectHub.API.Controllers
             if (!hasAccess)
                 return Forbid();
 
-            // Get all tasks for the project organized by status
+            // Get workflow stages for the project
+            var workflowStages = await _projectSettingsService.GetProjectWorkflowStagesAsync(internalId.Value, userEmail);
+            
+            // Get all tasks for the project
             var allTasks = await _taskService.GetProjectTasksAsync(internalId.Value, GetCurrentUserId(), null);
             
+            // Create a mapping from TaskStatus to WorkflowStage order
+            var stagesList = workflowStages.OrderBy(s => s.Order).ToList();
+            var statusToStageMapping = new Dictionary<Core.Entities.TaskStatus, int>
+            {
+                { Core.Entities.TaskStatus.Todo, 0 },
+                { Core.Entities.TaskStatus.InProgress, 1 },
+                { Core.Entities.TaskStatus.InReview, 2 },
+                { Core.Entities.TaskStatus.Done, 3 },
+                { Core.Entities.TaskStatus.Cancelled, 3 } // Map cancelled to the last stage
+            };
+
+            var columns = stagesList.Select((stage, index) => new
+            {
+                id = $"stage_{stage.Id}",
+                title = stage.Name,
+                color = stage.Color,
+                order = stage.Order,
+                isCompleted = stage.IsCompleted,
+                stageId = stage.Id,
+                // Map tasks by finding the corresponding TaskStatus for this stage position
+                tasks = allTasks.Where(task => 
+                {
+                    // If task status maps to this stage index, include it
+                    if (statusToStageMapping.TryGetValue(task.Status, out var mappedIndex))
+                    {
+                        return mappedIndex == index;
+                    }
+                    // Default to first stage if no mapping found
+                    return index == 0;
+                }).ToArray()
+            }).ToArray();
+
             var boardData = new
             {
                 projectId = publicId,
-                columns = new[]
-                {
-                    new { 
-                        id = "todo", 
-                        title = "To Do", 
-                        status = Core.Entities.TaskStatus.Todo,
-                        tasks = allTasks.Where(t => t.Status == Core.Entities.TaskStatus.Todo).ToArray()
-                    },
-                    new { 
-                        id = "inprogress", 
-                        title = "In Progress", 
-                        status = Core.Entities.TaskStatus.InProgress,
-                        tasks = allTasks.Where(t => t.Status == Core.Entities.TaskStatus.InProgress).ToArray()
-                    },
-                    new { 
-                        id = "inreview", 
-                        title = "In Review", 
-                        status = Core.Entities.TaskStatus.InReview,
-                        tasks = allTasks.Where(t => t.Status == Core.Entities.TaskStatus.InReview).ToArray()
-                    },
-                    new { 
-                        id = "done", 
-                        title = "Done", 
-                        status = Core.Entities.TaskStatus.Done,
-                        tasks = allTasks.Where(t => t.Status == Core.Entities.TaskStatus.Done).ToArray()
-                    }
-                }
+                columns = columns
             };
 
             return Ok(boardData);

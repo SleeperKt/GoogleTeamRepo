@@ -50,6 +50,16 @@ namespace ProjectHub.Infrastructure.Data
                 .Property(p => p.OwnerId)
                 .IsRequired();
 
+            modelBuilder.Entity<Project>()
+                .Property(p => p.Status)
+                .HasConversion<int>()
+                .IsRequired();
+
+            modelBuilder.Entity<Project>()
+                .Property(p => p.Priority)
+                .HasConversion<int>()
+                .IsRequired();
+
             // Configure ProjectParticipant relationships
             modelBuilder.Entity<ProjectParticipant>()
                 .HasKey(pp => pp.Id);

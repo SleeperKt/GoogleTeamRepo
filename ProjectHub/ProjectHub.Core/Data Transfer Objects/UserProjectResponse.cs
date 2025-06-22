@@ -10,5 +10,7 @@ namespace ProjectHub.Core.DataTransferObjects
         public string ProjectDescription { get; set; } = string.Empty;
         public ParticipantRole Role { get; set; }
         public DateTime JoinedAt { get; set; }
+        public ProjectStatus Status { get; set; }
+        public ProjectPriority Priority { get; set; }
     }
 }

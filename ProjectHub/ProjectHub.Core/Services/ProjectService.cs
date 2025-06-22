@@ -130,6 +130,8 @@ namespace ProjectHub.Core.Services
             // Update only allowed fields
             existingProject.Name = project.Name;
             existingProject.Description = project.Description;
+            existingProject.Status = project.Status;
+            existingProject.Priority = project.Priority;
 
             await _projectRepository.UpdateAsync(existingProject);
         }

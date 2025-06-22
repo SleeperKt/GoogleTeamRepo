@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using ProjectHub.Core.Entities;
 
 namespace ProjectHub.Core.DataTransferObjects
 {
@@ -10,5 +11,9 @@ namespace ProjectHub.Core.DataTransferObjects
 
         [StringLength(500)]
         public string? Description { get; set; }
+        
+        public ProjectStatus? Status { get; set; }
+        
+        public ProjectPriority? Priority { get; set; }
     }
 } 

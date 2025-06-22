@@ -83,7 +83,9 @@ namespace ProjectHub.API.Controllers
             var project = new Project
             {
                 Name = request.Name,
-                Description = request.Description
+                Description = request.Description,
+                Status = request.Status,
+                Priority = request.Priority
             };
             
             var userEmail = GetCurrentUserEmail();
@@ -239,6 +241,10 @@ namespace ProjectHub.API.Controllers
             // Update allowed fields
             project.Name = request.Name;
             project.Description = request.Description;
+            if (request.Status.HasValue)
+                project.Status = request.Status.Value;
+            if (request.Priority.HasValue)
+                project.Priority = request.Priority.Value;
 
             var userEmail = GetCurrentUserEmail();
             try

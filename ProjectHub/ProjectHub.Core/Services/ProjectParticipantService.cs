@@ -215,7 +215,9 @@ namespace ProjectHub.Core.Services
                         ProjectName = project.Name,
                         ProjectDescription = project.Description,
                         Role = participation.Role,
-                        JoinedAt = participation.JoinedAt
+                        JoinedAt = participation.JoinedAt,
+                        Status = project.Status,
+                        Priority = project.Priority
                     });
                 }
             }

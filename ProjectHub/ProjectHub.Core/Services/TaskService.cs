@@ -16,6 +16,7 @@ namespace ProjectHub.Core.Services
         private readonly IProjectRepository _projectRepository;
         private readonly ITaskCommentRepository _commentRepository;
         private readonly ITaskActivityRepository _activityRepository;
+        private readonly IProjectWorkflowRepository _workflowRepository;
 
         public TaskService(
             ITaskRepository taskRepository,
@@ -23,7 +24,8 @@ namespace ProjectHub.Core.Services
             IUserRepository userRepository,
             IProjectRepository projectRepository,
             ITaskCommentRepository commentRepository,
-            ITaskActivityRepository activityRepository)
+            ITaskActivityRepository activityRepository,
+            IProjectWorkflowRepository workflowRepository)
         {
             _taskRepository = taskRepository;
             _participantRepository = participantRepository;
@@ -31,6 +33,7 @@ namespace ProjectHub.Core.Services
             _projectRepository = projectRepository;
             _commentRepository = commentRepository;
             _activityRepository = activityRepository;
+            _workflowRepository = workflowRepository;
         }
 
         private async Task<User?> FindUserByIdOrEmailAsync(string userIdOrEmail)
@@ -63,6 +66,31 @@ namespace ProjectHub.Core.Services
                 return parts[0].Length > 0 ? parts[0][0].ToString().ToUpper() : "?";
 
             return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpper();
+        }
+
+        private async Task<string> GetStatusDisplayNameAsync(int projectId, int statusValue)
+        {
+            // Get workflow stages for the project
+            var workflowStages = await _workflowRepository.GetProjectWorkflowStagesAsync(projectId);
+            var stagesList = workflowStages.OrderBy(s => s.Order).ToList();
+
+            // Map status value to workflow stage name
+            if (statusValue >= 1 && statusValue <= stagesList.Count)
+            {
+                var stageIndex = statusValue - 1; // Convert to 0-based index
+                return stagesList[stageIndex].Name;
+            }
+
+            // Fallback to default names for known TaskStatus enum values
+            return statusValue switch
+            {
+                1 => "Todo",
+                2 => "InProgress",
+                3 => "InReview", 
+                4 => "Done",
+                5 => "Cancelled",
+                _ => $"Stage {statusValue}"
+            };
         }
 
         private async Task<double> CalculateNewTaskPositionAsync(int projectId, Entities.TaskStatus status)
@@ -330,9 +358,12 @@ namespace ProjectHub.Core.Services
             // Log activities for significant changes
             if (request.Status.HasValue && originalStatus != task.Status)
             {
+                var originalStatusName = await GetStatusDisplayNameAsync(task.ProjectId, (int)originalStatus);
+                var newStatusName = await GetStatusDisplayNameAsync(task.ProjectId, (int)task.Status);
+                
                 await LogTaskActivityAsync(id, "status_change", requestingUserId, 
-                    $"Changed status from {originalStatus} to {task.Status}", 
-                    originalStatus.ToString(), task.Status.ToString());
+                    $"Changed status from {originalStatusName} to {newStatusName}", 
+                    originalStatusName, newStatusName);
                 activityLogged = true;
             }
 
@@ -387,7 +418,7 @@ namespace ProjectHub.Core.Services
 
             // Update task status and position
             var originalStatus = task.Status;
-            task.Status = request.Status;
+            task.Status = (Entities.TaskStatus)request.Status;
             task.Position = request.Position;
 
             await _taskRepository.UpdateAsync(task);
@@ -395,9 +426,12 @@ namespace ProjectHub.Core.Services
             // Log activity if status changed
             if (originalStatus != task.Status)
             {
+                var originalStatusName = await GetStatusDisplayNameAsync(task.ProjectId, (int)originalStatus);
+                var newStatusName = await GetStatusDisplayNameAsync(task.ProjectId, (int)task.Status);
+                
                 await LogTaskActivityAsync(taskId, "status_change", requestingUserId, 
-                    $"Moved task from {originalStatus} to {task.Status}", 
-                    originalStatus.ToString(), task.Status.ToString());
+                    $"Moved task from {originalStatusName} to {newStatusName}", 
+                    originalStatusName, newStatusName);
             }
 
             return await MapToTaskResponseAsync(task);

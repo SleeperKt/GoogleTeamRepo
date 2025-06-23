@@ -53,6 +53,7 @@ builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>()
 builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
 builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
+builder.Services.AddScoped<IValidator<TaskReorderRequest>, TaskReorderRequestValidator>();
 builder.Services.AddScoped<IValidator<CreateTaskCommentRequest>, CreateTaskCommentRequestValidator>();
 
 builder.Services.AddEndpointsApiExplorer();

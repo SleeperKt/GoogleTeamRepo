@@ -707,6 +707,7 @@ export default function SettingsPage() {
     }))
 
     try {
+      // The backend expects StageIds array in the correct order
       const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/workflow/reorder`, {
         method: 'PUT',
         headers: {
@@ -714,14 +715,19 @@ export default function SettingsPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          workflowStages: updatedWorkflow.map(stage => ({ id: stage.id, order: stage.order }))
+          stageIds: updatedWorkflow.map(stage => stage.id)
         }),
       })
 
       if (response.ok) {
         setWorkflow(updatedWorkflow)
+        console.log('✅ Workflow stages reordered successfully')
+      } else {
+        console.error('❌ Failed to reorder workflow stages:', await response.text())
+        setError('Failed to reorder workflow stages')
       }
     } catch (err) {
+      console.error('❌ Error reordering workflow stages:', err)
       setError('Failed to reorder workflow stages')
     }
 
@@ -1473,7 +1479,7 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div className="divide-y">
-                      {projectSettings.workflow.map((stage) => (
+                      {workflow.map((stage) => (
                         <div
                           key={stage.id}
                           className={cn(
@@ -1493,7 +1499,7 @@ export default function SettingsPage() {
                               <div className="font-medium">{stage.name}</div>
                             </div>
                             <div className="col-span-2">
-                              <Badge variant="outline">{stage.tasks}</Badge>
+                              <Badge variant="outline">{stage.taskCount || stage.tasks || 0}</Badge>
                             </div>
                             <div className="col-span-2 flex justify-end gap-2">
                               <DropdownMenu>
@@ -1515,10 +1521,11 @@ export default function SettingsPage() {
                                   <DropdownMenuItem
                                     className="text-red-600"
                                     onClick={() => {
-                                      if (stage.tasks > 0) {
+                                      const taskCount = stage.taskCount || stage.tasks || 0
+                                      if (taskCount > 0) {
                                         if (
                                           confirm(
-                                            `This stage contains ${stage.tasks} tasks. Are you sure you want to delete it?`,
+                                            `This stage contains ${taskCount} tasks. Are you sure you want to delete it?`,
                                           )
                                         ) {
                                           handleDeleteWorkflowStage(stage.id)
@@ -1549,13 +1556,13 @@ export default function SettingsPage() {
                           This is how your workflow will appear on the board. Drag and drop stages to reorder them.
                         </p>
                         <div className="flex gap-4 overflow-x-auto pb-2">
-                          {projectSettings.workflow.map((stage) => (
+                          {workflow.map((stage) => (
                             <div
                               key={stage.id}
                               className="flex-shrink-0 w-40 bg-white dark:bg-gray-800 rounded-md border shadow-sm p-3"
                             >
                               <div className="font-medium mb-2">{stage.name}</div>
-                              <div className="text-sm text-muted-foreground">{stage.tasks} tasks</div>
+                              <div className="text-sm text-muted-foreground">{stage.taskCount || stage.tasks || 0} tasks</div>
                             </div>
                           ))}
                         </div>

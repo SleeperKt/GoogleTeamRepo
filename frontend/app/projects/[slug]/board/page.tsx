@@ -484,19 +484,32 @@ export default function ProjectBoardPage() {
   const reorderTask = async (taskId: number, newColumnId: string, newPosition: number) => {
     if (!projectId) return
 
-    const statusMap: Record<string, number> = {
-      todo: 1,        // Todo
-      inprogress: 2,  // InProgress
-      inreview: 3,    // InReview
-      done: 4         // Done
-    }
-
+    // Create dynamic status mapping based on actual board columns
+    const boardColumns = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const columnToStatusMap: Record<string, number> = {};
     const statusNames: Record<number, string> = {
       1: "Todo",
       2: "InProgress", 
       3: "InReview",
       4: "Done"
     }
+
+    // Map actual column IDs to TaskStatus enum values based on order
+    boardColumns.forEach((column, index) => {
+      const statusValue = index + 1; // TaskStatus starts at 1
+      columnToStatusMap[column.id] = statusValue;
+      
+      // Extend statusNames for additional columns beyond the default 4
+      if (statusValue > 4) {
+        statusNames[statusValue] = column.title || `Stage ${statusValue}`;
+      }
+    });
+
+    console.log('📊 Column mapping created:', {
+      boardColumns: boardColumns.map(c => ({ id: c.id, title: c.title, order: c.order })),
+      columnToStatusMap,
+      statusNames
+    });
 
     // Find the current task to preserve its data
     let currentTask: Task | undefined
@@ -517,7 +530,7 @@ export default function ProjectBoardPage() {
     // Create optimistic update data
     const optimisticTask: Task = {
       ...currentTask,
-      status: statusNames[statusMap[newColumnId]],
+      status: statusNames[columnToStatusMap[newColumnId]],
       position: newPosition
     }
 
@@ -551,12 +564,29 @@ export default function ProjectBoardPage() {
     }
 
     try {
+      // Check if the target column exists in boardData
+      if (!(newColumnId in boardData)) {
+        console.error('❌ Target column not found in board data:', newColumnId);
+        console.error('Available columns:', Object.keys(boardData));
+        return;
+      }
+
+      // Check if we have a valid status mapping for this column
+      if (!(newColumnId in columnToStatusMap)) {
+        console.error('❌ No status mapping found for column:', newColumnId);
+        console.error('Available columns:', Object.keys(boardData));
+        console.error('Available mappings:', columnToStatusMap);
+        console.error('Board columns:', boardColumns.map(c => ({ id: c.id, title: c.title, order: c.order })));
+        return;
+      }
+
       // Use the new reorder API endpoint
       const payload = {
-        taskId: taskId,
-        status: statusMap[newColumnId],
+        status: columnToStatusMap[newColumnId],
         position: newPosition
       };
+
+      console.log('🔄 Sending reorder request:', { taskId, newColumnId, payload });
 
       await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}/reorder`, {
         method: 'PUT',

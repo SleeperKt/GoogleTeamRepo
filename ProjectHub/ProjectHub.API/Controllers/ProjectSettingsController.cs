@@ -248,6 +248,46 @@ namespace ProjectHub.API.Controllers
             return await GetProjectLabels(internalId.Value);
         }
 
+        [HttpPost("~/api/projects/public/{publicId:guid}/settings/labels")]
+        public async Task<IActionResult> CreateProjectLabelByPublicId(Guid publicId, [FromBody] CreateProjectLabelRequest request)
+        {
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+                return NotFound();
+
+            return await CreateProjectLabel(internalId.Value, request);
+        }
+
+        [HttpPut("~/api/projects/public/{publicId:guid}/settings/labels/{labelId:int}")]
+        public async Task<IActionResult> UpdateProjectLabelByPublicId(Guid publicId, int labelId, [FromBody] UpdateProjectLabelRequest request)
+        {
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+                return NotFound();
+
+            return await UpdateProjectLabel(internalId.Value, labelId, request);
+        }
+
+        [HttpDelete("~/api/projects/public/{publicId:guid}/settings/labels/{labelId:int}")]
+        public async Task<IActionResult> DeleteProjectLabelByPublicId(Guid publicId, int labelId)
+        {
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+                return NotFound();
+
+            return await DeleteProjectLabel(internalId.Value, labelId);
+        }
+
+        [HttpPut("~/api/projects/public/{publicId:guid}/settings/labels/reorder")]
+        public async Task<IActionResult> ReorderProjectLabelsByPublicId(Guid publicId, [FromBody] int[] labelIds)
+        {
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+                return NotFound();
+
+            return await ReorderProjectLabels(internalId.Value, labelIds);
+        }
+
         [HttpGet("~/api/projects/public/{publicId:guid}/settings/workflow")]
         public async Task<IActionResult> GetProjectWorkflowStagesByPublicId(Guid publicId)
         {

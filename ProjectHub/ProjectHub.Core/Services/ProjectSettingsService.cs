@@ -1,6 +1,7 @@
 using ProjectHub.Core.DataTransferObjects;
 using ProjectHub.Core.Entities;
 using ProjectHub.Core.Interfaces;
+using System.Linq;
 
 namespace ProjectHub.Core.Services
 {
@@ -127,11 +128,22 @@ namespace ProjectHub.Core.Services
             if (label == null || label.ProjectId != projectId)
                 throw new ArgumentException("Label not found");
 
+            var oldLabelName = label.Name;
+            var newLabelName = request.Name;
+
+            // Update the label
             label.Name = request.Name;
             label.Color = request.Color;
             label.Order = request.Order;
 
             label = await _labelRepository.UpdateProjectLabelAsync(label);
+
+            // If label name changed, update all tasks that use this label
+            if (oldLabelName != newLabelName)
+            {
+                await UpdateTaskLabelsAsync(projectId, oldLabelName, newLabelName);
+            }
+
             return MapToLabelResponse(label);
         }
 
@@ -286,6 +298,38 @@ namespace ProjectHub.Core.Services
                 CreatedAt = stage.CreatedAt,
                 TaskCount = taskCount
             };
+        }
+
+        private async Task UpdateTaskLabelsAsync(int projectId, string oldLabelName, string newLabelName)
+        {
+            // Get all tasks for the project
+            var allTasks = await _taskRepository.GetAllByProjectIdAsync(projectId);
+            
+            foreach (var task in allTasks)
+            {
+                if (!string.IsNullOrEmpty(task.Labels))
+                {
+                    try
+                    {
+                        // Deserialize the labels
+                        var labels = System.Text.Json.JsonSerializer.Deserialize<string[]>(task.Labels);
+                        if (labels != null && labels.Contains(oldLabelName))
+                        {
+                            // Replace the old label name with the new one
+                            var updatedLabels = labels.Select(label => label == oldLabelName ? newLabelName : label).ToArray();
+                            
+                            // Serialize back to JSON and update the task
+                            task.Labels = System.Text.Json.JsonSerializer.Serialize(updatedLabels);
+                            await _taskRepository.UpdateAsync(task);
+                        }
+                    }
+                    catch (System.Text.Json.JsonException)
+                    {
+                        // Skip tasks with invalid JSON in labels
+                        continue;
+                    }
+                }
+            }
         }
 
         private async Task<int> GetTaskCountForStage(int projectId, int stageId)

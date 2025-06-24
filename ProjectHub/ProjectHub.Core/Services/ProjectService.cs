@@ -12,12 +12,14 @@ namespace ProjectHub.Core.Services
         private readonly IProjectRepository _projectRepository;
         private readonly IProjectParticipantRepository _participantRepository;
         private readonly IUserRepository _userRepository;
+        private readonly IProjectLabelRepository _labelRepository;
 
-        public ProjectService(IProjectRepository projectRepository, IProjectParticipantRepository participantRepository, IUserRepository userRepository)
+        public ProjectService(IProjectRepository projectRepository, IProjectParticipantRepository participantRepository, IUserRepository userRepository, IProjectLabelRepository labelRepository)
         {
             _projectRepository = projectRepository;
             _participantRepository = participantRepository;
             _userRepository = userRepository;
+            _labelRepository = labelRepository;
         }
 
         public async Task<Project?> GetProjectByIdAsync(int id)
@@ -96,6 +98,9 @@ namespace ProjectHub.Core.Services
                 JoinedAt = DateTime.Now
             };
             await _participantRepository.AddAsync(ownerParticipant);
+            
+            // Create default labels for the project
+            await CreateDefaultLabelsAsync(project.Id);
             
             return project; 
         }
@@ -191,6 +196,23 @@ namespace ProjectHub.Core.Services
         public async Task<int?> GetInternalIdByPublicIdAsync(Guid publicId)
         {
             return await _projectRepository.GetInternalIdByPublicIdAsync(publicId);
+        }
+
+        private async Task CreateDefaultLabelsAsync(int projectId)
+        {
+            var defaultLabels = new[]
+            {
+                new ProjectLabel { ProjectId = projectId, Name = "Frontend", Color = "#93c5fd", Order = 0 },
+                new ProjectLabel { ProjectId = projectId, Name = "Backend", Color = "#86efac", Order = 1 },
+                new ProjectLabel { ProjectId = projectId, Name = "Bug", Color = "#fca5a5", Order = 2 },
+                new ProjectLabel { ProjectId = projectId, Name = "Feature", Color = "#c4b5fd", Order = 3 },
+                new ProjectLabel { ProjectId = projectId, Name = "Documentation", Color = "#fcd34d", Order = 4 },
+            };
+
+            foreach (var label in defaultLabels)
+            {
+                await _labelRepository.CreateProjectLabelAsync(label);
+            }
         }
     }
 }

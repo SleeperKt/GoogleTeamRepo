@@ -44,6 +44,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { useProject } from "@/contexts/project-context"
 import { useProjectLabels, type ProjectLabel } from "@/hooks/use-project-labels"
 import { SendInvitationDialog } from "@/components/send-invitation-dialog"
+import { useUserPermissions } from "@/hooks/use-user-permissions"
 import { invitationApi } from "@/lib/api"
 import { toast } from "@/hooks/use-toast"
 
@@ -227,6 +228,7 @@ export default function SettingsPage() {
     updateLabel: hookUpdateLabel, 
     deleteLabel: hookDeleteLabel 
   } = useProjectLabels(projectId)
+  const permissions = useUserPermissions(projectId)
   
   const [activeTab, setActiveTab] = useState("general")
   const [loading, setLoading] = useState(true)
@@ -1056,30 +1058,36 @@ export default function SettingsPage() {
                     >
                       Members & Access
                     </TabsTrigger>
-                    <TabsTrigger
-                      value="labels"
-                      className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
-                    >
-                      Tags & Labels
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="workflow"
-                      className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
-                    >
-                      Workflow
-                    </TabsTrigger>
+                    {permissions.canManageProject && (
+                      <TabsTrigger
+                        value="labels"
+                        className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                      >
+                        Tags & Labels
+                      </TabsTrigger>
+                    )}
+                    {permissions.canManageProject && (
+                      <TabsTrigger
+                        value="workflow"
+                        className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                      >
+                        Workflow
+                      </TabsTrigger>
+                    )}
                     <TabsTrigger
                       value="integrations"
                       className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
                     >
                       Integrations
                     </TabsTrigger>
-                    <TabsTrigger
-                      value="danger"
-                      className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 text-red-600 data-[state=active]:border-red-600 data-[state=active]:bg-red-50 data-[state=active]:text-red-600 dark:text-red-400 dark:data-[state=active]:bg-red-950 dark:data-[state=active]:text-red-400"
-                    >
-                      Danger Zone
-                    </TabsTrigger>
+                    {permissions.canDeleteProject && (
+                      <TabsTrigger
+                        value="danger"
+                        className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 text-red-600 data-[state=active]:border-red-600 data-[state=active]:bg-red-50 data-[state=active]:text-red-600 dark:text-red-400 dark:data-[state=active]:bg-red-950 dark:data-[state=active]:text-red-400"
+                      >
+                        Danger Zone
+                      </TabsTrigger>
+                    )}
                   </TabsList>
                 </Tabs>
               </CardContent>
@@ -1096,12 +1104,26 @@ export default function SettingsPage() {
                   <CardDescription>Configure basic project information and preferences</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {!permissions.canManageProject && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-md p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <Info className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-amber-800 mb-1">Read-only Access</h4>
+                          <p className="text-sm text-amber-700">
+                            You have {permissions.role === 3 ? 'Editor' : 'Viewer'} access to this project. Only project admins and owners can modify general settings.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="project-name">Project Name</Label>
                     <Input
                       id="project-name"
                       value={projectSettings.name || ''}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
+                      onChange={permissions.canManageProject ? (e) => handleInputChange("name", e.target.value) : undefined}
+                      readOnly={!permissions.canManageProject}
                     />
                   </div>
 
@@ -1110,8 +1132,9 @@ export default function SettingsPage() {
                     <Textarea
                       id="project-description"
                       value={projectSettings.description}
-                      onChange={(e) => handleInputChange("description", e.target.value)}
+                      onChange={permissions.canManageProject ? (e) => handleInputChange("description", e.target.value) : undefined}
                       rows={3}
+                      readOnly={!permissions.canManageProject}
                     />
                   </div>
 
@@ -1206,9 +1229,22 @@ export default function SettingsPage() {
                   <CardDescription>Manage team members and their access levels</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {!permissions.canInviteUsers && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-blue-800 mb-1">Limited Access</h4>
+                          <p className="text-sm text-blue-700">
+                            You can view team members but cannot invite new members or modify roles. Only project admins and owners can manage team access.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium">Project Members</h3>
-                    {currentProject && (
+                    {currentProject && permissions.canInviteUsers && (
                       <SendInvitationDialog 
                         projectId={currentProject.id} 
                         onInvitationSent={handleInvitationSent}
@@ -1255,7 +1291,7 @@ export default function SettingsPage() {
                                 <Select
                                   value={memberRoleName}
                                   onValueChange={(value) => handleRoleChange(member.userId, value)}
-                                  disabled={!currentUserIsOwner || isOwner || isCurrentUser}
+                                  disabled={!permissions.canManageProject || isOwner || isCurrentUser}
                                 >
                                   <SelectTrigger className="h-8">
                                     <SelectValue placeholder="Select a role" />
@@ -1272,7 +1308,7 @@ export default function SettingsPage() {
                               <div className="col-span-3 flex justify-end">
                                 {isOwner || isCurrentUser ? (
                                   <Badge variant="outline">{isOwner ? "Owner" : "You"}</Badge>
-                                ) : currentUserIsOwner ? (
+                                ) : permissions.canManageProject ? (
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -1353,7 +1389,7 @@ export default function SettingsPage() {
             )}
 
             {/* Tags & Labels */}
-            {activeTab === "labels" && (
+            {activeTab === "labels" && permissions.canManageProject && (
               <Card>
                 <CardHeader>
                   <CardTitle>Tags & Labels</CardTitle>
@@ -1391,7 +1427,7 @@ export default function SettingsPage() {
                     <Button
                       className="bg-violet-600 hover:bg-violet-700 text-white mt-2 sm:mt-0"
                       onClick={handleAddLabel}
-                      disabled={!newLabelName.trim()}
+                      disabled={!newLabelName.trim() || !permissions.canManageProject}
                     >
                       <Plus className="mr-2 h-4 w-4" /> Add Label
                     </Button>
@@ -1505,7 +1541,7 @@ export default function SettingsPage() {
             )}
 
             {/* Workflow */}
-            {activeTab === "workflow" && (
+            {activeTab === "workflow" && permissions.canManageProject && (
               <Card>
                 <CardHeader>
                   <CardTitle>Workflow Configuration</CardTitle>
@@ -1756,7 +1792,7 @@ export default function SettingsPage() {
             )}
 
             {/* Danger Zone */}
-            {activeTab === "danger" && (
+            {activeTab === "danger" && permissions.canDeleteProject && (
               <Card className="border-red-200 dark:border-red-900">
                 <CardHeader className="border-b border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950">
                   <div className="flex items-center gap-2">

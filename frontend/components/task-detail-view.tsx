@@ -91,6 +91,7 @@ interface TaskDetailViewProps {
   onTaskUpdateFailed?: (originalTask: any, attemptedChanges: any) => void
   projectPublicId?: string
   isDragging?: boolean
+  readOnly?: boolean
 }
 
 // Helper to derive stage string from status value (number or string) using dynamic workflow stages
@@ -155,6 +156,7 @@ const TaskDetailViewComponent = function TaskDetailView({
   onTaskUpdateFailed,
   projectPublicId,
   isDragging = false,
+  readOnly = false,
 }: TaskDetailViewProps) {
   console.log('🔧 TaskDetailView: Rendered with onTaskUpdated callback:', !!onTaskUpdated);
   
@@ -949,9 +951,10 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
           <Input
             ref={titleInputRef}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={readOnly ? undefined : (e) => setTitle(e.target.value)}
             className="text-base font-medium border-0 p-0 h-7 focus-visible:ring-0 focus-visible:ring-offset-0"
             placeholder="Task title"
+            readOnly={readOnly}
           />
           {hasUnsavedChanges && (
             <span className="text-xs text-muted-foreground ml-auto">
@@ -999,12 +1002,14 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
               <Textarea
                 id="description"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={readOnly ? undefined : (e) => setDescription(e.target.value)}
                 placeholder="Add a detailed description..."
                 className="min-h-[100px] resize-y text-sm"
+                readOnly={readOnly}
               />
 
               {/* AI Assistant - Compact Version */}
+              {!readOnly && (
               <div className="border rounded-md p-1.5 bg-violet-50 dark:bg-violet-950/20 mt-1">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1">
@@ -1102,6 +1107,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             {/* Task Details Section */}
@@ -1114,10 +1120,11 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   </Label>
                   <Select
                     value={task?.type}
-                    onValueChange={(value) => {
+                    onValueChange={readOnly ? undefined : (value) => {
                       setTask({ ...task, type: value })
                       setHasUnsavedChanges(true)
                     }}
+                    disabled={readOnly}
                   >
                     <SelectTrigger id="type" className="h-8 text-xs">
                       <SelectValue placeholder="Select type">
@@ -1166,10 +1173,11 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   </Label>
                   <Select 
                     value={stage} 
-                    onValueChange={(value) => {
+                    onValueChange={readOnly ? undefined : (value) => {
                       setStage(value);
                       setHasUnsavedChanges(true);
                     }}
+                    disabled={readOnly}
                   >
                     <SelectTrigger id="status" className="h-8 text-xs">
                       <SelectValue placeholder="Select status" />
@@ -1189,13 +1197,14 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   <Label htmlFor="assignee" className="text-xs font-medium">
                     Assignee
                   </Label>
-                  <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+                  <Popover open={readOnly ? false : assigneeOpen} onOpenChange={readOnly ? undefined : setAssigneeOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={assigneeOpen}
                         className="w-full justify-between h-8 text-xs"
+                        disabled={readOnly}
                       >
                         <div className="flex items-center gap-2 truncate">
                           {assignee ? (

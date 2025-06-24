@@ -268,5 +268,60 @@ namespace ProjectHub.API.Controllers
 
             return NoContent();
         }
+
+        [HttpPost("public/{publicId:guid}/transfer-ownership")]
+        public async Task<IActionResult> TransferOwnership(Guid publicId, [FromBody] TransferOwnershipRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+            {
+                return NotFound();
+            }
+
+            var userEmail = GetCurrentUserEmail();
+            try
+            {
+                await _projectService.TransferOwnershipAsync(internalId.Value, request.NewOwnerEmail, userEmail);
+                return NoContent();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("public/{publicId:guid}/archive")]
+        public async Task<IActionResult> ArchiveProject(Guid publicId)
+        {
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+            {
+                return NotFound();
+            }
+
+            var userEmail = GetCurrentUserEmail();
+            try
+            {
+                await _projectService.ArchiveProjectAsync(internalId.Value, userEmail);
+                return NoContent();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 } 

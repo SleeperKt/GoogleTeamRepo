@@ -15,5 +15,7 @@ namespace ProjectHub.Core.Interfaces
         Task<bool> UserHasAccessAsync(int projectId, string userEmail);
         Task<Project?> GetProjectByPublicIdAsync(Guid publicId);
         Task<int?> GetInternalIdByPublicIdAsync(Guid publicId);
+        Task TransferOwnershipAsync(int projectId, string newOwnerEmail, string currentUserId);
+        Task ArchiveProjectAsync(int projectId, string currentUserId);
     }
 } 

@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils"
 import { API_BASE_URL } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { useProject } from "@/contexts/project-context"
+import { useProjectLabels, type ProjectLabel } from "@/hooks/use-project-labels"
 
 // Types
 interface ProjectSettings {
@@ -58,14 +59,6 @@ interface ProjectSettings {
   allowGuestAccess: boolean
   createdAt: string
   updatedAt: string
-}
-
-interface ProjectLabel {
-  id: number
-  name: string
-  color: string
-  order: number
-  createdAt: string
 }
 
 interface WorkflowStage {
@@ -222,12 +215,23 @@ export default function SettingsPage() {
   const { currentProject } = useProject()
   const projectId = currentProject?.publicId // Use selected project from context
   
+  // Use labels hook
+  const { 
+    labels, 
+    loading: labelsLoading, 
+    error: labelsError, 
+    createLabel: hookCreateLabel, 
+    updateLabel: hookUpdateLabel, 
+    deleteLabel: hookDeleteLabel 
+  } = useProjectLabels(projectId)
+  
   const [activeTab, setActiveTab] = useState("general")
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [editingLabel, setEditingLabel] = useState<number | null>(null)
+  const [editingLabelData, setEditingLabelData] = useState<{name: string, color: string}>({name: "", color: ""})
   const [newLabelName, setNewLabelName] = useState("")
   const [newLabelColor, setNewLabelColor] = useState(labelColors[0])
   const [draggedWorkflowId, setDraggedWorkflowId] = useState<number | null>(null)
@@ -236,7 +240,6 @@ export default function SettingsPage() {
   // Real data state
   const [project, setProject] = useState<Project | null>(null)
   const [settings, setSettings] = useState<ProjectSettings | null>(null)
-  const [labels, setLabels] = useState<ProjectLabel[]>([])
   const [workflow, setWorkflow] = useState<WorkflowStage[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [pendingInvites, setPendingInvites] = useState<any[]>([])
@@ -273,12 +276,9 @@ export default function SettingsPage() {
           setProject(projectData)
         }
 
-        // Fetch project settings, labels, workflow, and team in parallel
-        const [settingsRes, labelsRes, workflowRes, teamRes] = await Promise.all([
+        // Fetch project settings, workflow, and team in parallel (labels managed by hook)
+        const [settingsRes, workflowRes, teamRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          }),
-          fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/labels`, {
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
           }),
           fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/workflow`, {
@@ -294,10 +294,7 @@ export default function SettingsPage() {
           setSettings(settingsData)
         }
 
-        if (labelsRes.ok) {
-          const labelsData = await labelsRes.json()
-          setLabels(Array.isArray(labelsData) ? labelsData : [])
-        }
+        // Labels are managed by the hook
 
         if (workflowRes.ok) {
           const workflowData = await workflowRes.json()
@@ -353,7 +350,6 @@ export default function SettingsPage() {
         // For now, use empty states
         setProject(null)
         setSettings(null)
-        setLabels([])
         setWorkflow([])
         setTeamMembers([])
       }
@@ -593,29 +589,14 @@ export default function SettingsPage() {
 
   // Handle add label
   const handleAddLabel = async () => {
-    if (!newLabelName.trim() || !token || !projectId) return
+    if (!newLabelName.trim()) return
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/labels`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: newLabelName,
-          color: newLabelColor
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to create label')
+      const newLabel = await hookCreateLabel(newLabelName, newLabelColor)
+      if (newLabel) {
+        setNewLabelName("")
+        setNewLabelColor(labelColors[0])
       }
-
-      const newLabel = await response.json()
-      setLabels(prev => [...prev, newLabel])
-      setNewLabelName("")
-      setNewLabelColor(labelColors[0])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create label')
     }
@@ -623,29 +604,11 @@ export default function SettingsPage() {
 
   // Update existing label function to work with real data
   const handleUpdateLabel = async (labelId: number, name: string, color: string) => {
-    if (!token || !projectId) return
-
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/labels/${labelId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name,
-          color,
-          order: labels.find(l => l.id === labelId)?.order || 0
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to update label')
+      const updatedLabel = await hookUpdateLabel(labelId, name, color)
+      if (updatedLabel) {
+        setEditingLabel(null)
       }
-
-      const updatedLabel = await response.json()
-      setLabels(prev => prev.map(l => l.id === labelId ? updatedLabel : l))
-      setEditingLabel(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update label')
     }
@@ -653,21 +616,8 @@ export default function SettingsPage() {
 
   // Delete label function
   const handleDeleteLabel = async (labelId: number) => {
-    if (!token || !projectId) return
-
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/labels/${labelId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete label')
-      }
-
-      setLabels(prev => prev.filter(l => l.id !== labelId))
+      await hookDeleteLabel(labelId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete label')
     }
@@ -1340,12 +1290,9 @@ export default function SettingsPage() {
                               {editingLabel === label.id ? (
                                 <div className="flex gap-2">
                                   <Input
-                                    value={label.name}
+                                    value={editingLabelData.name}
                                     onChange={(e) => {
-                                      const updatedLabels = projectSettings.labels.map((l) =>
-                                        l.id === label.id ? { ...l, name: e.target.value } : l,
-                                      )
-                                      setLabels(updatedLabels)
+                                      setEditingLabelData(prev => ({ ...prev, name: e.target.value }))
                                     }}
                                     className="h-8"
                                   />
@@ -1356,14 +1303,11 @@ export default function SettingsPage() {
                                         type="button"
                                         className={cn(
                                           "w-6 h-6 rounded-full border",
-                                          label.color === color ? "ring-2 ring-offset-1 ring-violet-600" : "",
+                                          editingLabelData.color === color ? "ring-2 ring-offset-1 ring-violet-600" : "",
                                         )}
                                         style={{ backgroundColor: color }}
                                         onClick={() => {
-                                          const updatedLabels = projectSettings.labels.map((l) =>
-                                            l.id === label.id ? { ...l, color } : l,
-                                          )
-                                          setLabels(updatedLabels)
+                                          setEditingLabelData(prev => ({ ...prev, color }))
                                         }}
                                         aria-label={`Select color ${color}`}
                                       />
@@ -1385,7 +1329,7 @@ export default function SettingsPage() {
                                     variant="outline"
                                     size="sm"
                                     className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    onClick={() => handleUpdateLabel(label.id, label.name, label.color)}
+                                    onClick={() => handleUpdateLabel(label.id, editingLabelData.name, editingLabelData.color)}
                                   >
                                     <Check className="h-4 w-4" />
                                     <span className="sr-only md:not-sr-only md:ml-2">Save</span>
@@ -1393,7 +1337,10 @@ export default function SettingsPage() {
                                 </>
                               ) : (
                                 <>
-                                  <Button variant="ghost" size="sm" onClick={() => setEditingLabel(label.id)}>
+                                  <Button variant="ghost" size="sm" onClick={() => {
+                                    setEditingLabel(label.id)
+                                    setEditingLabelData({ name: label.name, color: label.color })
+                                  }}>
                                     <Edit className="h-4 w-4" />
                                     <span className="sr-only md:not-sr-only md:ml-2">Edit</span>
                                   </Button>

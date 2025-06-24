@@ -289,6 +289,7 @@ export function CreateTaskSidebar({
               <LabelSelector
                 value={formData.labels}
                 onChange={(labels) => updateFormData({ labels })}
+                projectPublicId={projectPublicId}
               />
             </div>
 

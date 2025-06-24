@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils"
 import { TaskDetailView } from "@/components/task-detail-view"
 import { CreateTaskSidebar } from "@/components/create-task-sidebar"
 import { apiRequest } from "@/lib/api"
+import { useProjectLabels } from "@/hooks/use-project-labels"
 
 // Type definitions
 interface Task {
@@ -142,6 +143,9 @@ const getStageIcon = (stageIndex: number, isCompleted: boolean) => {
 export default function ProjectBoardPage() {
   const params = useParams()
   const projectId = params.slug as string
+  
+  // Use labels hook to access project labels
+  const { labels: projectLabels } = useProjectLabels(projectId)
   
   const [project, setProject] = useState<Project | null>(null)
   const [boardData, setBoardData] = useState<BoardData>({})
@@ -270,6 +274,10 @@ export default function ProjectBoardPage() {
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === 'workflowChanged') {
         console.log('🔄 Board: Detected workflow change from storage, refreshing board data...')
+        fetchBoardData()
+      }
+      if (event.key === 'labelsChanged') {
+        console.log('🔄 Board: Detected labels change from storage, refreshing board data...')
         fetchBoardData()
       }
     }

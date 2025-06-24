@@ -41,6 +41,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/lib/api"
+import { useProjectLabels } from "@/hooks/use-project-labels"
 import React from "react"
 
 // Unified team member type used in this component
@@ -52,13 +53,7 @@ interface TeamMember {
   initials: string
 }
 
-const labels = [
-  { id: 1, name: "Frontend", color: "#93c5fd" },
-  { id: 2, name: "Backend", color: "#86efac" },
-  { id: 3, name: "Bug", color: "#fca5a5" },
-  { id: 4, name: "Feature", color: "#c4b5fd" },
-  { id: 5, name: "Documentation", color: "#fcd34d" },
-]
+// Labels are now fetched dynamically using the useProjectLabels hook
 
 const priorities = [
   { value: "high", label: "High", color: "text-red-500" },
@@ -134,6 +129,10 @@ const TaskDetailViewComponent = function TaskDetailView({
   isDragging = false,
 }: TaskDetailViewProps) {
   console.log('🔧 TaskDetailView: Rendered with onTaskUpdated callback:', !!onTaskUpdated);
+  
+  // Use dynamic labels
+  const { labels } = useProjectLabels(projectPublicId)
+  
   // Task state
   const [task, setTask] = useState(initialTask)
   const [title, setTitle] = useState(initialTask?.title || "")
@@ -1269,6 +1268,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                                 onSelect={() => toggleLabel(label.id)}
                                 className="flex items-center gap-2 text-xs"
                               >
+                                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: label.color }} />
                                 <span>{label.name}</span>
                                 {selectedLabels.includes(label.id) && <Check className="ml-auto h-3 w-3" />}
                               </CommandItem>

@@ -139,24 +139,7 @@ const TaskDetailViewComponent = function TaskDetailView({
   const [description, setDescription] = useState(initialTask?.description || "")
   const [assignee, setAssignee] = useState<string | number | null>(initialTask?.assigneeId || null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
-  const [selectedLabels, setSelectedLabels] = useState<number[]>(() => {
-    if (!initialTask?.labels || !Array.isArray(initialTask.labels)) {
-      return []
-    }
-    
-    return initialTask.labels
-      .map((label: any) => {
-        if (!label) return null
-        
-        // label can be a string (name) or an object with a name field
-        const labelName = typeof label === 'string' ? label : (label?.name ?? '')
-        if (!labelName || typeof labelName !== 'string') return null
-        
-        const foundLabel = labels.find((l) => l.name === labelName.trim())
-        return foundLabel?.id || null
-      })
-      .filter((id: any): id is number => typeof id === 'number')
-  })
+  const [selectedLabels, setSelectedLabels] = useState<number[]>([])
   const [dueDate, setDueDate] = useState<Date | undefined>(
     initialTask?.dueDate ? new Date(initialTask.dueDate) : undefined
   )
@@ -194,6 +177,46 @@ const TaskDetailViewComponent = function TaskDetailView({
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null)
   const commentInputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Initialize selected labels when labels are loaded and task data is available
+  useEffect(() => {
+    if (!labels || labels.length === 0 || !initialTask?.labels || !Array.isArray(initialTask.labels)) {
+      setSelectedLabels([])
+      return
+    }
+    
+    const mappedLabels = initialTask.labels
+      .map((label: any) => {
+        if (!label) return null
+        
+        // label can be a string (name) or an object with a name field
+        const labelName = typeof label === 'string' ? label : (label?.name ?? '')
+        if (!labelName || typeof labelName !== 'string') return null
+        
+        const foundLabel = labels.find((l) => l.name === labelName.trim())
+        return foundLabel?.id || null
+      })
+      .filter((id: any): id is number => typeof id === 'number')
+    
+    setSelectedLabels(mappedLabels)
+  }, [labels, initialTask?.labels])
+
+  // Update task state when initialTask changes
+  useEffect(() => {
+    setTask(initialTask)
+    setTitle(initialTask?.title || "")
+    setDescription(initialTask?.description || "")
+    setAssignee(initialTask?.assigneeId || null)
+    setDueDate(initialTask?.dueDate ? new Date(initialTask.dueDate) : undefined)
+    setPriority(initialTask?.priority ? 
+      initialTask.priority === 1 ? "low" :
+      initialTask.priority === 2 ? "medium" :
+      initialTask.priority === 3 ? "high" :
+      initialTask.priority === 4 ? "critical" : "medium"
+    : undefined)
+    setStage(mapStatusToStage(initialTask?.status))
+    setEstimate(initialTask?.estimatedHours || undefined)
+  }, [initialTask])
 
   // Load project participants when the view opens
   useEffect(() => {

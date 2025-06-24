@@ -162,16 +162,8 @@ namespace ProjectHub.API.Controllers
             // Get all tasks for the project
             var allTasks = await _taskService.GetProjectTasksAsync(internalId.Value, GetCurrentUserId(), null);
             
-            // Create a mapping from TaskStatus to WorkflowStage order
+            // Order workflow stages and build columns dynamically
             var stagesList = workflowStages.OrderBy(s => s.Order).ToList();
-            var statusToStageMapping = new Dictionary<Core.Entities.TaskStatus, int>
-            {
-                { Core.Entities.TaskStatus.Todo, 0 },
-                { Core.Entities.TaskStatus.InProgress, 1 },
-                { Core.Entities.TaskStatus.InReview, 2 },
-                { Core.Entities.TaskStatus.Done, 3 },
-                { Core.Entities.TaskStatus.Cancelled, 3 } // Map cancelled to the last stage
-            };
 
             var columns = stagesList.Select((stage, index) => new
             {
@@ -181,16 +173,19 @@ namespace ProjectHub.API.Controllers
                 order = stage.Order,
                 isCompleted = stage.IsCompleted,
                 stageId = stage.Id,
-                // Map tasks by finding the corresponding TaskStatus for this stage position
-                tasks = allTasks.Where(task => 
+                // Include tasks whose TaskStatus integer value corresponds to this stage index (index + 1)
+                tasks = allTasks.Where(task =>
                 {
-                    // If task status maps to this stage index, include it
-                    if (statusToStageMapping.TryGetValue(task.Status, out var mappedIndex))
+                    int statusValue = (int)task.Status; // TaskStatus enum values start at 1
+
+                    // Treat values outside the current stages list as belonging to the first stage
+                    if (statusValue < 1 || statusValue > stagesList.Count)
                     {
-                        return mappedIndex == index;
+                        return index == 0;
                     }
-                    // Default to first stage if no mapping found
-                    return index == 0;
+
+                    // Match if (statusValue – 1) equals current stage index
+                    return (statusValue - 1) == index;
                 }).ToArray()
             }).ToArray();
 

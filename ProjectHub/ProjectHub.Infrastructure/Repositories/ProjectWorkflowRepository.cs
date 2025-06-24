@@ -66,20 +66,81 @@ namespace ProjectHub.Infrastructure.Repositories
 
         public async Task ReorderProjectWorkflowStagesAsync(int projectId, int[] stageIds)
         {
+            Console.WriteLine($"🔧 WORKFLOW REORDER: Starting reorder for project {projectId} with stages: [{string.Join(", ", stageIds)}]");
+            
             var stages = await _context.ProjectWorkflowStages
                 .Where(pws => pws.ProjectId == projectId && stageIds.Contains(pws.Id))
                 .ToListAsync();
 
+            Console.WriteLine($"🔧 WORKFLOW REORDER: Found {stages.Count} stages");
+            foreach (var stage in stages)
+            {
+                Console.WriteLine($"🔧 WORKFLOW REORDER: Stage {stage.Id} '{stage.Name}' current order: {stage.Order}");
+            }
+
+            // Create a mapping of old order to new order for task migration
+            var oldOrderToNewOrder = new Dictionary<int, int>();
+            
             for (int i = 0; i < stageIds.Length; i++)
             {
                 var stage = stages.FirstOrDefault(s => s.Id == stageIds[i]);
                 if (stage != null)
                 {
+                    Console.WriteLine($"🔧 WORKFLOW REORDER: Mapping old order {stage.Order} → new order {i} for stage '{stage.Name}'");
+                    oldOrderToNewOrder[stage.Order] = i;
                     stage.Order = i;
                 }
             }
 
+            Console.WriteLine($"🔧 WORKFLOW REORDER: Order mapping: {string.Join(", ", oldOrderToNewOrder.Select(kvp => $"{kvp.Key}→{kvp.Value}"))}");
+
+            // Get all tasks for this project and update their status to match the new workflow order
+            var projectTasks = await _context.Tasks
+                .Where(t => t.ProjectId == projectId)
+                .ToListAsync();
+
+            Console.WriteLine($"🔧 WORKFLOW REORDER: Found {projectTasks.Count} tasks to potentially migrate");
+
+            foreach (var task in projectTasks)
+            {
+                // Convert TaskStatus to old workflow position (0-based)
+                var oldWorkflowPosition = (int)task.Status - 1;
+                
+                Console.WriteLine($"🔧 WORKFLOW REORDER: Task {task.Id} '{task.Title}' has status {task.Status} (workflow position {oldWorkflowPosition})");
+                
+                // Find the new workflow position for this task
+                if (oldOrderToNewOrder.TryGetValue(oldWorkflowPosition, out var newWorkflowPosition))
+                {
+                    // Convert new workflow position back to TaskStatus (1-based)
+                    // Handle extended TaskStatus values for custom workflow stages
+                    var statusValue = newWorkflowPosition + 1;
+                    if (statusValue > 20)
+                    {
+                        Console.WriteLine($"⚠️ WORKFLOW REORDER: Status value {statusValue} exceeds maximum supported stages (20). Using stage 20.");
+                        statusValue = 20;
+                    }
+                    var newTaskStatus = (Core.Entities.TaskStatus)statusValue;
+                    
+                    // Only update if the status actually changed
+                    if (task.Status != newTaskStatus)
+                    {
+                        Console.WriteLine($"🔄 MIGRATING TASK: {task.Id} '{task.Title}' from status {task.Status} (workflow pos {oldWorkflowPosition}) to status {newTaskStatus} (workflow pos {newWorkflowPosition})");
+                        task.Status = newTaskStatus;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"🔧 TASK NO CHANGE: {task.Id} '{task.Title}' stays at status {task.Status}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"⚠️ TASK MAPPING MISS: {task.Id} '{task.Title}' workflow position {oldWorkflowPosition} not found in mapping");
+                }
+            }
+
+            Console.WriteLine($"🔧 WORKFLOW REORDER: Saving changes...");
             await _context.SaveChangesAsync();
+            Console.WriteLine($"✅ WORKFLOW REORDER: Complete!");
         }
 
         public async Task<IEnumerable<ProjectWorkflowStage>> GetOrCreateDefaultWorkflowStagesAsync(int projectId)

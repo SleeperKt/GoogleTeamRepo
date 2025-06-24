@@ -165,7 +165,7 @@ export default function ProjectBoardPage() {
   const [scrollDirection, setScrollDirection] = useState<string | null>(null)
   const scrollInterval = useRef<NodeJS.Timeout | null>(null)
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
-  const [selectedColumn, setSelectedColumn] = useState("todo")
+  const [selectedColumn, setSelectedColumn] = useState("")
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [lastSynced, setLastSynced] = useState<string | null>(null)
@@ -517,12 +517,23 @@ export default function ProjectBoardPage() {
       1: "Todo",
       2: "InProgress", 
       3: "InReview",
-      4: "Done"
+      4: "Done",
+      5: "Cancelled"
     }
+
+    console.log('🔧 DRAG & DROP: Board columns available:', boardColumns.map(c => ({ id: c.id, title: c.title, order: c.order })));
+    console.log('🔧 DRAG & DROP: Target column ID:', newColumnId);
 
     // Map actual column IDs to TaskStatus enum values based on order
     boardColumns.forEach((column, index) => {
-      const statusValue = index + 1; // TaskStatus starts at 1
+      let statusValue = index + 1; // TaskStatus starts at 1
+      
+      // Cap at maximum supported TaskStatus value (20)
+      if (statusValue > 20) {
+        console.warn(`⚠️ Column ${column.title} exceeds maximum supported stages (20). Capping at 20.`);
+        statusValue = 20;
+      }
+      
       columnToStatusMap[column.id] = statusValue;
       
       // Extend statusNames for additional columns beyond the default 4
@@ -613,11 +624,18 @@ export default function ProjectBoardPage() {
       };
 
       console.log('🔄 Sending reorder request:', { taskId, newColumnId, payload });
+      console.log('🔄 Full request details:', {
+        url: `/api/projects/public/${projectId}/tasks/${taskId}/reorder`,
+        method: 'PUT',
+        payload: JSON.stringify(payload)
+      });
 
-      await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}/reorder`, {
+      const response = await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}/reorder`, {
         method: 'PUT',
         body: JSON.stringify(payload)
       })
+      
+      console.log('✅ Reorder response received:', response);
 
       console.log('✅ Task reordered successfully via drag and drop')
     } catch (err) {
@@ -693,6 +711,11 @@ export default function ProjectBoardPage() {
 
   // Map column ID to initial stage for task creation
   const getInitialStageFromColumn = (columnId: string): string => {
+    // Return default if no columnId provided
+    if (!columnId || columnId.trim() === "") {
+      return "To Do"
+    }
+    
     const column = boardData[columnId]
     if (column && column.title) {
       console.log('🎯 Board: getInitialStageFromColumn - columnId:', columnId, 'title:', column.title)
@@ -722,33 +745,21 @@ export default function ProjectBoardPage() {
 
   // Helper function to get dynamic status mapping
   const getStatusMapping = () => {
-    const boardColumns = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0));
-    const statusIdToColumnKey: Record<number, string | undefined> = {};
-    const statusIdToDisplayStatusString: Record<number, string | undefined> = {};
-    
-    // Map TaskStatus enum values to columns by position
-    if (boardColumns.length > 0) {
-      statusIdToColumnKey[1] = boardColumns[0]?.id; // Todo -> first stage
-      statusIdToDisplayStatusString[1] = "Todo";
-    }
-    if (boardColumns.length > 1) {
-      statusIdToColumnKey[2] = boardColumns[1]?.id; // InProgress -> second stage
-      statusIdToDisplayStatusString[2] = "InProgress";
-    }
-    if (boardColumns.length > 2) {
-      statusIdToColumnKey[3] = boardColumns[2]?.id; // InReview -> third stage
-      statusIdToDisplayStatusString[3] = "InReview";
-    }
-    if (boardColumns.length > 3) {
-      statusIdToColumnKey[4] = boardColumns[3]?.id; // Done -> fourth stage
-      statusIdToDisplayStatusString[4] = "Done";
-    } else if (boardColumns.length > 0) {
-      statusIdToColumnKey[4] = boardColumns[boardColumns.length - 1]?.id; // Done -> last stage
-      statusIdToDisplayStatusString[4] = "Done";
-    }
-    
-    return { statusIdToColumnKey, statusIdToDisplayStatusString };
-  };
+    // Sort columns by their configured workflow order (fallback to index order)
+    const boardColumns = Object.values(boardData).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+
+    const statusIdToColumnKey: Record<number, string | undefined> = {}
+    const statusIdToDisplayStatusString: Record<number, string | undefined> = {}
+
+    boardColumns.forEach((column, index) => {
+      const statusId = index + 1 // TaskStatus enum starts at 1
+      statusIdToColumnKey[statusId] = column.id
+      // Prefer the column title for the human-readable status string
+      statusIdToDisplayStatusString[statusId] = column.title ?? `Stage ${statusId}`
+    })
+
+    return { statusIdToColumnKey, statusIdToDisplayStatusString }
+  }
 
   // Handle task update (called optimistically and on success from TaskDetailView)
   const handleTaskUpdated = (updatedTaskData?: any, isOptimistic?: boolean) => {
@@ -770,12 +781,10 @@ export default function ProjectBoardPage() {
     const { statusIdToColumnKey, statusIdToDisplayStatusString } = getStatusMapping();
 
     // Handle both numeric and string status formats
-    const statusStringToId: Record<string, number> = {
-      "Todo": 1,
-      "InProgress": 2,
-      "InReview": 3,
-      "Done": 4,
-    };
+    const statusStringToId: Record<string, number> = {}
+    Object.entries(statusIdToDisplayStatusString).forEach(([id, name]) => {
+      if (name) statusStringToId[name] = Number(id)
+    })
 
     // Normalize status to numeric ID
     let statusId: number;
@@ -876,12 +885,10 @@ export default function ProjectBoardPage() {
     const { statusIdToColumnKey, statusIdToDisplayStatusString } = getStatusMapping();
 
     // Handle both numeric and string status formats
-    const statusStringToId: Record<string, number> = {
-      "Todo": 1,
-      "InProgress": 2,
-      "InReview": 3,
-      "Done": 4,
-    };
+    const statusStringToId: Record<string, number> = {}
+    Object.entries(statusIdToDisplayStatusString).forEach(([id, name]) => {
+      if (name) statusStringToId[name] = Number(id)
+    })
 
     // Normalize original status to numeric ID
     let originalNumericStatus: number;
@@ -1036,7 +1043,11 @@ export default function ProjectBoardPage() {
         </div>
         <Button
           className="bg-violet-600 hover:bg-violet-700 text-white"
-          onClick={() => handleOpenCreateTask("todo")}
+          onClick={() => {
+            // Use the first column ID instead of hardcoded "todo"
+            const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
+            handleOpenCreateTask(firstColumn?.id || "")
+          }}
         >
           <Plus className="mr-2 h-4 w-4" /> Add Task
         </Button>
@@ -1052,7 +1063,11 @@ export default function ProjectBoardPage() {
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
             Start by adding tasks to your board to track your work visually.
           </p>
-          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => handleOpenCreateTask("todo")}>
+          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => {
+            // Use the first column ID instead of hardcoded "todo"
+            const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
+            handleOpenCreateTask(firstColumn?.id || "")
+          }}>
             <Plus className="mr-2 h-4 w-4" /> Create Task
           </Button>
         </div>
@@ -1335,7 +1350,7 @@ export default function ProjectBoardPage() {
         onTaskCreated={handleTaskCreated}
         projectPublicId={projectId}
         selectedColumnId={selectedColumn}
-        initialStage={getInitialStageFromColumn(selectedColumn)}
+        initialStage={selectedColumn ? getInitialStageFromColumn(selectedColumn) : "To Do"}
       />
 
       {/* Task Detail View Sidebar - Optimized for drag performance */}

@@ -404,11 +404,15 @@ namespace ProjectHub.Core.Services
 
         public async Task<TaskResponse> ReorderTaskAsync(int taskId, TaskReorderRequest request, string requestingUserId)
         {
+            Console.WriteLine($"🔧 TASK REORDER: Starting reorder for task {taskId} to status {request.Status}, position {request.Position}");
+            
             var task = await _taskRepository.GetByIdAsync(taskId);
             if (task == null)
             {
                 throw new ArgumentException("Task not found.");
             }
+
+            Console.WriteLine($"🔧 TASK REORDER: Found task '{task.Title}' with current status {task.Status}");
 
             // Check if user is participant in the project
             if (!await IsUserProjectParticipantAsync(task.ProjectId, requestingUserId))
@@ -418,8 +422,18 @@ namespace ProjectHub.Core.Services
 
             // Update task status and position
             var originalStatus = task.Status;
+            
+            // Validate the status value before casting
+            if (!Enum.IsDefined(typeof(Entities.TaskStatus), request.Status))
+            {
+                Console.WriteLine($"❌ TASK REORDER: Status value {request.Status} is not defined in TaskStatus enum");
+                throw new ArgumentException($"Invalid status value: {request.Status}. Must be a valid TaskStatus enum value (1-20).");
+            }
+            
             task.Status = (Entities.TaskStatus)request.Status;
             task.Position = request.Position;
+            
+            Console.WriteLine($"🔧 TASK REORDER: Updated task status from {originalStatus} to {task.Status}, position to {task.Position}");
 
             await _taskRepository.UpdateAsync(task);
 

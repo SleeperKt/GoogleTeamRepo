@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/lib/api"
 import { useProjectLabels } from "@/hooks/use-project-labels"
+import { useProjectWorkflowStages } from "@/hooks/use-project-workflow-stages"
 import React from "react"
 
 // Unified team member type used in this component
@@ -61,12 +62,7 @@ const priorities = [
   { value: "low", label: "Low", color: "text-blue-500" },
 ]
 
-const statuses = [
-  { id: 1, name: "To Do" },
-  { id: 2, name: "In Progress" },
-  { id: 3, name: "In Review" },
-  { id: 4, name: "Done" },
-]
+// Dynamic statuses are now loaded from useProjectWorkflowStages hook
 
 // Sample activity data
 const sampleActivities = [
@@ -97,25 +93,57 @@ interface TaskDetailViewProps {
   isDragging?: boolean
 }
 
-// Helper to derive stage string from status value (number or string)
-const mapStatusToStage = (statusValue: any): string => {
-  if (typeof statusValue === 'number') {
-    switch (statusValue) {
-      case 1: return 'To Do'
-      case 2: return 'In Progress'
-      case 3: return 'In Review'
-      case 4: return 'Done'
-      default: return 'To Do'
+// Helper to derive stage string from status value (number or string) using dynamic workflow stages
+const mapStatusToStage = (statusValue: any, workflowStages: any[]): string => {
+  if (!workflowStages || workflowStages.length === 0) {
+    // Fallback to default stage names if no workflow stages are loaded
+    if (typeof statusValue === 'number') {
+      switch (statusValue) {
+        case 1: return 'To Do'
+        case 2: return 'In Progress'
+        case 3: return 'In Review'
+        case 4: return 'Done'
+        default: return 'To Do'
+      }
     }
+    if (typeof statusValue === 'string') {
+      const s = statusValue.toLowerCase()
+      if (s === 'todo') return 'To Do'
+      if (s === 'inprogress') return 'In Progress'
+      if (s === 'in review' || s === 'inreview') return 'In Review'
+      if (s === 'done') return 'Done'
+    }
+    return 'To Do'
   }
+
+  // Map status value to workflow stage name based on order
+  const sortedStages = [...workflowStages].sort((a, b) => a.order - b.order)
+  
+  if (typeof statusValue === 'number') {
+    // Status values are 1-based, but array indices are 0-based
+    const stageIndex = statusValue - 1
+    if (stageIndex >= 0 && stageIndex < sortedStages.length) {
+      return sortedStages[stageIndex].name
+    }
+    // If status value is out of range, return first stage
+    return sortedStages.length > 0 ? sortedStages[0].name : 'To Do'
+  }
+  
   if (typeof statusValue === 'string') {
+    // Try to find exact match first
+    const exactMatch = sortedStages.find(stage => stage.name.toLowerCase() === statusValue.toLowerCase())
+    if (exactMatch) return exactMatch.name
+    
+    // Fallback to partial matching
     const s = statusValue.toLowerCase()
-    if (s === 'todo') return 'To Do'
-    if (s === 'inprogress') return 'In Progress'
-    if (s === 'in review' || s === 'inreview') return 'In Review'
-    if (s === 'done') return 'Done'
+    if (s === 'todo' && sortedStages.length > 0) return sortedStages[0].name
+    if (s === 'inprogress' && sortedStages.length > 1) return sortedStages[1].name
+    if ((s === 'in review' || s === 'inreview') && sortedStages.length > 2) return sortedStages[2].name
+    if (s === 'done' && sortedStages.length > 3) return sortedStages[3].name
   }
-  return 'To Do'
+  
+  // Final fallback
+  return sortedStages.length > 0 ? sortedStages[0].name : 'To Do'
 }
 
 const TaskDetailViewComponent = function TaskDetailView({
@@ -130,8 +158,9 @@ const TaskDetailViewComponent = function TaskDetailView({
 }: TaskDetailViewProps) {
   console.log('🔧 TaskDetailView: Rendered with onTaskUpdated callback:', !!onTaskUpdated);
   
-  // Use dynamic labels
+  // Use dynamic labels and workflow stages
   const { labels } = useProjectLabels(projectPublicId)
+  const { stages: workflowStages } = useProjectWorkflowStages(projectPublicId)
   
   // Task state
   const [task, setTask] = useState(initialTask)
@@ -152,7 +181,7 @@ const TaskDetailViewComponent = function TaskDetailView({
     : undefined
   )
   const [stage, setStage] = useState(
-    mapStatusToStage(initialTask?.status)
+    mapStatusToStage(initialTask?.status, workflowStages)
   )
   const [estimate, setEstimate] = useState<number | undefined>(initialTask?.estimatedHours || undefined)
 
@@ -214,9 +243,22 @@ const TaskDetailViewComponent = function TaskDetailView({
       initialTask.priority === 3 ? "high" :
       initialTask.priority === 4 ? "critical" : "medium"
     : undefined)
-    setStage(mapStatusToStage(initialTask?.status))
+    setStage(mapStatusToStage(initialTask?.status, workflowStages))
     setEstimate(initialTask?.estimatedHours || undefined)
-  }, [initialTask])
+  }, [initialTask, workflowStages])
+
+  // Update stage when workflow stages are loaded (to fix initial stage selection)
+  useEffect(() => {
+    if (workflowStages.length > 0 && initialTask?.status) {
+      const correctStage = mapStatusToStage(initialTask.status, workflowStages)
+      console.log('🔧 TaskDetailView: Setting correct stage:', {
+        taskStatus: initialTask.status,
+        correctStage,
+        availableStages: workflowStages.map(s => ({ id: s.id, name: s.name, order: s.order }))
+      })
+      setStage(correctStage)
+    }
+  }, [workflowStages, initialTask?.status])
 
   // Load project participants when the view opens
   useEffect(() => {
@@ -420,11 +462,11 @@ const TaskDetailViewComponent = function TaskDetailView({
           initialTask.priority === 4 ? "critical" : "medium"
         : undefined
       )
-      setStage(mapStatusToStage(initialTask.status))
+      setStage(mapStatusToStage(initialTask.status, workflowStages))
       setEstimate(initialTask.estimatedHours || undefined)
       setHasUnsavedChanges(false)
     }
-  }, [initialTask, isDragging])
+  }, [initialTask, isDragging, workflowStages, labels])
 
   // Focus on title input when sidebar opens - defer to prevent animation stuttering
   useEffect(() => {
@@ -457,7 +499,7 @@ const TaskDetailViewComponent = function TaskDetailView({
       initialTask.priority === 3 ? "high" :
       initialTask.priority === 4 ? "critical" : "medium"
     : undefined
-    const originalStage = mapStatusToStage(initialTask?.status)
+    const originalStage = mapStatusToStage(initialTask?.status, workflowStages)
     
     const dueDateChanged = dueDate?.getTime() !== originalDueDate?.getTime()
     
@@ -490,7 +532,7 @@ const TaskDetailViewComponent = function TaskDetailView({
       task?.type !== initialTask?.type ||
       !arraysEqual(selectedLabels, originalLabels)
     )
-  }, [title, description, assignee, selectedLabels, dueDate, priority, stage, estimate, initialTask, task, labels])
+  }, [title, description, assignee, selectedLabels, dueDate, priority, stage, estimate, initialTask, task, labels, workflowStages])
 
   // Update unsaved changes state when computed value changes
   useEffect(() => {
@@ -511,9 +553,20 @@ const TaskDetailViewComponent = function TaskDetailView({
 
     setIsSaving(true);
 
-    const statusMap: Record<string, number> = {
-      "To Do": 1, "In Progress": 2, "In Review": 3, "Done": 4,
-    };
+    // Create dynamic status map from workflow stages
+    const statusMap: Record<string, number> = {}
+    const sortedStages = [...workflowStages].sort((a, b) => a.order - b.order)
+    sortedStages.forEach((stage, index) => {
+      statusMap[stage.name] = index + 1 // Status values are 1-based
+    })
+    
+    // Fallback mapping if no workflow stages are available
+    if (Object.keys(statusMap).length === 0) {
+      statusMap["To Do"] = 1
+      statusMap["In Progress"] = 2
+      statusMap["In Review"] = 3
+      statusMap["Done"] = 4
+    }
     const priorityMap: Record<string, number> = {
       low: 1, medium: 2, high: 3, critical: 4,
     };
@@ -1122,9 +1175,9 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      {statuses.map((s) => (
-                        <SelectItem key={s.id} value={s.name} className="text-xs">
-                          {s.name}
+                      {workflowStages.map((stage) => (
+                        <SelectItem key={stage.id} value={stage.name} className="text-xs">
+                          {stage.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1623,9 +1676,9 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   <SelectValue placeholder="Move to..." />
                 </SelectTrigger>
                 <SelectContent>
-                                          {statuses.map((s) => (
-                    <SelectItem key={s.id} value={s.name} className="text-xs">
-                      {s.name}
+                  {workflowStages.map((stage) => (
+                    <SelectItem key={stage.id} value={stage.name} className="text-xs">
+                      {stage.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

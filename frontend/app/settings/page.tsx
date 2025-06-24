@@ -722,6 +722,16 @@ export default function SettingsPage() {
       if (response.ok) {
         setWorkflow(updatedWorkflow)
         console.log('✅ Workflow stages reordered successfully')
+        
+        // Trigger board refresh by posting a message to other tabs/windows
+        // This will notify the board page that workflow has changed
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('workflowChanged', Date.now().toString())
+          // Also trigger a custom event for same-tab communication
+          window.dispatchEvent(new CustomEvent('workflowReordered', { 
+            detail: { projectId, updatedWorkflow } 
+          }))
+        }
       } else {
         console.error('❌ Failed to reorder workflow stages:', await response.text())
         setError('Failed to reorder workflow stages')

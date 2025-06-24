@@ -260,6 +260,32 @@ export default function ProjectBoardPage() {
     initializeBoard()
   }, [projectId])
 
+  // Listen for workflow changes from settings page
+  useEffect(() => {
+    const handleWorkflowReordered = (event: CustomEvent) => {
+      console.log('🔄 Board: Detected workflow reorder, refreshing board data...')
+      fetchBoardData()
+    }
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'workflowChanged') {
+        console.log('🔄 Board: Detected workflow change from storage, refreshing board data...')
+        fetchBoardData()
+      }
+    }
+
+    // Listen for same-tab events
+    window.addEventListener('workflowReordered', handleWorkflowReordered as EventListener)
+    
+    // Listen for cross-tab events
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      window.removeEventListener('workflowReordered', handleWorkflowReordered as EventListener)
+      window.removeEventListener('storage', handleStorageChange)
+    }
+  }, [fetchBoardData])
+
   // Refetch when filters change (but not on initial mount)
   useEffect(() => {
     // Skip if this is the initial render (loading is true)
@@ -669,8 +695,10 @@ export default function ProjectBoardPage() {
   const getInitialStageFromColumn = (columnId: string): string => {
     const column = boardData[columnId]
     if (column && column.title) {
+      console.log('🎯 Board: getInitialStageFromColumn - columnId:', columnId, 'title:', column.title)
       return column.title
     }
+    console.log('🎯 Board: getInitialStageFromColumn - columnId:', columnId, 'no column found, defaulting to "To Do"')
     return "To Do"
   }
 

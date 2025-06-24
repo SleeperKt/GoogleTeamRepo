@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useCallback, useMemo } from "react"
+import React, { useEffect, useRef, useCallback, useMemo, useState } from "react"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -21,6 +21,17 @@ import {
   AIDescriptionAssistant 
 } from "@/components/task"
 
+interface WorkflowStage {
+  id: number
+  name: string
+  color: string
+  order: number
+  isDefault: boolean
+  isCompleted: boolean
+  createdAt: string
+  taskCount: number
+}
+
 export function CreateTaskSidebar({
   open,
   onOpenChange,
@@ -30,6 +41,8 @@ export function CreateTaskSidebar({
   selectedColumnId,
 }: CreateTaskSidebarProps) {
   const titleInputRef = useRef<HTMLInputElement>(null)
+  const [workflowStages, setWorkflowStages] = useState<WorkflowStage[]>([])
+  const [loadingStages, setLoadingStages] = useState(false)
 
   // Custom hooks
   const { formData, errors, isSubmitting, updateFormData, handleSubmit, resetForm } = useTaskForm({
@@ -52,14 +65,53 @@ export function CreateTaskSidebar({
     regenerate,
   } = useAIAssistant()
 
+  // Fetch workflow stages
+  const fetchWorkflowStages = useCallback(async () => {
+    if (!projectPublicId) return
+
+    try {
+      setLoadingStages(true)
+      const token = localStorage.getItem('token')
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5062'
+      
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectPublicId}/settings/workflow`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`, 
+          'Content-Type': 'application/json' 
+        },
+      })
+
+      if (response.ok) {
+        const workflowData = await response.json()
+        // Handle .NET serialization format
+        let stagesArray = []
+        if (Array.isArray(workflowData)) {
+          stagesArray = workflowData
+        } else if (workflowData && workflowData.$values && Array.isArray(workflowData.$values)) {
+          stagesArray = workflowData.$values
+        }
+        setWorkflowStages(stagesArray.sort((a: WorkflowStage, b: WorkflowStage) => a.order - b.order))
+      } else {
+        // Fallback to default stages if API fails
+        setWorkflowStages([])
+      }
+    } catch (error) {
+      console.error('Error fetching workflow stages:', error)
+      setWorkflowStages([])
+    } finally {
+      setLoadingStages(false)
+    }
+  }, [projectPublicId])
+
   // Reset form and focus on title when sidebar opens
   useEffect(() => {
     if (open) {
       resetForm()
+      fetchWorkflowStages()
       setTimeout(() => titleInputRef.current?.focus(), 100)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, fetchWorkflowStages])
 
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -117,6 +169,15 @@ export function CreateTaskSidebar({
       default: return 3
     }
   }
+
+  // Get available stages (workflow stages or fallback to default)
+  const getAvailableStages = useMemo(() => {
+    if (workflowStages.length > 0) {
+      return workflowStages.map(stage => ({ id: stage.id, name: stage.name }))
+    }
+    // Fallback to default stages if no workflow stages are available
+    return TASK_STAGES
+  }, [workflowStages])
 
   if (!open) return null
 
@@ -202,12 +263,12 @@ export function CreateTaskSidebar({
 
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
-                <Select value={formData.stage} onValueChange={(value) => updateFormData({ stage: value })}>
+                <Select value={formData.stage} onValueChange={(value) => updateFormData({ stage: value })} disabled={loadingStages}>
                   <SelectTrigger id="status">
-                    <SelectValue placeholder="Select status" />
+                    <SelectValue placeholder={loadingStages ? "Loading stages..." : "Select status"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {TASK_STAGES.map((stage) => (
+                    {getAvailableStages.map((stage) => (
                       <SelectItem key={stage.id} value={stage.name}>
                         {stage.name}
                       </SelectItem>

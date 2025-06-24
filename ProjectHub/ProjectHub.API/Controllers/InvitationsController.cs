@@ -91,7 +91,7 @@ namespace ProjectHub.API.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(403, ex.Message);
             }
             catch (ArgumentException ex)
             {
@@ -116,7 +116,7 @@ namespace ProjectHub.API.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(403, ex.Message);
             }
             catch (InvalidOperationException ex)
             {
@@ -140,7 +140,7 @@ namespace ProjectHub.API.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(403, ex.Message);
             }
             catch (InvalidOperationException ex)
             {
@@ -186,7 +186,7 @@ namespace ProjectHub.API.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 Console.WriteLine($"DEBUG: GetProjectInvitations - UnauthorizedAccessException: {ex.Message}");
-                return Forbid(ex.Message);
+                return StatusCode(403, ex.Message);
             }
             catch (ArgumentException ex)
             {
@@ -225,7 +225,7 @@ namespace ProjectHub.API.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 Console.WriteLine($"DEBUG: CreateInvitation - UnauthorizedAccessException: {ex.Message}");
-                return Forbid(ex.Message);
+                return StatusCode(403, ex.Message);
             }
             catch (InvalidOperationException ex)
             {

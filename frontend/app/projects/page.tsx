@@ -124,6 +124,46 @@ export default function ProjectsPage() {
     }
   }, [searchParams])
 
+  // Check for refresh query parameter and reload projects
+  useEffect(() => {
+    if (searchParams.get('refresh') === 'true' && token) {
+      // Force refresh the projects context
+      refreshProjects()
+      
+      // Reload local project list with a slight delay to ensure backend deletion is complete
+      const reloadWithDelay = setTimeout(async () => {
+        try {
+          const json = await apiRequest<any>("/api/projects") as any;
+          const arr = Array.isArray(json) ? json : Array.isArray(json.$values) ? json.$values : [];
+          setProjectList(
+            arr.map((p: any) => ({
+              id: p.publicId ?? p.id.toString(),
+              name: p.name,
+              description: p.description ?? "",
+              status: getStatusLabel(p.status || 1),
+              statusValue: p.status || 1,
+              priority: getPriorityLabel(p.priority || 2),
+              priorityValue: p.priority || 2,
+              lastUpdated: new Date(p.createdAt).toLocaleDateString(),
+              owner: "Me",
+              initials: p.name.slice(0, 2).toUpperCase(),
+              starred: false,
+            })),
+          );
+          
+          // Clear the refresh parameter from URL after processing
+          const url = new URL(window.location.href)
+          url.searchParams.delete('refresh')
+          window.history.replaceState({}, '', url.toString())
+        } catch (err) {
+          console.error("Failed to reload projects", err)
+        }
+      }, 300) // Small delay to ensure backend operation is complete
+      
+      return () => clearTimeout(reloadWithDelay)
+    }
+  }, [searchParams, token, refreshProjects])
+
   // Add these handler functions
   const handleEditProject = (project: any) => {
     setEditingProject(project)

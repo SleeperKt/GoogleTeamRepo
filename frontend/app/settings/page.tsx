@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import {
   AlertCircle,
   ArrowRight,
@@ -39,7 +39,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { API_BASE_URL } from "@/lib/api"
+import { API_BASE_URL, apiRequest } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { useProject } from "@/contexts/project-context"
 import { useProjectLabels, type ProjectLabel } from "@/hooks/use-project-labels"
@@ -216,7 +216,8 @@ const labelColors = [
 
 export default function SettingsPage() {
   const { user, token } = useAuth()
-  const { currentProject } = useProject()
+  const { currentProject, refreshProjects } = useProject()
+  const router = useRouter()
   const projectId = currentProject?.publicId // Use selected project from context
   
   // Use labels hook
@@ -235,6 +236,8 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
   const [editingLabel, setEditingLabel] = useState<number | null>(null)
   const [editingLabelData, setEditingLabelData] = useState<{name: string, color: string}>({name: "", color: ""})
   const [newLabelName, setNewLabelName] = useState("")
@@ -947,6 +950,50 @@ export default function SettingsPage() {
   const handleInvitationSent = () => {
     fetchProjectInvitations() // Refresh pending invitations
     fetchData() // Refresh team members in case invitation was immediately accepted
+  }
+
+  // Function to handle project deletion
+  const handleDeleteProject = async () => {
+    if (!currentProject || !projectId) return
+
+    // Check if confirmation text matches
+    if (deleteConfirmationText !== currentProject.name) {
+      toast({
+        title: "Confirmation failed",
+        description: "Please type the project name exactly to confirm deletion",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      await apiRequest(`/api/projects/public/${projectId}`, {
+        method: 'DELETE'
+      })
+      
+      // Refresh the projects list in context
+      refreshProjects()
+      
+      toast({
+        title: "Project deleted",
+        description: "The project has been permanently deleted"
+      })
+      
+      // Redirect to projects page with refresh parameter
+      router.push('/projects?refresh=true')
+    } catch (err: any) {
+      console.error('Error deleting project:', err)
+      toast({
+        title: "Failed to delete project",
+        description: err.message || "An error occurred while deleting the project",
+        variant: "destructive"
+      })
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteDialog(false)
+      setDeleteConfirmationText("")
+    }
   }
 
   // Show loading state while fetching data
@@ -1835,7 +1882,12 @@ export default function SettingsPage() {
                             Permanently delete this project and all its data
                           </p>
                         </div>
-                        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                        <Dialog open={showDeleteDialog} onOpenChange={(open) => {
+                          setShowDeleteDialog(open)
+                          if (!open) {
+                            setDeleteConfirmationText("")
+                          }
+                        }}>
                           <DialogTrigger asChild>
                             <Button variant="destructive">Delete Project</Button>
                           </DialogTrigger>
@@ -1854,7 +1906,7 @@ export default function SettingsPage() {
                                   <div>
                                     <h4 className="font-medium text-red-600 dark:text-red-400 mb-1">Warning</h4>
                                     <p className="text-sm text-red-600/80 dark:text-red-400/80">
-                                      You are about to delete <strong>{projectSettings.name}</strong> and all its data,
+                                      You are about to delete <strong>{currentProject.name}</strong> and all its data,
                                       including:
                                     </p>
                                     <ul className="list-disc list-inside text-sm text-red-600/80 dark:text-red-400/80 mt-2 space-y-1">
@@ -1868,16 +1920,37 @@ export default function SettingsPage() {
                               </div>
                               <div className="space-y-2">
                                 <Label htmlFor="confirm-delete">
-                                  Type <strong>{projectSettings.name}</strong> to confirm
+                                  Type <strong>{currentProject.name}</strong> to confirm
                                 </Label>
-                                <Input id="confirm-delete" placeholder={projectSettings.name} />
+                                <Input 
+                                  id="confirm-delete" 
+                                  placeholder={currentProject.name}
+                                  value={deleteConfirmationText}
+                                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                                />
                               </div>
                             </div>
                             <DialogFooter>
-                              <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+                              <Button variant="outline" onClick={() => {
+                                setShowDeleteDialog(false)
+                                setDeleteConfirmationText("")
+                              }} disabled={isDeleting}>
                                 Cancel
                               </Button>
-                              <Button variant="destructive">I understand, delete this project</Button>
+                              <Button 
+                                variant="destructive" 
+                                onClick={handleDeleteProject}
+                                disabled={isDeleting || deleteConfirmationText !== currentProject.name}
+                              >
+                                {isDeleting ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Deleting...
+                                  </>
+                                ) : (
+                                  "I understand, delete this project"
+                                )}
+                              </Button>
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>

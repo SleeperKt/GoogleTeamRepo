@@ -229,7 +229,7 @@ export default function SettingsPage() {
     updateLabel: hookUpdateLabel, 
     deleteLabel: hookDeleteLabel 
   } = useProjectLabels(projectId)
-  const permissions = useUserPermissions(projectId)
+  const { refreshPermissions, ...permissions } = useUserPermissions(projectId)
   
   const [activeTab, setActiveTab] = useState("general")
   const [loading, setLoading] = useState(true)
@@ -238,6 +238,13 @@ export default function SettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showTransferDialog, setShowTransferDialog] = useState(false)
+  const [transferEmail, setTransferEmail] = useState("")
+  const [transferMessage, setTransferMessage] = useState("")
+  const [isTransferring, setIsTransferring] = useState(false)
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false)
+  const [archiveConfirmationText, setArchiveConfirmationText] = useState("")
+  const [isArchiving, setIsArchiving] = useState(false)
   const [editingLabel, setEditingLabel] = useState<number | null>(null)
   const [editingLabelData, setEditingLabelData] = useState<{name: string, color: string}>({name: "", color: ""})
   const [newLabelName, setNewLabelName] = useState("")
@@ -993,6 +1000,106 @@ export default function SettingsPage() {
       setIsDeleting(false)
       setShowDeleteDialog(false)
       setDeleteConfirmationText("")
+    }
+  }
+
+  // Function to handle transfer ownership
+  const handleTransferOwnership = async () => {
+    if (!currentProject || !projectId) return
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!transferEmail || !emailRegex.test(transferEmail)) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsTransferring(true)
+    try {
+      await apiRequest(`/api/projects/public/${projectId}/transfer-ownership`, {
+        method: 'POST',
+        body: JSON.stringify({
+          newOwnerEmail: transferEmail,
+          message: transferMessage
+        })
+      })
+      
+      // Refresh the projects list in context
+      refreshProjects()
+      
+      // Refresh permissions since user role has changed
+      refreshPermissions()
+      
+      toast({
+        title: "Ownership transferred",
+        description: `Project ownership has been transferred to ${transferEmail}. You are now an admin.`
+      })
+      
+      // Stay on the settings page to show the updated admin view
+      // User can navigate away manually if needed
+    } catch (err: any) {
+      console.error('Error transferring ownership:', err)
+      toast({
+        title: "Failed to transfer ownership",
+        description: err.message || "An error occurred while transferring ownership",
+        variant: "destructive"
+      })
+    } finally {
+      setIsTransferring(false)
+      setShowTransferDialog(false)
+      setTransferEmail("")
+      setTransferMessage("")
+    }
+  }
+
+  // Function to handle archive project
+  const handleArchiveProject = async () => {
+    if (!currentProject || !projectId) return
+
+    // Check if confirmation text matches
+    if (archiveConfirmationText !== currentProject.name) {
+      toast({
+        title: "Confirmation failed",
+        description: "Please type the project name exactly to confirm archiving",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsArchiving(true)
+    try {
+      await apiRequest(`/api/projects/public/${projectId}/archive`, {
+        method: 'POST'
+      })
+      
+      // Refresh the projects list in context
+      refreshProjects()
+      
+      // Refresh permissions in case user role visibility changed
+      refreshPermissions()
+      
+      toast({
+        title: "Project archived",
+        description: "The project has been archived and is now read-only"
+      })
+      
+      // Redirect to projects page to see updated status
+      router.push('/projects?refresh=true')
+    } catch (err: any) {
+      console.error('Error archiving project:', err)
+      toast({
+        title: "Failed to archive project",
+        description: err.message || "An error occurred while archiving the project",
+        variant: "destructive"
+      })
+    } finally {
+      setIsArchiving(false)
+      setShowArchiveDialog(false)
+      setArchiveConfirmationText("")
     }
   }
 
@@ -1852,29 +1959,166 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent className="space-y-6 pt-6">
                   <div className="border border-red-200 dark:border-red-900 rounded-md">
-                    <div className="p-4 border-b border-red-200 dark:border-red-900">
-                      <div className="flex justify-between items-start">
+                    {permissions.canTransferOwnership && (
+                      <div className="p-4 border-b border-red-200 dark:border-red-900">
+                        <div className="flex justify-between items-start">
                         <div>
                           <h3 className="font-medium mb-1">Transfer Project Ownership</h3>
                           <p className="text-sm text-muted-foreground">
                             Transfer ownership of this project to another team member
                           </p>
                         </div>
-                        <Button variant="outline">Transfer Ownership</Button>
+                        <Dialog open={showTransferDialog} onOpenChange={(open) => {
+                          setShowTransferDialog(open)
+                          if (!open) {
+                            setTransferEmail("")
+                            setTransferMessage("")
+                          }
+                        }}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline">Transfer Ownership</Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Transfer Project Ownership</DialogTitle>
+                              <DialogDescription>
+                                Transfer ownership of this project to another user. You will become an admin after the transfer.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4 space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="transfer-email">New Owner Email</Label>
+                                <Input
+                                  id="transfer-email"
+                                  type="email"
+                                  placeholder="user@example.com"
+                                  value={transferEmail}
+                                  onChange={(e) => setTransferEmail(e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="transfer-message">Message (optional)</Label>
+                                <Textarea
+                                  id="transfer-message"
+                                  placeholder="Add a message for the new owner..."
+                                  value={transferMessage}
+                                  onChange={(e) => setTransferMessage(e.target.value)}
+                                  rows={3}
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => {
+                                setShowTransferDialog(false)
+                                setTransferEmail("")
+                                setTransferMessage("")
+                              }} disabled={isTransferring}>
+                                Cancel
+                              </Button>
+                              <Button 
+                                onClick={handleTransferOwnership}
+                                disabled={isTransferring || !transferEmail}
+                              >
+                                {isTransferring ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Transferring...
+                                  </>
+                                ) : (
+                                  "Transfer Ownership"
+                                )}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="p-4 border-b border-red-200 dark:border-red-900">
+                    {permissions.canArchiveProject && (
+                      <div className="p-4 border-b border-red-200 dark:border-red-900">
                       <div className="flex justify-between items-start">
                         <div>
                           <h3 className="font-medium mb-1">Archive Project</h3>
                           <p className="text-sm text-muted-foreground">Archive this project and make it read-only</p>
                         </div>
-                        <Button variant="outline">Archive Project</Button>
+                        <Dialog open={showArchiveDialog} onOpenChange={(open) => {
+                          setShowArchiveDialog(open)
+                          if (!open) {
+                            setArchiveConfirmationText("")
+                          }
+                        }}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline">Archive Project</Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Archive Project</DialogTitle>
+                              <DialogDescription>
+                                This will archive the project and make it read-only. Archived projects can be restored later.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4">
+                              <div className="bg-amber-50 dark:bg-amber-950 p-4 rounded-md mb-4">
+                                <div className="flex items-start gap-3">
+                                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                                  <div>
+                                    <h4 className="font-medium text-amber-600 dark:text-amber-400 mb-1">Archive Project</h4>
+                                    <p className="text-sm text-amber-600/80 dark:text-amber-400/80">
+                                      Archiving <strong>{currentProject.name}</strong> will:
+                                    </p>
+                                    <ul className="list-disc list-inside text-sm text-amber-600/80 dark:text-amber-400/80 mt-2 space-y-1">
+                                      <li>Make the project read-only</li>
+                                      <li>Hide it from active project lists</li>
+                                      <li>Preserve all data and history</li>
+                                      <li>Allow restoration by owners/admins</li>
+                                    </ul>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="archive-confirm">
+                                  Type <strong>{currentProject.name}</strong> to confirm
+                                </Label>
+                                <Input 
+                                  id="archive-confirm" 
+                                  placeholder={currentProject.name}
+                                  value={archiveConfirmationText}
+                                  onChange={(e) => setArchiveConfirmationText(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => {
+                                setShowArchiveDialog(false)
+                                setArchiveConfirmationText("")
+                              }} disabled={isArchiving}>
+                                Cancel
+                              </Button>
+                              <Button 
+                                variant="outline"
+                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                onClick={handleArchiveProject}
+                                disabled={isArchiving || archiveConfirmationText !== currentProject.name}
+                              >
+                                {isArchiving ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Archiving...
+                                  </>
+                                ) : (
+                                  "Archive Project"
+                                )}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="p-4">
+                    {permissions.canDeleteProject && (
+                      <div className="p-4">
                       <div className="flex justify-between items-start">
                         <div>
                           <h3 className="font-medium text-red-600 dark:text-red-400 mb-1">Delete Project</h3>
@@ -1954,8 +2198,9 @@ export default function SettingsPage() {
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

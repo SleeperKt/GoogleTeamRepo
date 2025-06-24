@@ -19,6 +19,7 @@ namespace ProjectHub.Infrastructure.Data
         public DbSet<ProjectSettings> ProjectSettings { get; set; } = null!;
         public DbSet<ProjectLabel> ProjectLabels { get; set; } = null!;
         public DbSet<ProjectWorkflowStage> ProjectWorkflowStages { get; set; } = null!;
+        public DbSet<ProjectInvitation> ProjectInvitations { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -201,6 +202,61 @@ namespace ProjectHub.Infrastructure.Data
             modelBuilder.Entity<ProjectWorkflowStage>()
                 .Property(pws => pws.Color)
                 .HasMaxLength(7);
+
+            // Configure ProjectInvitation entity
+            modelBuilder.Entity<ProjectInvitation>()
+                .HasKey(pi => pi.Id);
+
+            modelBuilder.Entity<ProjectInvitation>()
+                .Property(pi => pi.ProjectId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectInvitation>()
+                .Property(pi => pi.InviterId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectInvitation>()
+                .Property(pi => pi.InviteeId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectInvitation>()
+                .Property(pi => pi.Role)
+                .HasConversion<int>()
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectInvitation>()
+                .Property(pi => pi.Status)
+                .HasConversion<int>()
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectInvitation>()
+                .Property(pi => pi.Message)
+                .HasMaxLength(500);
+
+            // Create unique index to prevent duplicate pending invitations
+            modelBuilder.Entity<ProjectInvitation>()
+                .HasIndex(pi => new { pi.ProjectId, pi.InviteeId, pi.Status })
+                .HasFilter("Status = 0") // Only for pending invitations
+                .IsUnique();
+
+            // Configure navigation properties
+            modelBuilder.Entity<ProjectInvitation>()
+                .HasOne(pi => pi.Project)
+                .WithMany()
+                .HasForeignKey(pi => pi.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ProjectInvitation>()
+                .HasOne(pi => pi.Inviter)
+                .WithMany()
+                .HasForeignKey(pi => pi.InviterId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProjectInvitation>()
+                .HasOne(pi => pi.Invitee)
+                .WithMany()
+                .HasForeignKey(pi => pi.InviteeId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

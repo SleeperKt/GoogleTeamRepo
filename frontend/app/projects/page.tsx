@@ -22,18 +22,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 
 // Add these imports at the top
-import { MoreHorizontal, Trash, Edit, Star } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+import { Star } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { apiRequest } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
@@ -72,11 +61,7 @@ export default function ProjectsPage() {
   const [showEmptyState, setShowEmptyState] = useState(false) // Will switch to true when project list empty
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false)
 
-  // Add these state variables in the main component
-  const [editingProject, setEditingProject] = useState<any>(null)
-  const [editProjectDialogOpen, setEditProjectDialogOpen] = useState(false)
-  const [deleteProjectDialogOpen, setDeleteProjectDialogOpen] = useState(false)
-  const [projectToDelete, setProjectToDelete] = useState<any>(null)
+
   const [projectList, setProjectList] = useState<any[]>([])
 
   const { token } = useAuth()
@@ -124,71 +109,47 @@ export default function ProjectsPage() {
     }
   }, [searchParams])
 
-  // Add these handler functions
-  const handleEditProject = (project: any) => {
-    setEditingProject(project)
-    setEditProjectDialogOpen(true)
-  }
-
-  const handleDeleteProject = (project: any) => {
-    setProjectToDelete(project)
-    setDeleteProjectDialogOpen(true)
-  }
-
-  const confirmDeleteProject = async () => {
-    if (!projectToDelete) return
-    try {
-      const deleteUrl = projectToDelete.id && projectToDelete.id.toString().includes("-")
-        ? `/api/projects/public/${projectToDelete.id}`
-        : `/api/projects/${projectToDelete.id}`
-
-      await apiRequest(deleteUrl, { method: "DELETE" })
-      setProjectList(projectList.filter((p) => p.id !== projectToDelete.id))
+  // Check for refresh query parameter and reload projects
+  useEffect(() => {
+    if (searchParams.get('refresh') === 'true' && token) {
+      // Force refresh the projects context
       refreshProjects()
-    } catch (err: any) {
-      console.error(err)
-      alert(err.message ?? "Failed to delete project")
-    } finally {
-      setDeleteProjectDialogOpen(false)
-      setProjectToDelete(null)
+      
+      // Reload local project list with a slight delay to ensure backend deletion is complete
+      const reloadWithDelay = setTimeout(async () => {
+        try {
+          const json = await apiRequest<any>("/api/projects") as any;
+          const arr = Array.isArray(json) ? json : Array.isArray(json.$values) ? json.$values : [];
+          setProjectList(
+            arr.map((p: any) => ({
+              id: p.publicId ?? p.id.toString(),
+              name: p.name,
+              description: p.description ?? "",
+              status: getStatusLabel(p.status || 1),
+              statusValue: p.status || 1,
+              priority: getPriorityLabel(p.priority || 2),
+              priorityValue: p.priority || 2,
+              lastUpdated: new Date(p.createdAt).toLocaleDateString(),
+              owner: "Me",
+              initials: p.name.slice(0, 2).toUpperCase(),
+              starred: false,
+            })),
+          );
+          
+          // Clear the refresh parameter from URL after processing
+          const url = new URL(window.location.href)
+          url.searchParams.delete('refresh')
+          window.history.replaceState({}, '', url.toString())
+        } catch (err) {
+          console.error("Failed to reload projects", err)
+        }
+      }, 300) // Small delay to ensure backend operation is complete
+      
+      return () => clearTimeout(reloadWithDelay)
     }
-  }
+  }, [searchParams, token, refreshProjects])
 
-  const saveProjectChanges = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const formData = new FormData(e.target as HTMLFormElement)
-    const payload = {
-      name: formData.get("project-name") as string,
-      description: formData.get("project-description") as string,
-      status: parseInt(formData.get("project-status") as string),
-      priority: parseInt(formData.get("project-priority") as string),
-    }
 
-    try {
-      const updateUrl = editingProject.id && editingProject.id.toString().includes("-")
-        ? `/api/projects/public/${editingProject.id}`
-        : `/api/projects/${editingProject.id}`
-
-      await apiRequest(updateUrl, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      })
-      setProjectList(projectList.map((p) => (p.id === editingProject.id ? { 
-        ...p, 
-        name: payload.name,
-        description: payload.description,
-        status: getStatusLabel(payload.status),
-        statusValue: payload.status,
-        priority: getPriorityLabel(payload.priority),
-        priorityValue: payload.priority
-      } : p)))
-      setEditProjectDialogOpen(false)
-      setEditingProject(null)
-    } catch (err: any) {
-      console.error(err)
-      alert(err.message ?? "Failed to update project")
-    }
-  }
 
   const toggleProjectStar = (projectId: number) => {
     setProjectList(projectList.map((p) => (p.id === projectId ? { ...p, starred: !p.starred } : p)))
@@ -308,8 +269,6 @@ export default function ProjectsPage() {
                   <ProjectCard
                     key={project.id}
                     project={project}
-                    onEdit={handleEditProject}
-                    onDelete={handleDeleteProject}
                     onToggleStar={toggleProjectStar}
                   />
                 ))}
@@ -325,8 +284,6 @@ export default function ProjectsPage() {
                 <ProjectCard
                   key={project.id}
                   project={project}
-                  onEdit={handleEditProject}
-                  onDelete={handleDeleteProject}
                   onToggleStar={toggleProjectStar}
                 />
               ))}
@@ -439,86 +396,7 @@ export default function ProjectsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Project Dialog */}
-      <Dialog open={editProjectDialogOpen} onOpenChange={setEditProjectDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
-            <DialogDescription>Update your project details.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={saveProjectChanges}>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="project-name">Project name</Label>
-                <Input id="project-name" name="project-name" defaultValue={editingProject?.name || ""} required />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="project-description">Description</Label>
-                <Textarea
-                  id="project-description"
-                  name="project-description"
-                  defaultValue={editingProject?.description || ""}
-                  rows={3}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="project-status">Status</Label>
-                <Select name="project-status" defaultValue={editingProject?.statusValue?.toString() || "1"}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Active</SelectItem>
-                    <SelectItem value="2">On Hold</SelectItem>
-                    <SelectItem value="3">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="project-priority">Priority</Label>
-                <Select name="project-priority" defaultValue={editingProject?.priorityValue?.toString() || "2"}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Low</SelectItem>
-                    <SelectItem value="2">Medium</SelectItem>
-                    <SelectItem value="3">High</SelectItem>
-                    <SelectItem value="4">Critical</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => setEditProjectDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" className="bg-violet-600 hover:bg-violet-700 text-white">
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
-      {/* Delete Project Dialog */}
-      <AlertDialog open={deleteProjectDialogOpen} onOpenChange={setDeleteProjectDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the project "{projectToDelete?.name}" and all
-              of its data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteProject} className="bg-red-600 hover:bg-red-700 text-white">
-              Delete Project
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
@@ -526,23 +404,16 @@ export default function ProjectsPage() {
 // Project Card Component
 function ProjectCard({
   project,
-  onEdit,
-  onDelete,
   onToggleStar,
 }: {
   project: any
-  onEdit: (project: any) => void
-  onDelete: (project: any) => void
   onToggleStar: (projectId: number) => void
 }) {
   const router = useRouter()
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't navigate if clicking on dropdown or star button
-    if (
-      (e.target as HTMLElement).closest("[data-dropdown-trigger]") ||
-      (e.target as HTMLElement).closest("[data-star-button]")
-    ) {
+    // Don't navigate if clicking on star button
+    if ((e.target as HTMLElement).closest("[data-star-button]")) {
       return
     }
 
@@ -578,39 +449,7 @@ function ProjectCard({
             >
               <Star className={`h-4 w-4 ${project.starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400"}`} />
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  data-dropdown-trigger
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onEdit(project)
-                  }}
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit Project
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onDelete(project)
-                  }}
-                  className="text-red-600 focus:text-red-600"
-                >
-                  <Trash className="mr-2 h-4 w-4" />
-                  Delete Project
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+
           </div>
         </div>
       </CardHeader>

@@ -44,9 +44,13 @@ builder.Services.AddScoped<IProjectLabelRepository, ProjectLabelRepository>();
 builder.Services.AddScoped<IProjectWorkflowRepository, ProjectWorkflowRepository>();
 builder.Services.AddScoped<IProjectSettingsService, ProjectSettingsService>();
 
+// Регистрация сервисов и репозиториев для приглашений
+builder.Services.AddScoped<IProjectInvitationRepository, ProjectInvitationRepository>();
+builder.Services.AddScoped<IProjectInvitationService, ProjectInvitationService>();
+
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
-    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
 });
 
 builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>();

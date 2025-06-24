@@ -12,19 +12,55 @@ namespace ProjectHub.Core.Services
         private readonly IProjectWorkflowRepository _workflowRepository;
         private readonly IProjectService _projectService;
         private readonly ITaskRepository _taskRepository;
+        private readonly IProjectParticipantRepository _participantRepository;
+        private readonly IUserRepository _userRepository;
 
         public ProjectSettingsService(
             IProjectSettingsRepository settingsRepository,
             IProjectLabelRepository labelRepository,
             IProjectWorkflowRepository workflowRepository,
             IProjectService projectService,
-            ITaskRepository taskRepository)
+            ITaskRepository taskRepository,
+            IProjectParticipantRepository participantRepository,
+            IUserRepository userRepository)
         {
             _settingsRepository = settingsRepository;
             _labelRepository = labelRepository;
             _workflowRepository = workflowRepository;
             _projectService = projectService;
             _taskRepository = taskRepository;
+            _participantRepository = participantRepository;
+            _userRepository = userRepository;
+        }
+
+        private async Task<User?> FindUserByIdOrEmailAsync(string userIdOrEmail)
+        {
+            if (Guid.TryParse(userIdOrEmail, out Guid userId))
+            {
+                return await _userRepository.GetByIdAsync(userId);
+            }
+            return await _userRepository.GetByEmailAsync(userIdOrEmail);
+        }
+
+        private async Task EnsureUserCanManageProjectAsync(int projectId, string userId)
+        {
+            var user = await FindUserByIdOrEmailAsync(userId);
+            if (user == null)
+            {
+                throw new ArgumentException("Invalid user ID or email", nameof(userId));
+            }
+
+            var role = await _participantRepository.GetUserRoleInProjectAsync(projectId, user.UserId);
+            if (role == null)
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            // Only Admin and above can manage project settings (Admin=2, Owner=1)
+            if (role > ParticipantRole.Admin)
+            {
+                throw new UnauthorizedAccessException("User does not have permission to manage project settings. Admin role or higher required.");
+            }
         }
 
         public async Task<ProjectSettingsResponse?> GetProjectSettingsAsync(int projectId, string userEmail)
@@ -56,10 +92,8 @@ namespace ProjectHub.Core.Services
 
         public async Task<ProjectSettingsResponse> UpdateProjectSettingsAsync(int projectId, UpdateProjectSettingsRequest request, string userEmail)
         {
-            // Check if user has admin access
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             var settings = await _settingsRepository.GetProjectSettingsAsync(projectId);
             
@@ -103,9 +137,8 @@ namespace ProjectHub.Core.Services
 
         public async Task<ProjectLabelResponse> CreateProjectLabelAsync(int projectId, CreateProjectLabelRequest request, string userEmail)
         {
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             var label = new ProjectLabel
             {
@@ -120,9 +153,8 @@ namespace ProjectHub.Core.Services
 
         public async Task<ProjectLabelResponse> UpdateProjectLabelAsync(int projectId, int labelId, UpdateProjectLabelRequest request, string userEmail)
         {
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             var label = await _labelRepository.GetProjectLabelByIdAsync(labelId);
             if (label == null || label.ProjectId != projectId)
@@ -149,9 +181,8 @@ namespace ProjectHub.Core.Services
 
         public async Task DeleteProjectLabelAsync(int projectId, int labelId, string userEmail)
         {
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             var label = await _labelRepository.GetProjectLabelByIdAsync(labelId);
             if (label == null || label.ProjectId != projectId)
@@ -162,9 +193,8 @@ namespace ProjectHub.Core.Services
 
         public async Task ReorderProjectLabelsAsync(int projectId, int[] labelIds, string userEmail)
         {
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             await _labelRepository.ReorderProjectLabelsAsync(projectId, labelIds);
         }
@@ -189,9 +219,8 @@ namespace ProjectHub.Core.Services
 
         public async Task<WorkflowStageResponse> CreateWorkflowStageAsync(int projectId, CreateWorkflowStageRequest request, string userEmail)
         {
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             var stage = new ProjectWorkflowStage
             {
@@ -208,9 +237,8 @@ namespace ProjectHub.Core.Services
 
         public async Task<WorkflowStageResponse> UpdateWorkflowStageAsync(int projectId, int stageId, UpdateWorkflowStageRequest request, string userEmail)
         {
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             var stage = await _workflowRepository.GetProjectWorkflowStageByIdAsync(stageId);
             if (stage == null || stage.ProjectId != projectId)
@@ -228,9 +256,8 @@ namespace ProjectHub.Core.Services
 
         public async Task DeleteWorkflowStageAsync(int projectId, int stageId, string userEmail)
         {
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             var stage = await _workflowRepository.GetProjectWorkflowStageByIdAsync(stageId);
             if (stage == null || stage.ProjectId != projectId)
@@ -246,9 +273,8 @@ namespace ProjectHub.Core.Services
 
         public async Task ReorderWorkflowStagesAsync(int projectId, ReorderWorkflowStagesRequest request, string userEmail)
         {
-            var hasAccess = await _projectService.UserHasAccessAsync(projectId, userEmail);
-            if (!hasAccess)
-                throw new UnauthorizedAccessException("User does not have access to this project");
+            // Check if user has admin access (Admin role or higher)
+            await EnsureUserCanManageProjectAsync(projectId, userEmail);
 
             await _workflowRepository.ReorderProjectWorkflowStagesAsync(projectId, request.StageIds);
         }

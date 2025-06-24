@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import {
   AlertCircle,
   ArrowRight,
@@ -39,10 +39,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { API_BASE_URL } from "@/lib/api"
+import { API_BASE_URL, apiRequest } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { useProject } from "@/contexts/project-context"
 import { useProjectLabels, type ProjectLabel } from "@/hooks/use-project-labels"
+import { SendInvitationDialog } from "@/components/send-invitation-dialog"
+import { useUserPermissions } from "@/hooks/use-user-permissions"
+import { invitationApi } from "@/lib/api"
+import { toast } from "@/hooks/use-toast"
 
 // Types
 interface ProjectSettings {
@@ -212,7 +216,8 @@ const labelColors = [
 
 export default function SettingsPage() {
   const { user, token } = useAuth()
-  const { currentProject } = useProject()
+  const { currentProject, refreshProjects } = useProject()
+  const router = useRouter()
   const projectId = currentProject?.publicId // Use selected project from context
   
   // Use labels hook
@@ -224,12 +229,22 @@ export default function SettingsPage() {
     updateLabel: hookUpdateLabel, 
     deleteLabel: hookDeleteLabel 
   } = useProjectLabels(projectId)
+  const { refreshPermissions, ...permissions } = useUserPermissions(projectId)
   
   const [activeTab, setActiveTab] = useState("general")
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showTransferDialog, setShowTransferDialog] = useState(false)
+  const [transferEmail, setTransferEmail] = useState("")
+  const [transferMessage, setTransferMessage] = useState("")
+  const [isTransferring, setIsTransferring] = useState(false)
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false)
+  const [archiveConfirmationText, setArchiveConfirmationText] = useState("")
+  const [isArchiving, setIsArchiving] = useState(false)
   const [editingLabel, setEditingLabel] = useState<number | null>(null)
   const [editingLabelData, setEditingLabelData] = useState<{name: string, color: string}>({name: "", color: ""})
   const [newLabelName, setNewLabelName] = useState("")
@@ -277,6 +292,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (currentProject) {
       fetchData()
+      fetchProjectInvitations()
     }
   }, [currentProject, token])
 
@@ -553,7 +569,7 @@ export default function SettingsPage() {
 
   // Handle member role change
   const handleRoleChange = async (memberId: string, newRole: string) => {
-    if (!token || !projectId) return
+    if (!token || !currentProject) return
 
     // Convert role string back to number for API
     const getRoleNumber = (roleName: string): number => {
@@ -568,13 +584,13 @@ export default function SettingsPage() {
 
     try {
       setIsSaving(true)
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/participants/${memberId}/role`, {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${currentProject.id}/participants/${memberId}/role`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ role: getRoleNumber(newRole) }),
+        body: JSON.stringify({ newRole: getRoleNumber(newRole) }),
       })
 
       if (response.ok) {
@@ -582,9 +598,26 @@ export default function SettingsPage() {
         setTeamMembers(prev => prev.map(member => 
           member.userId === memberId ? { ...member, role: getRoleNumber(newRole) } : member
         ))
+        
+        // Show success message
+        toast({
+          title: "Success",
+          description: "Member role updated successfully",
+        })
+      } else {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Failed to update member role')
       }
     } catch (err) {
-      setError('Failed to update member role')
+      console.error('Error updating member role:', err)
+      setError(err instanceof Error ? err.message : 'Failed to update member role')
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : 'Failed to update member role',
+        variant: "destructive",
+      })
     } finally {
       setIsSaving(false)
     }
@@ -592,11 +625,11 @@ export default function SettingsPage() {
 
   // Handle member removal
   const handleRemoveMember = async (memberId: string) => {
-    if (!token || !projectId) return
+    if (!token || !currentProject) return
 
     try {
       setIsSaving(true)
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/participants/${memberId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${currentProject.id}/participants/${memberId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -606,9 +639,26 @@ export default function SettingsPage() {
       if (response.ok) {
         // Update local state
         setTeamMembers(prev => prev.filter(member => member.userId !== memberId))
+        
+        // Show success message
+        toast({
+          title: "Success",
+          description: "Member removed successfully",
+        })
+      } else {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Failed to remove member')
       }
     } catch (err) {
-      setError('Failed to remove member')
+      console.error('Error removing member:', err)
+      setError(err instanceof Error ? err.message : 'Failed to remove member')
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : 'Failed to remove member',
+        variant: "destructive",
+      })
     } finally {
       setIsSaving(false)
     }
@@ -642,16 +692,14 @@ export default function SettingsPage() {
   }
 
   // Handle cancel invite
-  const handleCancelInvite = async (email: string) => {
-    if (!token || !projectId) return
-
+  const handleCancelInvite = async (invitationId: number) => {
     try {
       setIsSaving(true)
-      // Note: This would need a backend endpoint to cancel invites
-      // For now, just remove from local state
-      setPendingInvites(prev => prev.filter(invite => invite.email !== email))
+      await invitationApi.cancelInvitation(invitationId)
+      // Refresh pending invitations after cancellation
+      fetchProjectInvitations()
     } catch (err) {
-      setError('Failed to cancel invite')
+      setError('Failed to cancel invitation')
     } finally {
       setIsSaving(false)
     }
@@ -875,8 +923,188 @@ export default function SettingsPage() {
     setShowEmptyState(!showEmptyState)
   }
 
-  // Show loading state while fetching data
-  if (loading) {
+  // Function to fetch project invitations
+  const fetchProjectInvitations = async () => {
+    if (!currentProject) return
+
+    try {
+      const invitations = await invitationApi.getProjectInvitations(currentProject.id)
+      
+      // Debug: Log what we received
+      console.log("Received invitations:", invitations)
+      console.log("Is array?", Array.isArray(invitations))
+      console.log("Type:", typeof invitations)
+      
+      // Ensure we always have an array
+      const invitationArray = Array.isArray(invitations) ? invitations : []
+      
+      // Filter to only show pending invitations
+      const pending = invitationArray.filter(inv => inv.status === 0) // Pending status
+      setPendingInvites(pending.map(inv => ({
+        email: inv.inviteeEmail,
+        role: inv.role === 1 ? "Owner" : inv.role === 2 ? "Admin" : inv.role === 3 ? "Editor" : "Viewer",
+        sentAt: new Date(inv.createdAt).toLocaleDateString(),
+        id: inv.id
+      })))
+    } catch (error) {
+      console.error("Failed to fetch project invitations:", error)
+      // Reset to empty array on error
+      setPendingInvites([])
+    }
+  }
+
+  // Function to handle invitation sent callback
+  const handleInvitationSent = () => {
+    fetchProjectInvitations() // Refresh pending invitations
+    fetchData() // Refresh team members in case invitation was immediately accepted
+  }
+
+  // Function to handle project deletion
+  const handleDeleteProject = async () => {
+    if (!currentProject || !projectId) return
+
+    // Check if confirmation text matches
+    if (deleteConfirmationText !== currentProject.name) {
+      toast({
+        title: "Confirmation failed",
+        description: "Please type the project name exactly to confirm deletion",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      await apiRequest(`/api/projects/public/${projectId}`, {
+        method: 'DELETE'
+      })
+      
+      // Refresh the projects list in context
+      refreshProjects()
+      
+      toast({
+        title: "Project deleted",
+        description: "The project has been permanently deleted"
+      })
+      
+      // Redirect to projects page with refresh parameter
+      router.push('/projects?refresh=true')
+    } catch (err: any) {
+      console.error('Error deleting project:', err)
+      toast({
+        title: "Failed to delete project",
+        description: err.message || "An error occurred while deleting the project",
+        variant: "destructive"
+      })
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteDialog(false)
+      setDeleteConfirmationText("")
+    }
+  }
+
+  // Function to handle transfer ownership
+  const handleTransferOwnership = async () => {
+    if (!currentProject || !projectId) return
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!transferEmail || !emailRegex.test(transferEmail)) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsTransferring(true)
+    try {
+      await apiRequest(`/api/projects/public/${projectId}/transfer-ownership`, {
+        method: 'POST',
+        body: JSON.stringify({
+          newOwnerEmail: transferEmail,
+          message: transferMessage
+        })
+      })
+      
+      // Refresh the projects list in context
+      refreshProjects()
+      
+      // Refresh permissions since user role has changed
+      refreshPermissions()
+      
+      toast({
+        title: "Ownership transferred",
+        description: `Project ownership has been transferred to ${transferEmail}. You are now an admin.`
+      })
+      
+      // Stay on the settings page to show the updated admin view
+      // User can navigate away manually if needed
+    } catch (err: any) {
+      console.error('Error transferring ownership:', err)
+      toast({
+        title: "Failed to transfer ownership",
+        description: err.message || "An error occurred while transferring ownership",
+        variant: "destructive"
+      })
+    } finally {
+      setIsTransferring(false)
+      setShowTransferDialog(false)
+      setTransferEmail("")
+      setTransferMessage("")
+    }
+  }
+
+  // Function to handle archive project
+  const handleArchiveProject = async () => {
+    if (!currentProject || !projectId) return
+
+    // Check if confirmation text matches
+    if (archiveConfirmationText !== currentProject.name) {
+      toast({
+        title: "Confirmation failed",
+        description: "Please type the project name exactly to confirm archiving",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsArchiving(true)
+    try {
+      await apiRequest(`/api/projects/public/${projectId}/archive`, {
+        method: 'POST'
+      })
+      
+      // Refresh the projects list in context
+      refreshProjects()
+      
+      // Refresh permissions in case user role visibility changed
+      refreshPermissions()
+      
+      toast({
+        title: "Project archived",
+        description: "The project has been archived and is now read-only"
+      })
+      
+      // Redirect to projects page to see updated status
+      router.push('/projects?refresh=true')
+    } catch (err: any) {
+      console.error('Error archiving project:', err)
+      toast({
+        title: "Failed to archive project",
+        description: err.message || "An error occurred while archiving the project",
+        variant: "destructive"
+      })
+    } finally {
+      setIsArchiving(false)
+      setShowArchiveDialog(false)
+      setArchiveConfirmationText("")
+    }
+  }
+
+  // Show loading state while fetching data (but only if we have a project to load)
+  if (currentProject && (loading || permissions.isLoading)) {
     return (
       <div className="p-4 md:p-6 w-full">
         <div className="flex items-center justify-center py-12">
@@ -919,6 +1147,35 @@ export default function SettingsPage() {
             </p>
           </CardContent>
         </Card>
+      </div>
+    )
+  }
+
+  // If user has no scope (no role/permissions) in the project, hide settings
+  if (permissions.role === null && !permissions.canView) {
+    return (
+      <div className="p-4 md:p-6 w-full">
+        <div className="mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold mb-2">
+            {currentProject.name} Settings
+          </h1>
+        </div>
+        
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+          <div className="bg-gray-100 dark:bg-gray-700 rounded-full p-6 mb-4">
+            <AlertCircle className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+          </div>
+          <h3 className="text-xl font-medium mb-2">Access Denied</h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
+            You don't have access to this project's settings. Please contact a project administrator for access.
+          </p>
+          <Button 
+            onClick={() => router.push('/projects')}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            <ArrowRight className="mr-2 h-4 w-4" /> Return to Projects
+          </Button>
+        </div>
       </div>
     )
   }
@@ -984,30 +1241,36 @@ export default function SettingsPage() {
                     >
                       Members & Access
                     </TabsTrigger>
-                    <TabsTrigger
-                      value="labels"
-                      className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
-                    >
-                      Tags & Labels
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="workflow"
-                      className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
-                    >
-                      Workflow
-                    </TabsTrigger>
+                    {permissions.canManageProject && (
+                      <TabsTrigger
+                        value="labels"
+                        className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                      >
+                        Tags & Labels
+                      </TabsTrigger>
+                    )}
+                    {permissions.canManageProject && (
+                      <TabsTrigger
+                        value="workflow"
+                        className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                      >
+                        Workflow
+                      </TabsTrigger>
+                    )}
                     <TabsTrigger
                       value="integrations"
                       className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
                     >
                       Integrations
                     </TabsTrigger>
-                    <TabsTrigger
-                      value="danger"
-                      className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 text-red-600 data-[state=active]:border-red-600 data-[state=active]:bg-red-50 data-[state=active]:text-red-600 dark:text-red-400 dark:data-[state=active]:bg-red-950 dark:data-[state=active]:text-red-400"
-                    >
-                      Danger Zone
-                    </TabsTrigger>
+                    {permissions.canDeleteProject && (
+                      <TabsTrigger
+                        value="danger"
+                        className="justify-start rounded-none border-l-2 border-transparent px-4 py-3 text-red-600 data-[state=active]:border-red-600 data-[state=active]:bg-red-50 data-[state=active]:text-red-600 dark:text-red-400 dark:data-[state=active]:bg-red-950 dark:data-[state=active]:text-red-400"
+                      >
+                        Danger Zone
+                      </TabsTrigger>
+                    )}
                   </TabsList>
                 </Tabs>
               </CardContent>
@@ -1024,12 +1287,26 @@ export default function SettingsPage() {
                   <CardDescription>Configure basic project information and preferences</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {!permissions.canManageProject && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-md p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <Info className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-amber-800 mb-1">Read-only Access</h4>
+                          <p className="text-sm text-amber-700">
+                            You have {permissions.role === 3 ? 'Editor' : 'Viewer'} access to this project. Only project admins and owners can modify general settings.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="project-name">Project Name</Label>
                     <Input
                       id="project-name"
                       value={projectSettings.name || ''}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
+                      onChange={permissions.canManageProject ? (e) => handleInputChange("name", e.target.value) : undefined}
+                      readOnly={!permissions.canManageProject}
                     />
                   </div>
 
@@ -1038,8 +1315,9 @@ export default function SettingsPage() {
                     <Textarea
                       id="project-description"
                       value={projectSettings.description}
-                      onChange={(e) => handleInputChange("description", e.target.value)}
+                      onChange={permissions.canManageProject ? (e) => handleInputChange("description", e.target.value) : undefined}
                       rows={3}
+                      readOnly={!permissions.canManageProject}
                     />
                   </div>
 
@@ -1134,57 +1412,32 @@ export default function SettingsPage() {
                   <CardDescription>Manage team members and their access levels</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {!permissions.canInviteUsers && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-blue-800 mb-1">Limited Access</h4>
+                          <p className="text-sm text-blue-700">
+                            You can view team members but cannot invite new members or modify roles. Only project admins and owners can manage team access.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium">Project Members</h3>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button className="bg-violet-600 hover:bg-violet-700 text-white">
-                          <Plus className="mr-2 h-4 w-4" /> Invite Member
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Invite Team Member</DialogTitle>
-                          <DialogDescription>Send an invitation to join this project</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="invite-email">Email Address</Label>
-                            <Input id="invite-email" placeholder="colleague@example.com" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="invite-role">Role</Label>
-                            <Select defaultValue="Editor">
-                              <SelectTrigger id="invite-role">
-                                <SelectValue placeholder="Select a role" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {roleOptions.map((role) => (
-                                  <SelectItem key={role.value} value={role.value}>
-                                    {role.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="invite-message">Message (Optional)</Label>
-                            <Textarea id="invite-message" placeholder="I'd like you to join our project..." rows={3} />
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => {}}>
-                            Cancel
+                    {currentProject && permissions.canInviteUsers && (
+                      <SendInvitationDialog 
+                        projectId={currentProject.id} 
+                        onInvitationSent={handleInvitationSent}
+                        trigger={
+                          <Button className="bg-violet-600 hover:bg-violet-700 text-white">
+                            <Plus className="mr-2 h-4 w-4" /> Invite Member
                           </Button>
-                          <Button
-                            className="bg-violet-600 hover:bg-violet-700 text-white"
-                            onClick={() => handleInviteMember("colleague@example.com", "Editor")}
-                          >
-                            Send Invitation
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                        }
+                      />
+                    )}
                   </div>
 
                   <div className="border rounded-md">
@@ -1196,55 +1449,64 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div className="divide-y">
-                      {projectSettings.members.map((member, index) => (
-                        <div key={member.id || `member-${index}`} className="px-4 py-3">
-                          <div className="grid grid-cols-12 gap-4 items-center">
-                            <div className="col-span-6 flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={member.avatar} alt={member.name} />
-                                <AvatarFallback>{member.initials}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <div className="font-medium">{member.name}</div>
-                                <div className="text-sm text-muted-foreground">{member.email}</div>
+                      {teamMembers.map((member, index) => {
+                        const memberRoleName = getRoleName(member.role)
+                        const isCurrentUser = member.userId === user?.id
+                        const isOwner = member.role === 1 // Owner role
+                        const currentUserRole = teamMembers.find(m => m.userId === user?.id)?.role
+                        const currentUserIsOwner = currentUserRole === 1
+                        
+                        return (
+                          <div key={member.userId || `member-${index}`} className="px-4 py-3">
+                            <div className="grid grid-cols-12 gap-4 items-center">
+                              <div className="col-span-6 flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback>
+                                    {member.userName.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <div className="font-medium">{member.userName}</div>
+                                  <div className="text-sm text-muted-foreground">{member.email}</div>
+                                </div>
+                              </div>
+                              <div className="col-span-3">
+                                <Select
+                                  value={memberRoleName}
+                                  onValueChange={(value) => handleRoleChange(member.userId, value)}
+                                  disabled={!permissions.canManageProject || isOwner || isCurrentUser}
+                                >
+                                  <SelectTrigger className="h-8">
+                                    <SelectValue placeholder="Select a role" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {roleOptions.map((role) => (
+                                      <SelectItem key={role.value} value={role.value}>
+                                        {role.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="col-span-3 flex justify-end">
+                                {isOwner || isCurrentUser ? (
+                                  <Badge variant="outline">{isOwner ? "Owner" : "You"}</Badge>
+                                ) : permissions.canManageProject ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => handleRemoveMember(member.userId)}
+                                  >
+                                    <Trash className="h-4 w-4" />
+                                    <span className="sr-only md:not-sr-only md:ml-2">Remove</span>
+                                  </Button>
+                                ) : null}
                               </div>
                             </div>
-                            <div className="col-span-3">
-                              <Select
-                                value={member.role}
-                                onValueChange={(value) => handleRoleChange(member.id, value)}
-                                disabled={member.role === "Owner" || member.id === user?.id} // Disable for project owner or current user
-                              >
-                                <SelectTrigger className="h-8">
-                                  <SelectValue placeholder="Select a role" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {roleOptions.map((role) => (
-                                    <SelectItem key={role.value} value={role.value}>
-                                      {role.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="col-span-3 flex justify-end">
-                              {member.role === "Owner" || member.id === user?.id ? (
-                                <Badge variant="outline">{member.role === "Owner" ? "Owner" : "You"}</Badge>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() => handleRemoveMember(member.id)}
-                                >
-                                  <Trash className="h-4 w-4" />
-                                  <span className="sr-only md:not-sr-only md:ml-2">Remove</span>
-                                </Button>
-                              )}
-                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
 
@@ -1274,7 +1536,7 @@ export default function SettingsPage() {
                                     variant="ghost"
                                     size="sm"
                                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => handleCancelInvite(invite.email)}
+                                    onClick={() => handleCancelInvite(invite.id)}
                                   >
                                     <X className="h-4 w-4" />
                                     <span className="sr-only md:not-sr-only md:ml-2">Cancel</span>
@@ -1310,7 +1572,7 @@ export default function SettingsPage() {
             )}
 
             {/* Tags & Labels */}
-            {activeTab === "labels" && (
+            {activeTab === "labels" && permissions.canManageProject && (
               <Card>
                 <CardHeader>
                   <CardTitle>Tags & Labels</CardTitle>
@@ -1348,7 +1610,7 @@ export default function SettingsPage() {
                     <Button
                       className="bg-violet-600 hover:bg-violet-700 text-white mt-2 sm:mt-0"
                       onClick={handleAddLabel}
-                      disabled={!newLabelName.trim()}
+                      disabled={!newLabelName.trim() || !permissions.canManageProject}
                     >
                       <Plus className="mr-2 h-4 w-4" /> Add Label
                     </Button>
@@ -1462,7 +1724,7 @@ export default function SettingsPage() {
             )}
 
             {/* Workflow */}
-            {activeTab === "workflow" && (
+            {activeTab === "workflow" && permissions.canManageProject && (
               <Card>
                 <CardHeader>
                   <CardTitle>Workflow Configuration</CardTitle>
@@ -1713,7 +1975,7 @@ export default function SettingsPage() {
             )}
 
             {/* Danger Zone */}
-            {activeTab === "danger" && (
+            {activeTab === "danger" && permissions.canDeleteProject && (
               <Card className="border-red-200 dark:border-red-900">
                 <CardHeader className="border-b border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950">
                   <div className="flex items-center gap-2">
@@ -1726,29 +1988,166 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent className="space-y-6 pt-6">
                   <div className="border border-red-200 dark:border-red-900 rounded-md">
-                    <div className="p-4 border-b border-red-200 dark:border-red-900">
-                      <div className="flex justify-between items-start">
+                    {permissions.canTransferOwnership && (
+                      <div className="p-4 border-b border-red-200 dark:border-red-900">
+                        <div className="flex justify-between items-start">
                         <div>
                           <h3 className="font-medium mb-1">Transfer Project Ownership</h3>
                           <p className="text-sm text-muted-foreground">
                             Transfer ownership of this project to another team member
                           </p>
                         </div>
-                        <Button variant="outline">Transfer Ownership</Button>
+                        <Dialog open={showTransferDialog} onOpenChange={(open) => {
+                          setShowTransferDialog(open)
+                          if (!open) {
+                            setTransferEmail("")
+                            setTransferMessage("")
+                          }
+                        }}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline">Transfer Ownership</Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Transfer Project Ownership</DialogTitle>
+                              <DialogDescription>
+                                Transfer ownership of this project to another user. You will become an admin after the transfer.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4 space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="transfer-email">New Owner Email</Label>
+                                <Input
+                                  id="transfer-email"
+                                  type="email"
+                                  placeholder="user@example.com"
+                                  value={transferEmail}
+                                  onChange={(e) => setTransferEmail(e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="transfer-message">Message (optional)</Label>
+                                <Textarea
+                                  id="transfer-message"
+                                  placeholder="Add a message for the new owner..."
+                                  value={transferMessage}
+                                  onChange={(e) => setTransferMessage(e.target.value)}
+                                  rows={3}
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => {
+                                setShowTransferDialog(false)
+                                setTransferEmail("")
+                                setTransferMessage("")
+                              }} disabled={isTransferring}>
+                                Cancel
+                              </Button>
+                              <Button 
+                                onClick={handleTransferOwnership}
+                                disabled={isTransferring || !transferEmail}
+                              >
+                                {isTransferring ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Transferring...
+                                  </>
+                                ) : (
+                                  "Transfer Ownership"
+                                )}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="p-4 border-b border-red-200 dark:border-red-900">
+                    {permissions.canArchiveProject && (
+                      <div className="p-4 border-b border-red-200 dark:border-red-900">
                       <div className="flex justify-between items-start">
                         <div>
                           <h3 className="font-medium mb-1">Archive Project</h3>
                           <p className="text-sm text-muted-foreground">Archive this project and make it read-only</p>
                         </div>
-                        <Button variant="outline">Archive Project</Button>
+                        <Dialog open={showArchiveDialog} onOpenChange={(open) => {
+                          setShowArchiveDialog(open)
+                          if (!open) {
+                            setArchiveConfirmationText("")
+                          }
+                        }}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline">Archive Project</Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Archive Project</DialogTitle>
+                              <DialogDescription>
+                                This will archive the project and make it read-only. Archived projects can be restored later.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4">
+                              <div className="bg-amber-50 dark:bg-amber-950 p-4 rounded-md mb-4">
+                                <div className="flex items-start gap-3">
+                                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                                  <div>
+                                    <h4 className="font-medium text-amber-600 dark:text-amber-400 mb-1">Archive Project</h4>
+                                    <p className="text-sm text-amber-600/80 dark:text-amber-400/80">
+                                      Archiving <strong>{currentProject.name}</strong> will:
+                                    </p>
+                                    <ul className="list-disc list-inside text-sm text-amber-600/80 dark:text-amber-400/80 mt-2 space-y-1">
+                                      <li>Make the project read-only</li>
+                                      <li>Hide it from active project lists</li>
+                                      <li>Preserve all data and history</li>
+                                      <li>Allow restoration by owners/admins</li>
+                                    </ul>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="archive-confirm">
+                                  Type <strong>{currentProject.name}</strong> to confirm
+                                </Label>
+                                <Input 
+                                  id="archive-confirm" 
+                                  placeholder={currentProject.name}
+                                  value={archiveConfirmationText}
+                                  onChange={(e) => setArchiveConfirmationText(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => {
+                                setShowArchiveDialog(false)
+                                setArchiveConfirmationText("")
+                              }} disabled={isArchiving}>
+                                Cancel
+                              </Button>
+                              <Button 
+                                variant="outline"
+                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                onClick={handleArchiveProject}
+                                disabled={isArchiving || archiveConfirmationText !== currentProject.name}
+                              >
+                                {isArchiving ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Archiving...
+                                  </>
+                                ) : (
+                                  "Archive Project"
+                                )}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="p-4">
+                    {permissions.canDeleteProject && (
+                      <div className="p-4">
                       <div className="flex justify-between items-start">
                         <div>
                           <h3 className="font-medium text-red-600 dark:text-red-400 mb-1">Delete Project</h3>
@@ -1756,7 +2155,12 @@ export default function SettingsPage() {
                             Permanently delete this project and all its data
                           </p>
                         </div>
-                        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                        <Dialog open={showDeleteDialog} onOpenChange={(open) => {
+                          setShowDeleteDialog(open)
+                          if (!open) {
+                            setDeleteConfirmationText("")
+                          }
+                        }}>
                           <DialogTrigger asChild>
                             <Button variant="destructive">Delete Project</Button>
                           </DialogTrigger>
@@ -1775,7 +2179,7 @@ export default function SettingsPage() {
                                   <div>
                                     <h4 className="font-medium text-red-600 dark:text-red-400 mb-1">Warning</h4>
                                     <p className="text-sm text-red-600/80 dark:text-red-400/80">
-                                      You are about to delete <strong>{projectSettings.name}</strong> and all its data,
+                                      You are about to delete <strong>{currentProject.name}</strong> and all its data,
                                       including:
                                     </p>
                                     <ul className="list-disc list-inside text-sm text-red-600/80 dark:text-red-400/80 mt-2 space-y-1">
@@ -1789,21 +2193,43 @@ export default function SettingsPage() {
                               </div>
                               <div className="space-y-2">
                                 <Label htmlFor="confirm-delete">
-                                  Type <strong>{projectSettings.name}</strong> to confirm
+                                  Type <strong>{currentProject.name}</strong> to confirm
                                 </Label>
-                                <Input id="confirm-delete" placeholder={projectSettings.name} />
+                                <Input 
+                                  id="confirm-delete" 
+                                  placeholder={currentProject.name}
+                                  value={deleteConfirmationText}
+                                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                                />
                               </div>
                             </div>
                             <DialogFooter>
-                              <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+                              <Button variant="outline" onClick={() => {
+                                setShowDeleteDialog(false)
+                                setDeleteConfirmationText("")
+                              }} disabled={isDeleting}>
                                 Cancel
                               </Button>
-                              <Button variant="destructive">I understand, delete this project</Button>
+                              <Button 
+                                variant="destructive" 
+                                onClick={handleDeleteProject}
+                                disabled={isDeleting || deleteConfirmationText !== currentProject.name}
+                              >
+                                {isDeleting ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Deleting...
+                                  </>
+                                ) : (
+                                  "I understand, delete this project"
+                                )}
+                              </Button>
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -35,6 +35,7 @@ import { TaskDetailView } from "@/components/task-detail-view"
 import { CreateTaskSidebar } from "@/components/create-task-sidebar"
 import { apiRequest } from "@/lib/api"
 import { useProjectLabels } from "@/hooks/use-project-labels"
+import { useUserPermissions } from "@/hooks/use-user-permissions"
 
 // Type definitions
 interface Task {
@@ -146,6 +147,9 @@ export default function ProjectBoardPage() {
   
   // Use labels hook to access project labels
   const { labels: projectLabels } = useProjectLabels(projectId)
+  
+  // Use permissions hook to control access
+  const permissions = useUserPermissions(projectId)
   
   const [project, setProject] = useState<Project | null>(null)
   const [boardData, setBoardData] = useState<BoardData>({})
@@ -1049,16 +1053,18 @@ export default function ProjectBoardPage() {
             <span className="text-sm text-muted-foreground">Synced {lastSynced}</span>
           </div>
         </div>
-        <Button
-          className="bg-violet-600 hover:bg-violet-700 text-white"
-          onClick={() => {
-            // Use the first column ID instead of hardcoded "todo"
-            const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
-            handleOpenCreateTask(firstColumn?.id || "")
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" /> Add Task
-        </Button>
+        {permissions.canEdit && (
+          <Button
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+            onClick={() => {
+              // Use the first column ID instead of hardcoded "todo"
+              const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
+              handleOpenCreateTask(firstColumn?.id || "")
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add Task
+          </Button>
+        )}
       </div>
 
       {/* Empty State */}
@@ -1069,15 +1075,20 @@ export default function ProjectBoardPage() {
           </div>
           <h3 className="text-xl font-medium mb-2">No tasks on the board yet</h3>
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
-            Start by adding tasks to your board to track your work visually.
+            {permissions.canEdit ? 
+              "Start by adding tasks to your board to track your work visually." :
+              "No tasks on the board yet. Tasks will appear here when they are created."
+            }
           </p>
-          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => {
-            // Use the first column ID instead of hardcoded "todo"
-            const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
-            handleOpenCreateTask(firstColumn?.id || "")
-          }}>
-            <Plus className="mr-2 h-4 w-4" /> Create Task
-          </Button>
+          {permissions.canEdit && (
+            <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => {
+              // Use the first column ID instead of hardcoded "todo"
+              const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
+              handleOpenCreateTask(firstColumn?.id || "")
+            }}>
+              <Plus className="mr-2 h-4 w-4" /> Create Task
+            </Button>
+          )}
         </div>
       ) : (
         <>
@@ -1222,8 +1233,8 @@ export default function ProjectBoardPage() {
                     dragOverColumn === column.id && !dragOverTaskId && "border-violet-500 ring-2 ring-violet-500 ring-opacity-30 bg-violet-50 dark:bg-violet-950/10 shadow-lg",
                     draggedTask && draggedTask.columnId !== column.id && "border-dashed border-gray-300 dark:border-gray-600",
                   )}
-                  onDragOver={(e) => handleDragOver(e, column.id)}
-                  onDrop={(e) => handleDrop(e, column.id)}
+                  onDragOver={permissions.canEdit ? (e) => handleDragOver(e, column.id) : undefined}
+                  onDrop={permissions.canEdit ? (e) => handleDrop(e, column.id) : undefined}
                 >
                   <div className="p-3 border-b bg-muted/30 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1236,14 +1247,16 @@ export default function ProjectBoardPage() {
                         {uniqueTasks.length}
                       </Badge>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => handleOpenCreateTask(column.id)}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
+                    {permissions.canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleOpenCreateTask(column.id)}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
 
                   <div className="p-2 max-h-[calc(100vh-300px)] overflow-y-auto">
@@ -1271,11 +1284,11 @@ export default function ProjectBoardPage() {
                                   `border-l-4 ${taskTypeColor.split(" ").find((c: string) => c.startsWith("border-"))}`,
                                 "hover:scale-[1.02] active:scale-95",
                               )}
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, task, column.id)}
-                              onDragOver={(e) => handleDragOver(e, column.id, task.id)}
-                              onDrop={(e) => handleDrop(e, column.id, task.id)}
-                              onDragEnd={handleDragEnd}
+                              draggable={permissions.canEdit}
+                              onDragStart={permissions.canEdit ? (e) => handleDragStart(e, task, column.id) : undefined}
+                              onDragOver={permissions.canEdit ? (e) => handleDragOver(e, column.id, task.id) : undefined}
+                              onDrop={permissions.canEdit ? (e) => handleDrop(e, column.id, task.id) : undefined}
+                              onDragEnd={permissions.canEdit ? handleDragEnd : undefined}
                               onClick={() => handleOpenTaskDetail(task)}
                             >
                               <div className="flex items-start justify-between mb-2">
@@ -1373,6 +1386,7 @@ export default function ProjectBoardPage() {
           onTaskUpdateFailed={handleTaskUpdateFailed}
           projectPublicId={projectId}
           isDragging={!!draggedTask} // Pass drag state to optimize rendering
+          readOnly={!permissions.canEdit} // Restrict editing based on user permissions
         />
       )}
 

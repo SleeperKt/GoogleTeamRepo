@@ -97,6 +97,10 @@ namespace ProjectHub.Core.Services
                 Role = ParticipantRole.Owner,
                 JoinedAt = DateTime.Now
             };
+            
+            // Debug logging
+            Console.WriteLine($"🔧 CREATE PROJECT DEBUG: Adding owner participant - Project ID: {project.Id}, User ID: {ownerUser.UserId}, Role: {ParticipantRole.Owner}");
+            
             await _participantRepository.AddAsync(ownerParticipant);
             
             // Create default labels for the project
@@ -163,9 +167,14 @@ namespace ProjectHub.Core.Services
 
             // Check if user is the owner through participant role
             var userRole = await _participantRepository.GetUserRoleInProjectAsync(id, user.UserId);
+            
+            // Debug logging
+            Console.WriteLine($"🔧 DELETE PROJECT DEBUG: Project ID: {id}, User: {currentUserId}, Found User: {user.UserId}, Role: {userRole}");
+            Console.WriteLine($"🔧 DELETE PROJECT DEBUG: Project Owner ID: {existingProject.OwnerId}");
+            
             if (userRole != ParticipantRole.Owner)
             {
-                throw new UnauthorizedAccessException("User is not authorized to delete this project.");
+                throw new UnauthorizedAccessException($"User is not authorized to delete this project. Current role: {userRole}");
             }
 
             await _projectRepository.DeleteAsync(id);
@@ -196,6 +205,102 @@ namespace ProjectHub.Core.Services
         public async Task<int?> GetInternalIdByPublicIdAsync(Guid publicId)
         {
             return await _projectRepository.GetInternalIdByPublicIdAsync(publicId);
+        }
+
+        public async Task TransferOwnershipAsync(int projectId, string newOwnerEmail, string currentUserId)
+        {
+            var existingProject = await _projectRepository.GetByIdAsync(projectId);
+            if (existingProject == null)
+            {
+                throw new ArgumentException("Project not found.");
+            }
+
+            // Get the current user by email or ID
+            var currentUser = await _userRepository.GetByEmailAsync(currentUserId);
+            if (currentUser == null && Guid.TryParse(currentUserId, out Guid userId))
+            {
+                currentUser = await _userRepository.GetByEmailAsync(currentUserId);
+            }
+
+            if (currentUser == null)
+            {
+                throw new ArgumentException($"Current user with ID or email '{currentUserId}' not found.");
+            }
+
+            // Check if current user is the owner
+            var currentUserRole = await _participantRepository.GetUserRoleInProjectAsync(projectId, currentUser.UserId);
+            if (currentUserRole != ParticipantRole.Owner)
+            {
+                throw new UnauthorizedAccessException("Only the project owner can transfer ownership.");
+            }
+
+            // Prevent self-transfer - check if current user email matches new owner email
+            if (currentUserId.Equals(newOwnerEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("You cannot transfer ownership to yourself.");
+            }
+
+            // Get the new owner user
+            var newOwnerUser = await _userRepository.GetByEmailAsync(newOwnerEmail);
+            if (newOwnerUser == null)
+            {
+                throw new ArgumentException($"New owner with email '{newOwnerEmail}' not found.");
+            }
+
+            // CRITICAL: Check if new owner is already a participant in the project
+            var newOwnerParticipant = await _participantRepository.GetByProjectAndUserAsync(projectId, newOwnerUser.UserId);
+            if (newOwnerParticipant == null)
+            {
+                throw new ArgumentException($"The user '{newOwnerEmail}' is not a member of this project. Only existing project members can become owners.");
+            }
+
+            // Update existing participant to owner
+            newOwnerParticipant.Role = ParticipantRole.Owner;
+            await _participantRepository.UpdateAsync(newOwnerParticipant);
+
+            // Update current owner to admin
+            var currentOwnerParticipant = await _participantRepository.GetByProjectAndUserAsync(projectId, currentUser.UserId);
+            if (currentOwnerParticipant != null)
+            {
+                currentOwnerParticipant.Role = ParticipantRole.Admin;
+                await _participantRepository.UpdateAsync(currentOwnerParticipant);
+            }
+
+            // Update project owner ID
+            existingProject.OwnerId = newOwnerEmail;
+            await _projectRepository.UpdateAsync(existingProject);
+        }
+
+        public async Task ArchiveProjectAsync(int projectId, string currentUserId)
+        {
+            var existingProject = await _projectRepository.GetByIdAsync(projectId);
+            if (existingProject == null)
+            {
+                throw new ArgumentException("Project not found.");
+            }
+
+            // Get the user by email or ID
+            var user = await _userRepository.GetByEmailAsync(currentUserId);
+            if (user == null && Guid.TryParse(currentUserId, out Guid userId))
+            {
+                user = await _userRepository.GetByEmailAsync(currentUserId);
+            }
+
+            if (user == null)
+            {
+                throw new ArgumentException($"User with ID or email '{currentUserId}' not found.");
+            }
+
+            // Check if user is the owner or admin
+            var userRole = await _participantRepository.GetUserRoleInProjectAsync(projectId, user.UserId);
+            if (userRole != ParticipantRole.Owner && userRole != ParticipantRole.Admin)
+            {
+                throw new UnauthorizedAccessException("Only project owners and admins can archive projects.");
+            }
+
+            // Set project status to OnHold (archived)
+            existingProject.Status = ProjectStatus.OnHold;
+            await _projectRepository.UpdateAsync(existingProject);
         }
 
         private async Task CreateDefaultLabelsAsync(int projectId)

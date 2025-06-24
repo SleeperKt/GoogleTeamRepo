@@ -42,7 +42,7 @@ namespace ProjectHub.API.Controllers
             var hasAccess = await _projectService.UserHasAccessAsync(id, userEmail);
             if (!hasAccess)
             {
-                return Forbid();
+                return StatusCode(403);
             }
             var project = await _projectService.GetProjectByIdAsync(id);
             if (project == null)
@@ -68,7 +68,7 @@ namespace ProjectHub.API.Controllers
                 return NotFound();
             var hasAccess = await _projectService.UserHasAccessAsync(internalId.Value, userEmail);
             if (!hasAccess)
-                return Forbid();
+                return StatusCode(403);
             var project = await _projectService.GetProjectByPublicIdAsync(publicId);
             return Ok(project);
         }
@@ -115,7 +115,7 @@ namespace ProjectHub.API.Controllers
             }
             catch (UnauthorizedAccessException)
             {
-                return Forbid();
+                return StatusCode(403);
             }
             catch (Exception ex) when (ex.Message.Contains("Project not found")) // TODO: лучше использовать кастомные исключения
             {
@@ -135,7 +135,7 @@ namespace ProjectHub.API.Controllers
             }
             catch (UnauthorizedAccessException)
             {
-                return Forbid();
+                return StatusCode(403);
             }
             catch (Exception ex) when (ex.Message.Contains("Project not found")) // TODO: аналогично, лучше кастомные исключения
             {
@@ -154,7 +154,7 @@ namespace ProjectHub.API.Controllers
                 return NotFound();
             var hasAccess = await _projectService.UserHasAccessAsync(internalId.Value, userEmail);
             if (!hasAccess)
-                return Forbid();
+                return StatusCode(403);
 
             // Get workflow stages for the project
             var workflowStages = await _projectSettingsService.GetProjectWorkflowStagesAsync(internalId.Value, userEmail);
@@ -214,7 +214,7 @@ namespace ProjectHub.API.Controllers
             }
             catch (UnauthorizedAccessException)
             {
-                return Forbid();
+                return StatusCode(403);
             }
             catch (Exception ex) when (ex.Message.Contains("Project not found"))
             {
@@ -259,7 +259,7 @@ namespace ProjectHub.API.Controllers
             }
             catch (UnauthorizedAccessException)
             {
-                return Forbid();
+                return StatusCode(403);
             }
             catch (Exception ex) when (ex.Message.Contains("Project not found"))
             {
@@ -267,6 +267,61 @@ namespace ProjectHub.API.Controllers
             }
 
             return NoContent();
+        }
+
+        [HttpPost("public/{publicId:guid}/transfer-ownership")]
+        public async Task<IActionResult> TransferOwnership(Guid publicId, [FromBody] TransferOwnershipRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+            {
+                return NotFound();
+            }
+
+            var userEmail = GetCurrentUserEmail();
+            try
+            {
+                await _projectService.TransferOwnershipAsync(internalId.Value, request.NewOwnerEmail, userEmail);
+                return NoContent();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("public/{publicId:guid}/archive")]
+        public async Task<IActionResult> ArchiveProject(Guid publicId)
+        {
+            var internalId = await _projectService.GetInternalIdByPublicIdAsync(publicId);
+            if (internalId == null)
+            {
+                return NotFound();
+            }
+
+            var userEmail = GetCurrentUserEmail();
+            try
+            {
+                await _projectService.ArchiveProjectAsync(internalId.Value, userEmail);
+                return NoContent();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
     }
 } 

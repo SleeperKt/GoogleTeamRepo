@@ -234,6 +234,12 @@ namespace ProjectHub.Core.Services
                 throw new UnauthorizedAccessException("Only the project owner can transfer ownership.");
             }
 
+            // Prevent self-transfer - check if current user email matches new owner email
+            if (currentUserId.Equals(newOwnerEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("You cannot transfer ownership to yourself.");
+            }
+
             // Get the new owner user
             var newOwnerUser = await _userRepository.GetByEmailAsync(newOwnerEmail);
             if (newOwnerUser == null)
@@ -241,27 +247,16 @@ namespace ProjectHub.Core.Services
                 throw new ArgumentException($"New owner with email '{newOwnerEmail}' not found.");
             }
 
-            // Check if new owner is already a participant
+            // CRITICAL: Check if new owner is already a participant in the project
             var newOwnerParticipant = await _participantRepository.GetByProjectAndUserAsync(projectId, newOwnerUser.UserId);
-            
-            if (newOwnerParticipant != null)
+            if (newOwnerParticipant == null)
             {
-                // Update existing participant to owner
-                newOwnerParticipant.Role = ParticipantRole.Owner;
-                await _participantRepository.UpdateAsync(newOwnerParticipant);
+                throw new ArgumentException($"The user '{newOwnerEmail}' is not a member of this project. Only existing project members can become owners.");
             }
-            else
-            {
-                // Add new owner as participant
-                var newParticipant = new ProjectParticipant
-                {
-                    ProjectId = projectId,
-                    UserId = newOwnerUser.UserId,
-                    Role = ParticipantRole.Owner,
-                    JoinedAt = DateTime.UtcNow
-                };
-                await _participantRepository.AddAsync(newParticipant);
-            }
+
+            // Update existing participant to owner
+            newOwnerParticipant.Role = ParticipantRole.Owner;
+            await _participantRepository.UpdateAsync(newOwnerParticipant);
 
             // Update current owner to admin
             var currentOwnerParticipant = await _participantRepository.GetByProjectAndUserAsync(projectId, currentUser.UserId);

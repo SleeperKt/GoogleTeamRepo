@@ -97,6 +97,10 @@ namespace ProjectHub.Core.Services
                 Role = ParticipantRole.Owner,
                 JoinedAt = DateTime.Now
             };
+            
+            // Debug logging
+            Console.WriteLine($"🔧 CREATE PROJECT DEBUG: Adding owner participant - Project ID: {project.Id}, User ID: {ownerUser.UserId}, Role: {ParticipantRole.Owner}");
+            
             await _participantRepository.AddAsync(ownerParticipant);
             
             // Create default labels for the project
@@ -163,9 +167,14 @@ namespace ProjectHub.Core.Services
 
             // Check if user is the owner through participant role
             var userRole = await _participantRepository.GetUserRoleInProjectAsync(id, user.UserId);
+            
+            // Debug logging
+            Console.WriteLine($"🔧 DELETE PROJECT DEBUG: Project ID: {id}, User: {currentUserId}, Found User: {user.UserId}, Role: {userRole}");
+            Console.WriteLine($"🔧 DELETE PROJECT DEBUG: Project Owner ID: {existingProject.OwnerId}");
+            
             if (userRole != ParticipantRole.Owner)
             {
-                throw new UnauthorizedAccessException("User is not authorized to delete this project.");
+                throw new UnauthorizedAccessException($"User is not authorized to delete this project. Current role: {userRole}");
             }
 
             await _projectRepository.DeleteAsync(id);

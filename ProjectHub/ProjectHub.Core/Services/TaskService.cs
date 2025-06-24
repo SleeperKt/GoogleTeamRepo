@@ -53,6 +53,29 @@ namespace ProjectHub.Core.Services
             return await _participantRepository.IsUserInProjectAsync(projectId, user.UserId);
         }
 
+        private async Task<ParticipantRole?> GetUserRoleInProjectAsync(int projectId, string userId)
+        {
+            var user = await FindUserByIdOrEmailAsync(userId);
+            if (user == null) return null;
+            
+            return await _participantRepository.GetUserRoleInProjectAsync(projectId, user.UserId);
+        }
+
+        private async Task EnsureUserCanEditTasksAsync(int projectId, string userId)
+        {
+            var role = await GetUserRoleInProjectAsync(projectId, userId);
+            if (role == null)
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+            
+            // Only Editor and above can edit tasks (Editor=3, Admin=2, Owner=1)
+            if (role > ParticipantRole.Editor)
+            {
+                throw new UnauthorizedAccessException("User does not have permission to edit tasks. Editor role or higher required.");
+            }
+        }
+
         private static string GetUserInitials(string userName)
         {
             if (string.IsNullOrWhiteSpace(userName))
@@ -228,11 +251,8 @@ namespace ProjectHub.Core.Services
 
         public async Task<TaskResponse> CreateTaskAsync(int projectId, CreateTaskRequest request, string createdByUserId)
         {
-            // Check if user is participant in the project
-            if (!await IsUserProjectParticipantAsync(projectId, createdByUserId))
-            {
-                throw new UnauthorizedAccessException("User is not a participant in this project.");
-            }
+            // Check if user has permission to create tasks (Editor role or higher)
+            await EnsureUserCanEditTasksAsync(projectId, createdByUserId);
 
             // Validate assignee is also a project participant
             if (request.AssigneeId.HasValue)
@@ -289,11 +309,8 @@ namespace ProjectHub.Core.Services
                 throw new ArgumentException("Task not found.");
             }
 
-            // Check if user is participant in the project
-            if (!await IsUserProjectParticipantAsync(task.ProjectId, requestingUserId))
-            {
-                throw new UnauthorizedAccessException("User is not a participant in this project.");
-            }
+            // Check if user has permission to edit tasks (Editor role or higher)
+            await EnsureUserCanEditTasksAsync(task.ProjectId, requestingUserId);
 
             // Validate assignee is also a project participant (only if assigning to someone)
             if (request.AssigneeId.HasValue)
@@ -414,11 +431,8 @@ namespace ProjectHub.Core.Services
 
             Console.WriteLine($"🔧 TASK REORDER: Found task '{task.Title}' with current status {task.Status}");
 
-            // Check if user is participant in the project
-            if (!await IsUserProjectParticipantAsync(task.ProjectId, requestingUserId))
-            {
-                throw new UnauthorizedAccessException("User is not a participant in this project.");
-            }
+            // Check if user has permission to edit tasks (Editor role or higher)
+            await EnsureUserCanEditTasksAsync(task.ProjectId, requestingUserId);
 
             // Update task status and position
             var originalStatus = task.Status;
@@ -459,7 +473,7 @@ namespace ProjectHub.Core.Services
                 throw new ArgumentException("Task not found.");
             }
 
-            // Check if user is participant in the project and has permission to delete
+            // Check if user has permission to delete tasks (Owner or task creator, or Admin)
             var requestingUser = await FindUserByIdOrEmailAsync(requestingUserId);
             if (requestingUser == null)
             {
@@ -467,12 +481,18 @@ namespace ProjectHub.Core.Services
             }
 
             var userRole = await _participantRepository.GetUserRoleInProjectAsync(task.ProjectId, requestingUser.UserId);
+            if (userRole == null)
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
             var isOwner = userRole == ParticipantRole.Owner;
+            var isAdmin = userRole == ParticipantRole.Admin;
             var isCreator = task.CreatedById == requestingUser.UserId;
 
-            if (!isOwner && !isCreator)
+            if (!isOwner && !isAdmin && !isCreator)
             {
-                throw new UnauthorizedAccessException("Only project owner or task creator can delete this task.");
+                throw new UnauthorizedAccessException("Only project owner, admin, or task creator can delete this task.");
             }
 
             // Log activity before deletion

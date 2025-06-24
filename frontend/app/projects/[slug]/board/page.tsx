@@ -1053,16 +1053,18 @@ export default function ProjectBoardPage() {
             <span className="text-sm text-muted-foreground">Synced {lastSynced}</span>
           </div>
         </div>
-        <Button
-          className="bg-violet-600 hover:bg-violet-700 text-white"
-          onClick={() => {
-            // Use the first column ID instead of hardcoded "todo"
-            const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
-            handleOpenCreateTask(firstColumn?.id || "")
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" /> Add Task
-        </Button>
+        {permissions.canEdit && (
+          <Button
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+            onClick={() => {
+              // Use the first column ID instead of hardcoded "todo"
+              const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
+              handleOpenCreateTask(firstColumn?.id || "")
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add Task
+          </Button>
+        )}
       </div>
 
       {/* Empty State */}
@@ -1073,15 +1075,20 @@ export default function ProjectBoardPage() {
           </div>
           <h3 className="text-xl font-medium mb-2">No tasks on the board yet</h3>
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
-            Start by adding tasks to your board to track your work visually.
+            {permissions.canEdit ? 
+              "Start by adding tasks to your board to track your work visually." :
+              "No tasks on the board yet. Tasks will appear here when they are created."
+            }
           </p>
-          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => {
-            // Use the first column ID instead of hardcoded "todo"
-            const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
-            handleOpenCreateTask(firstColumn?.id || "")
-          }}>
-            <Plus className="mr-2 h-4 w-4" /> Create Task
-          </Button>
+          {permissions.canEdit && (
+            <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => {
+              // Use the first column ID instead of hardcoded "todo"
+              const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
+              handleOpenCreateTask(firstColumn?.id || "")
+            }}>
+              <Plus className="mr-2 h-4 w-4" /> Create Task
+            </Button>
+          )}
         </div>
       ) : (
         <>

@@ -43,6 +43,7 @@ import {
 import { apiRequest } from "@/lib/api"
 import { useProjectLabels } from "@/hooks/use-project-labels"
 import { useProjectWorkflowStages } from "@/hooks/use-project-workflow-stages"
+import { useUserPermissions } from "@/hooks/use-user-permissions"
 import React from "react"
 
 // Unified team member type used in this component
@@ -163,6 +164,7 @@ const TaskDetailViewComponent = function TaskDetailView({
   // Use dynamic labels and workflow stages
   const { labels } = useProjectLabels(projectPublicId)
   const { stages: workflowStages } = useProjectWorkflowStages(projectPublicId)
+  const permissions = useUserPermissions(projectPublicId)
   
   // Task state
   const [task, setTask] = useState(initialTask)
@@ -951,10 +953,13 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
           <Input
             ref={titleInputRef}
             value={title}
-            onChange={readOnly ? undefined : (e) => setTitle(e.target.value)}
-            className="text-base font-medium border-0 p-0 h-7 focus-visible:ring-0 focus-visible:ring-offset-0"
+            onChange={permissions.canEdit ? (e) => setTitle(e.target.value) : undefined}
+            className={cn(
+              "text-base font-medium border-0 p-0 h-7 focus-visible:ring-0 focus-visible:ring-offset-0",
+              !permissions.canEdit && "opacity-60 cursor-not-allowed"
+            )}
             placeholder="Task title"
-            readOnly={readOnly}
+            readOnly={!permissions.canEdit}
           />
           {hasUnsavedChanges && (
             <span className="text-xs text-muted-foreground ml-auto">
@@ -1002,14 +1007,17 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
               <Textarea
                 id="description"
                 value={description}
-                onChange={readOnly ? undefined : (e) => setDescription(e.target.value)}
+                onChange={permissions.canEdit ? (e) => setDescription(e.target.value) : undefined}
                 placeholder="Add a detailed description..."
-                className="min-h-[100px] resize-y text-sm"
-                readOnly={readOnly}
+                className={cn(
+                  "min-h-[100px] resize-y text-sm",
+                  !permissions.canEdit && "opacity-60 cursor-not-allowed"
+                )}
+                readOnly={!permissions.canEdit}
               />
 
               {/* AI Assistant - Compact Version */}
-              {!readOnly && (
+              {permissions.canEdit && (
               <div className="border rounded-md p-1.5 bg-violet-50 dark:bg-violet-950/20 mt-1">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1">
@@ -1120,13 +1128,13 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   </Label>
                   <Select
                     value={task?.type}
-                    onValueChange={readOnly ? undefined : (value) => {
+                    onValueChange={permissions.canEdit ? (value) => {
                       setTask({ ...task, type: value })
                       setHasUnsavedChanges(true)
-                    }}
-                    disabled={readOnly}
+                    } : undefined}
+                    disabled={!permissions.canEdit}
                   >
-                    <SelectTrigger id="type" className="h-8 text-xs">
+                    <SelectTrigger id="type" className={cn("h-8 text-xs", !permissions.canEdit && "opacity-60")}>
                       <SelectValue placeholder="Select type">
                         <div className="flex items-center gap-2">
                           <Badge
@@ -1173,13 +1181,13 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   </Label>
                   <Select 
                     value={stage} 
-                    onValueChange={readOnly ? undefined : (value) => {
+                    onValueChange={permissions.canEdit ? (value) => {
                       setStage(value);
                       setHasUnsavedChanges(true);
-                    }}
-                    disabled={readOnly}
+                    } : undefined}
+                    disabled={!permissions.canEdit}
                   >
-                    <SelectTrigger id="status" className="h-8 text-xs">
+                    <SelectTrigger id="status" className={cn("h-8 text-xs", !permissions.canEdit && "opacity-60")}>
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1197,14 +1205,14 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   <Label htmlFor="assignee" className="text-xs font-medium">
                     Assignee
                   </Label>
-                  <Popover open={readOnly ? false : assigneeOpen} onOpenChange={readOnly ? undefined : setAssigneeOpen}>
+                  <Popover open={!permissions.canEdit ? false : assigneeOpen} onOpenChange={!permissions.canEdit ? undefined : setAssigneeOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={assigneeOpen}
-                        className="w-full justify-between h-8 text-xs"
-                        disabled={readOnly}
+                        className={cn("w-full justify-between h-8 text-xs", !permissions.canEdit && "opacity-60")}
+                        disabled={!permissions.canEdit}
                       >
                         <div className="flex items-center gap-2 truncate">
                           {assignee ? (
@@ -1277,14 +1285,15 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   <Label htmlFor="labels" className="text-xs font-medium">
                     Labels
                   </Label>
-                  <Popover open={labelsOpen} onOpenChange={setLabelsOpen}>
+                  <Popover open={!permissions.canEdit ? false : labelsOpen} onOpenChange={!permissions.canEdit ? undefined : setLabelsOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={labelsOpen}
-                        className="w-full justify-between h-8 text-xs"
+                        className={cn("w-full justify-between h-8 text-xs", !permissions.canEdit && "opacity-60")}
                         id="labels"
+                        disabled={!permissions.canEdit}
                       >
                         {selectedLabels.length > 0 ? (
                           <div className="flex items-center gap-1 flex-1 min-w-0">
@@ -1370,12 +1379,13 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   <Label htmlFor="due-date" className="text-xs font-medium">
                     Due Date
                   </Label>
-                  <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                  <Popover open={!permissions.canEdit ? false : dateOpen} onOpenChange={!permissions.canEdit ? undefined : setDateOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                        className="w-full justify-start text-left font-normal h-8 text-xs"
+                        className={cn("w-full justify-start text-left font-normal h-8 text-xs", !permissions.canEdit && "opacity-60")}
                         id="due-date"
+                        disabled={!permissions.canEdit}
                       >
                         <Calendar className="mr-2 h-3 w-3" />
                         {dueDate ? format(dueDate, "PPP") : <span className="text-muted-foreground">Set due date</span>}
@@ -1385,11 +1395,11 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                       <CalendarComponent
                         mode="single"
                         selected={dueDate}
-                        onSelect={(date) => {
+                        onSelect={permissions.canEdit ? (date) => {
                           setDueDate(date)
                           setDateOpen(false)
                           setHasUnsavedChanges(true)
-                        }}
+                        } : undefined}
                         initialFocus
                       />
                     </PopoverContent>
@@ -1403,12 +1413,13 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                   </Label>
                   <Select 
                     value={priority} 
-                    onValueChange={(value) => {
+                    onValueChange={permissions.canEdit ? (value) => {
                       setPriority(value)
                       setHasUnsavedChanges(true)
-                    }}
+                    } : undefined}
+                    disabled={!permissions.canEdit}
                   >
-                    <SelectTrigger id="priority" className="h-8 text-xs">
+                    <SelectTrigger id="priority" className={cn("h-8 text-xs", !permissions.canEdit && "opacity-60")}>
                       <SelectValue placeholder="Select priority" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1435,12 +1446,13 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                     min="0"
                     step="0.5"
                     value={estimate || ""}
-                    onChange={(e) => {
+                    onChange={permissions.canEdit ? (e) => {
                       setEstimate(Number.parseFloat(e.target.value) || undefined)
                       setHasUnsavedChanges(true)
-                    }}
+                    } : undefined}
                     placeholder="Enter estimate"
-                    className="h-8 text-xs"
+                    className={cn("h-8 text-xs", !permissions.canEdit && "opacity-60 cursor-not-allowed")}
+                    readOnly={!permissions.canEdit}
                   />
                 </div>
               </div>
@@ -1452,24 +1464,26 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                 <h3 className="text-sm font-medium">Comments ({comments.length})</h3>
               </div>
               {/* Comment input */}
-              <div className="space-y-2">
-                <Textarea
-                  ref={commentInputRef}
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment..."
-                  className="min-h-[80px] resize-y text-sm"
-                />
-                <div className="flex justify-end">
-                  <Button
-                    onClick={handleAddComment}
-                    disabled={!newComment.trim()}
-                    className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs"
-                  >
-                    Add Comment
-                  </Button>
+              {permissions.canEdit && (
+                <div className="space-y-2">
+                  <Textarea
+                    ref={commentInputRef}
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Add a comment..."
+                    className="min-h-[80px] resize-y text-sm"
+                  />
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={handleAddComment}
+                      disabled={!newComment.trim()}
+                      className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs"
+                    >
+                      Add Comment
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Comments list */}
               <div className="space-y-3">
@@ -1620,10 +1634,12 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-sm font-medium">Files ({attachments.length})</h3>
-                <Button className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs">
-                  <Paperclip className="mr-1 h-3 w-3" />
-                  Upload File
-                </Button>
+                {permissions.canEdit && (
+                  <Button className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs">
+                    <Paperclip className="mr-1 h-3 w-3" />
+                    Upload File
+                  </Button>
+                )}
               </div>
 
               {/* Attachments list */}
@@ -1668,20 +1684,23 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
         {/* Footer with actions */}
         <div className="p-2 border-t mt-auto">
           <div className="flex items-center justify-between gap-2">
-            <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)} size="sm" className="h-7 text-xs">
-              <Trash className="mr-1 h-3 w-3" />
-              Delete
-            </Button>
+            {permissions.canEdit && (
+              <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)} size="sm" className="h-7 text-xs">
+                <Trash className="mr-1 h-3 w-3" />
+                Delete
+              </Button>
+            )}
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
               <Select
                 value={stage}
-                onValueChange={(value) => {
+                onValueChange={permissions.canEdit ? (value) => {
                   setStage(value);
                   setHasUnsavedChanges(true);
-                }}
+                } : undefined}
+                disabled={!permissions.canEdit}
               >
-                <SelectTrigger className="w-[110px] h-7 text-xs">
+                <SelectTrigger className={cn("w-[110px] h-7 text-xs", !permissions.canEdit && "opacity-60")}>
                   <SelectValue placeholder="Move to..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -1693,20 +1712,22 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
                 </SelectContent>
               </Select>
 
-              <Button
-                onClick={saveChanges}
-                disabled={isSaving || !hasUnsavedChanges}
-                className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    Saving
-                  </>
-                ) : (
-                  "Save"
-                )}
-              </Button>
+              {permissions.canEdit && (
+                <Button
+                  onClick={saveChanges}
+                  disabled={isSaving || !hasUnsavedChanges}
+                  className="bg-violet-600 hover:bg-violet-700 text-white h-7 text-xs"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      Saving
+                    </>
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>

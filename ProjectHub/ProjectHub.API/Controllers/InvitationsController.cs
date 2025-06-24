@@ -32,12 +32,20 @@ namespace ProjectHub.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
+                Console.WriteLine($"DEBUG: GetReceivedInvitations - UserId: {userId}, Status: {status}");
                 var invitations = await _invitationService.GetUserInvitationsAsync(userId, status);
+                Console.WriteLine($"DEBUG: GetReceivedInvitations - Found {invitations?.Count() ?? 0} invitations");
                 return Ok(invitations);
             }
             catch (ArgumentException ex)
             {
+                Console.WriteLine($"DEBUG: GetReceivedInvitations - ArgumentException: {ex.Message}");
                 return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG: GetReceivedInvitations - Exception: {ex.Message}");
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -48,12 +56,20 @@ namespace ProjectHub.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
+                Console.WriteLine($"DEBUG: GetSentInvitations - UserId: {userId}, Status: {status}");
                 var invitations = await _invitationService.GetSentInvitationsAsync(userId, status);
+                Console.WriteLine($"DEBUG: GetSentInvitations - Found {invitations?.Count() ?? 0} invitations");
                 return Ok(invitations);
             }
             catch (ArgumentException ex)
             {
+                Console.WriteLine($"DEBUG: GetSentInvitations - ArgumentException: {ex.Message}");
                 return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG: GetSentInvitations - Exception: {ex.Message}");
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -162,16 +178,25 @@ namespace ProjectHub.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
+                Console.WriteLine($"DEBUG: GetProjectInvitations - ProjectId: {projectId}, UserId: {userId}");
                 var invitations = await _invitationService.GetProjectInvitationsAsync(projectId, userId);
+                Console.WriteLine($"DEBUG: GetProjectInvitations - Found {invitations?.Count() ?? 0} invitations");
                 return Ok(invitations);
             }
             catch (UnauthorizedAccessException ex)
             {
+                Console.WriteLine($"DEBUG: GetProjectInvitations - UnauthorizedAccessException: {ex.Message}");
                 return Forbid(ex.Message);
             }
             catch (ArgumentException ex)
             {
+                Console.WriteLine($"DEBUG: GetProjectInvitations - ArgumentException: {ex.Message}");
                 return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG: GetProjectInvitations - Exception: {ex.Message}");
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -181,13 +206,16 @@ namespace ProjectHub.API.Controllers
         {
             if (!ModelState.IsValid)
             {
+                Console.WriteLine("DEBUG: CreateInvitation - Invalid ModelState");
                 return BadRequest(ModelState);
             }
 
             try
             {
                 var userId = GetCurrentUserId();
+                Console.WriteLine($"DEBUG: CreateInvitation - ProjectId: {projectId}, UserId: {userId}, InviteeEmail: {request.InviteeEmail}, Role: {request.Role}");
                 var invitation = await _invitationService.CreateInvitationAsync(projectId, request, userId);
+                Console.WriteLine($"DEBUG: CreateInvitation - Success, InvitationId: {invitation.Id}");
                 return CreatedAtAction(
                     nameof(InvitationsController.GetInvitation), 
                     "Invitations",
@@ -196,15 +224,23 @@ namespace ProjectHub.API.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
+                Console.WriteLine($"DEBUG: CreateInvitation - UnauthorizedAccessException: {ex.Message}");
                 return Forbid(ex.Message);
             }
             catch (InvalidOperationException ex)
             {
+                Console.WriteLine($"DEBUG: CreateInvitation - InvalidOperationException: {ex.Message}");
                 return BadRequest(ex.Message);
             }
             catch (ArgumentException ex)
             {
+                Console.WriteLine($"DEBUG: CreateInvitation - ArgumentException: {ex.Message}");
                 return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG: CreateInvitation - Exception: {ex.Message}");
+                return StatusCode(500, ex.Message);
             }
         }
     }

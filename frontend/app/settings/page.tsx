@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import {
   AlertCircle,
@@ -247,6 +247,31 @@ export default function SettingsPage() {
   // Workflow editing states
   const [editingWorkflowId, setEditingWorkflowId] = useState<number | null>(null)
   const [newWorkflowName, setNewWorkflowName] = useState("")
+  
+  // Debounced update refs
+  const updateProjectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Helper function to safely parse JSON responses
+  const safeParseResponse = async (response: Response, fallbackData?: any) => {
+    const contentType = response.headers.get('content-type')
+    if (contentType && contentType.includes('application/json')) {
+      const responseText = await response.text()
+      if (responseText.trim()) {
+        try {
+          return JSON.parse(responseText)
+        } catch (parseError) {
+          console.warn('Failed to parse JSON response:', parseError)
+          return fallbackData
+        }
+      } else {
+        console.warn('Empty JSON response received')
+        return fallbackData
+      }
+    } else {
+      console.warn('Non-JSON response received')
+      return fallbackData
+    }
+  }
 
   // Fetch data on component mount
   useEffect(() => {
@@ -254,6 +279,15 @@ export default function SettingsPage() {
       fetchData()
     }
   }, [currentProject, token])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (updateProjectTimeoutRef.current) {
+        clearTimeout(updateProjectTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const fetchData = async () => {
     if (!token) return
@@ -405,7 +439,16 @@ export default function SettingsPage() {
       // Update project properties
       if (!project || !projectId || !token) return
       
-      const updateProject = async () => {
+      // Optimistic update - immediately update the UI
+      setProject(prev => prev ? { ...prev, [field]: value } : null)
+      
+      // Clear existing timeout
+      if (updateProjectTimeoutRef.current) {
+        clearTimeout(updateProjectTimeoutRef.current)
+      }
+      
+      // Debounce the API call
+      updateProjectTimeoutRef.current = setTimeout(async () => {
         try {
           setIsSaving(true)
           const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
@@ -421,19 +464,45 @@ export default function SettingsPage() {
           })
 
           if (!response.ok) {
+            // Revert optimistic update on failure
+            setProject(project)
             throw new Error('Failed to update project')
           }
 
-          const updated = await response.json()
+          // Handle potentially empty response
+          let updated = project
+          const contentType = response.headers.get('content-type')
+          if (contentType && contentType.includes('application/json')) {
+            const responseText = await response.text()
+            if (responseText.trim()) {
+              try {
+                updated = JSON.parse(responseText)
+              } catch (parseError) {
+                console.warn('Failed to parse JSON response, using optimistic update:', parseError)
+                // Keep the optimistic update since the API call was successful
+                updated = { ...project, [field]: value }
+              }
+            } else {
+              // Empty response but successful - keep optimistic update
+              updated = { ...project, [field]: value }
+            }
+          } else {
+            // Non-JSON response but successful - keep optimistic update
+            updated = { ...project, [field]: value }
+          }
+          
           setProject(updated)
+          // Clear any previous errors on successful save
+          setError(null)
         } catch (err) {
+          console.error('Project update error:', err)
           setError(err instanceof Error ? err.message : 'Failed to update project')
+          // Revert optimistic update on error
+          setProject(project)
         } finally {
           setIsSaving(false)
         }
-      }
-      
-      updateProject()
+      }, 1000) // Wait 1 second after user stops typing
     } else {
       // Update settings properties
       if (!settings) return
@@ -472,8 +541,9 @@ export default function SettingsPage() {
         throw new Error('Failed to update settings')
       }
 
-      const updated = await response.json()
+      const updated = await safeParseResponse(response, { ...settings, ...updatedSettings })
       setSettings(updated)
+      setError(null) // Clear errors on success
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update settings')
     } finally {
@@ -716,9 +786,20 @@ export default function SettingsPage() {
         throw new Error('Failed to create workflow stage')
       }
 
-      const newStage = await response.json()
+      const fallbackStage = { 
+        id: Date.now(), // Temporary ID
+        name, 
+        color: '#94a3b8', 
+        order: workflow.length,
+        isDefault: false,
+        isCompleted: false,
+        createdAt: new Date().toISOString(),
+        taskCount: 0 
+      }
+      const newStage = await safeParseResponse(response, fallbackStage)
       setWorkflow(prev => [...prev, newStage])
       setNewWorkflowName("")
+      setError(null) // Clear errors on success
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create workflow stage')
     }
@@ -751,9 +832,11 @@ export default function SettingsPage() {
         throw new Error('Failed to update workflow stage')
       }
 
-      const updatedStage = await response.json()
+      const fallbackStage = { ...stage, name: newName }
+      const updatedStage = await safeParseResponse(response, fallbackStage)
       setWorkflow(prev => prev.map(w => w.id === id ? updatedStage : w))
       setEditingWorkflowId(null)
+      setError(null) // Clear errors on success
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update workflow stage')
     }

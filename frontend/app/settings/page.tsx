@@ -1103,8 +1103,8 @@ export default function SettingsPage() {
     }
   }
 
-  // Show loading state while fetching data
-  if (loading) {
+  // Show loading state while fetching data (but only if we have a project to load)
+  if (currentProject && (loading || permissions.isLoading)) {
     return (
       <div className="p-4 md:p-6 w-full">
         <div className="flex items-center justify-center py-12">
@@ -1147,6 +1147,35 @@ export default function SettingsPage() {
             </p>
           </CardContent>
         </Card>
+      </div>
+    )
+  }
+
+  // If user has no scope (no role/permissions) in the project, hide settings
+  if (permissions.role === null && !permissions.canView) {
+    return (
+      <div className="p-4 md:p-6 w-full">
+        <div className="mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold mb-2">
+            {currentProject.name} Settings
+          </h1>
+        </div>
+        
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+          <div className="bg-gray-100 dark:bg-gray-700 rounded-full p-6 mb-4">
+            <AlertCircle className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+          </div>
+          <h3 className="text-xl font-medium mb-2">Access Denied</h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
+            You don't have access to this project's settings. Please contact a project administrator for access.
+          </p>
+          <Button 
+            onClick={() => router.push('/projects')}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            <ArrowRight className="mr-2 h-4 w-4" /> Return to Projects
+          </Button>
+        </div>
       </div>
     )
   }

@@ -172,11 +172,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       href: "/projects",
       icon: Folder,
     },
-    {
-      name: "Settings",
-      href: "/settings",
-      icon: Cog,
-    },
+    // Settings tab is removed when no project is selected since settings are project-specific
   ]
 
   const toggleExpanded = (name: string) => {
@@ -394,7 +390,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => router.push("/profile")}>Profile</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/invitations")}>Invitations</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/settings")}>Settings</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/billing")}>Billing</DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

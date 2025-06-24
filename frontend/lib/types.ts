@@ -29,4 +29,46 @@ export interface CreateTaskSidebarProps {
   onTaskCreated?: (task: any) => void
   projectPublicId?: string
   selectedColumnId?: string
+}
+
+export enum InvitationStatus {
+  Pending = 0,
+  Accepted = 1,
+  Declined = 2,
+  Cancelled = 3
+}
+
+export enum ParticipantRole {
+  Owner = 1,
+  Admin = 2,
+  Editor = 3,
+  Viewer = 4
+}
+
+export interface ProjectInvitation {
+  id: number
+  projectId: number
+  projectName: string
+  projectDescription: string
+  inviterId: string
+  inviterName: string
+  inviterEmail: string
+  inviteeId: string
+  inviteeName: string
+  inviteeEmail: string
+  role: ParticipantRole
+  status: InvitationStatus
+  createdAt: string
+  respondedAt?: string
+  message?: string
+}
+
+export interface CreateInvitationRequest {
+  inviteeEmail: string
+  role: ParticipantRole
+  message?: string
+}
+
+export interface RespondToInvitationRequest {
+  status: InvitationStatus
 } 

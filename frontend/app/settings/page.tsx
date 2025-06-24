@@ -43,6 +43,9 @@ import { API_BASE_URL } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { useProject } from "@/contexts/project-context"
 import { useProjectLabels, type ProjectLabel } from "@/hooks/use-project-labels"
+import { SendInvitationDialog } from "@/components/send-invitation-dialog"
+import { invitationApi } from "@/lib/api"
+import { toast } from "@/hooks/use-toast"
 
 // Types
 interface ProjectSettings {
@@ -277,6 +280,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (currentProject) {
       fetchData()
+      fetchProjectInvitations()
     }
   }, [currentProject, token])
 
@@ -553,7 +557,7 @@ export default function SettingsPage() {
 
   // Handle member role change
   const handleRoleChange = async (memberId: string, newRole: string) => {
-    if (!token || !projectId) return
+    if (!token || !currentProject) return
 
     // Convert role string back to number for API
     const getRoleNumber = (roleName: string): number => {
@@ -568,13 +572,13 @@ export default function SettingsPage() {
 
     try {
       setIsSaving(true)
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/participants/${memberId}/role`, {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${currentProject.id}/participants/${memberId}/role`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ role: getRoleNumber(newRole) }),
+        body: JSON.stringify({ newRole: getRoleNumber(newRole) }),
       })
 
       if (response.ok) {
@@ -582,9 +586,26 @@ export default function SettingsPage() {
         setTeamMembers(prev => prev.map(member => 
           member.userId === memberId ? { ...member, role: getRoleNumber(newRole) } : member
         ))
+        
+        // Show success message
+        toast({
+          title: "Success",
+          description: "Member role updated successfully",
+        })
+      } else {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Failed to update member role')
       }
     } catch (err) {
-      setError('Failed to update member role')
+      console.error('Error updating member role:', err)
+      setError(err instanceof Error ? err.message : 'Failed to update member role')
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : 'Failed to update member role',
+        variant: "destructive",
+      })
     } finally {
       setIsSaving(false)
     }
@@ -592,11 +613,11 @@ export default function SettingsPage() {
 
   // Handle member removal
   const handleRemoveMember = async (memberId: string) => {
-    if (!token || !projectId) return
+    if (!token || !currentProject) return
 
     try {
       setIsSaving(true)
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/participants/${memberId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${currentProject.id}/participants/${memberId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -606,9 +627,26 @@ export default function SettingsPage() {
       if (response.ok) {
         // Update local state
         setTeamMembers(prev => prev.filter(member => member.userId !== memberId))
+        
+        // Show success message
+        toast({
+          title: "Success",
+          description: "Member removed successfully",
+        })
+      } else {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Failed to remove member')
       }
     } catch (err) {
-      setError('Failed to remove member')
+      console.error('Error removing member:', err)
+      setError(err instanceof Error ? err.message : 'Failed to remove member')
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : 'Failed to remove member',
+        variant: "destructive",
+      })
     } finally {
       setIsSaving(false)
     }
@@ -642,16 +680,14 @@ export default function SettingsPage() {
   }
 
   // Handle cancel invite
-  const handleCancelInvite = async (email: string) => {
-    if (!token || !projectId) return
-
+  const handleCancelInvite = async (invitationId: number) => {
     try {
       setIsSaving(true)
-      // Note: This would need a backend endpoint to cancel invites
-      // For now, just remove from local state
-      setPendingInvites(prev => prev.filter(invite => invite.email !== email))
+      await invitationApi.cancelInvitation(invitationId)
+      // Refresh pending invitations after cancellation
+      fetchProjectInvitations()
     } catch (err) {
-      setError('Failed to cancel invite')
+      setError('Failed to cancel invitation')
     } finally {
       setIsSaving(false)
     }
@@ -873,6 +909,42 @@ export default function SettingsPage() {
   // Toggle empty state for demo
   const toggleEmptyState = () => {
     setShowEmptyState(!showEmptyState)
+  }
+
+  // Function to fetch project invitations
+  const fetchProjectInvitations = async () => {
+    if (!currentProject) return
+
+    try {
+      const invitations = await invitationApi.getProjectInvitations(currentProject.id)
+      
+      // Debug: Log what we received
+      console.log("Received invitations:", invitations)
+      console.log("Is array?", Array.isArray(invitations))
+      console.log("Type:", typeof invitations)
+      
+      // Ensure we always have an array
+      const invitationArray = Array.isArray(invitations) ? invitations : []
+      
+      // Filter to only show pending invitations
+      const pending = invitationArray.filter(inv => inv.status === 0) // Pending status
+      setPendingInvites(pending.map(inv => ({
+        email: inv.inviteeEmail,
+        role: inv.role === 1 ? "Owner" : inv.role === 2 ? "Admin" : inv.role === 3 ? "Editor" : "Viewer",
+        sentAt: new Date(inv.createdAt).toLocaleDateString(),
+        id: inv.id
+      })))
+    } catch (error) {
+      console.error("Failed to fetch project invitations:", error)
+      // Reset to empty array on error
+      setPendingInvites([])
+    }
+  }
+
+  // Function to handle invitation sent callback
+  const handleInvitationSent = () => {
+    fetchProjectInvitations() // Refresh pending invitations
+    fetchData() // Refresh team members in case invitation was immediately accepted
   }
 
   // Show loading state while fetching data
@@ -1136,55 +1208,17 @@ export default function SettingsPage() {
                 <CardContent className="space-y-6">
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium">Project Members</h3>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button className="bg-violet-600 hover:bg-violet-700 text-white">
-                          <Plus className="mr-2 h-4 w-4" /> Invite Member
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Invite Team Member</DialogTitle>
-                          <DialogDescription>Send an invitation to join this project</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="invite-email">Email Address</Label>
-                            <Input id="invite-email" placeholder="colleague@example.com" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="invite-role">Role</Label>
-                            <Select defaultValue="Editor">
-                              <SelectTrigger id="invite-role">
-                                <SelectValue placeholder="Select a role" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {roleOptions.map((role) => (
-                                  <SelectItem key={role.value} value={role.value}>
-                                    {role.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="invite-message">Message (Optional)</Label>
-                            <Textarea id="invite-message" placeholder="I'd like you to join our project..." rows={3} />
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => {}}>
-                            Cancel
+                    {currentProject && (
+                      <SendInvitationDialog 
+                        projectId={currentProject.id} 
+                        onInvitationSent={handleInvitationSent}
+                        trigger={
+                          <Button className="bg-violet-600 hover:bg-violet-700 text-white">
+                            <Plus className="mr-2 h-4 w-4" /> Invite Member
                           </Button>
-                          <Button
-                            className="bg-violet-600 hover:bg-violet-700 text-white"
-                            onClick={() => handleInviteMember("colleague@example.com", "Editor")}
-                          >
-                            Send Invitation
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                        }
+                      />
+                    )}
                   </div>
 
                   <div className="border rounded-md">
@@ -1196,55 +1230,64 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div className="divide-y">
-                      {projectSettings.members.map((member, index) => (
-                        <div key={member.id || `member-${index}`} className="px-4 py-3">
-                          <div className="grid grid-cols-12 gap-4 items-center">
-                            <div className="col-span-6 flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={member.avatar} alt={member.name} />
-                                <AvatarFallback>{member.initials}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <div className="font-medium">{member.name}</div>
-                                <div className="text-sm text-muted-foreground">{member.email}</div>
+                      {teamMembers.map((member, index) => {
+                        const memberRoleName = getRoleName(member.role)
+                        const isCurrentUser = member.userId === user?.id
+                        const isOwner = member.role === 1 // Owner role
+                        const currentUserRole = teamMembers.find(m => m.userId === user?.id)?.role
+                        const currentUserIsOwner = currentUserRole === 1
+                        
+                        return (
+                          <div key={member.userId || `member-${index}`} className="px-4 py-3">
+                            <div className="grid grid-cols-12 gap-4 items-center">
+                              <div className="col-span-6 flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback>
+                                    {member.userName.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <div className="font-medium">{member.userName}</div>
+                                  <div className="text-sm text-muted-foreground">{member.email}</div>
+                                </div>
+                              </div>
+                              <div className="col-span-3">
+                                <Select
+                                  value={memberRoleName}
+                                  onValueChange={(value) => handleRoleChange(member.userId, value)}
+                                  disabled={!currentUserIsOwner || isOwner || isCurrentUser}
+                                >
+                                  <SelectTrigger className="h-8">
+                                    <SelectValue placeholder="Select a role" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {roleOptions.map((role) => (
+                                      <SelectItem key={role.value} value={role.value}>
+                                        {role.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="col-span-3 flex justify-end">
+                                {isOwner || isCurrentUser ? (
+                                  <Badge variant="outline">{isOwner ? "Owner" : "You"}</Badge>
+                                ) : currentUserIsOwner ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => handleRemoveMember(member.userId)}
+                                  >
+                                    <Trash className="h-4 w-4" />
+                                    <span className="sr-only md:not-sr-only md:ml-2">Remove</span>
+                                  </Button>
+                                ) : null}
                               </div>
                             </div>
-                            <div className="col-span-3">
-                              <Select
-                                value={member.role}
-                                onValueChange={(value) => handleRoleChange(member.id, value)}
-                                disabled={member.role === "Owner" || member.id === user?.id} // Disable for project owner or current user
-                              >
-                                <SelectTrigger className="h-8">
-                                  <SelectValue placeholder="Select a role" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {roleOptions.map((role) => (
-                                    <SelectItem key={role.value} value={role.value}>
-                                      {role.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="col-span-3 flex justify-end">
-                              {member.role === "Owner" || member.id === user?.id ? (
-                                <Badge variant="outline">{member.role === "Owner" ? "Owner" : "You"}</Badge>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() => handleRemoveMember(member.id)}
-                                >
-                                  <Trash className="h-4 w-4" />
-                                  <span className="sr-only md:not-sr-only md:ml-2">Remove</span>
-                                </Button>
-                              )}
-                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
 
@@ -1274,7 +1317,7 @@ export default function SettingsPage() {
                                     variant="ghost"
                                     size="sm"
                                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => handleCancelInvite(invite.email)}
+                                    onClick={() => handleCancelInvite(invite.id)}
                                   >
                                     <X className="h-4 w-4" />
                                     <span className="sr-only md:not-sr-only md:ml-2">Cancel</span>

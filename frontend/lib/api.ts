@@ -4,6 +4,8 @@
   If no env variable is set we fallback to http://localhost:8080 which is the default ASP.NET port in docker-compose.
 */
 
+import type { ProjectInvitation, CreateInvitationRequest, InvitationStatus } from './types';
+
 /* eslint-disable @typescript-eslint/consistent-type-definitions */
 declare const process: {
   env: Record<string, string | undefined>
@@ -65,13 +67,33 @@ export async function apiRequest<T = unknown>(
     if (!response.ok) {
       // Try to read server error message
       let message = `Request failed with ${response.status}`;
+      
+      // Clone the response so we can read it multiple times if needed
+      const responseClone = response.clone();
+      
       try {
         const json = await response.json();
-        if (json && typeof json === "object" && "message" in json) {
-          message = (json as any).message as string;
+        console.log("Server error response:", json);
+        if (json && typeof json === "object") {
+            if ("message" in json && typeof json.message === 'string') {
+                message = json.message;
+            } else {
+                // Handle ASP.NET validation error format
+                message = JSON.stringify(json.errors || json);
+            }
+        } else if (typeof json === 'string') {
+            message = json;
         }
       } catch {
-        /* ignore JSON parse error */
+        // If JSON parsing fails, try reading as text from the cloned response
+        try {
+          const text = await responseClone.text();
+          console.log("Server error response (text):", text);
+          if(text) message = text;
+        } catch {
+          // If both fail, keep the default message
+          console.log("Could not read response body");
+        }
       }
       throw new Error(message);
     }
@@ -95,4 +117,60 @@ export async function apiRequest<T = unknown>(
     
     throw error;
   }
-} 
+}
+
+// Invitation API functions
+export const invitationApi = {
+  // Get received invitations
+  getReceivedInvitations: async (status?: number) => {
+    const queryParam = status !== undefined ? `?status=${status}` : '';
+    return apiRequest<ProjectInvitation[]>(`/api/invitations/received${queryParam}`);
+  },
+
+  // Get sent invitations
+  getSentInvitations: async (status?: number) => {
+    const queryParam = status !== undefined ? `?status=${status}` : '';
+    return apiRequest<ProjectInvitation[]>(`/api/invitations/sent${queryParam}`);
+  },
+
+  // Get invitation details
+  getInvitation: async (id: number) => {
+    return apiRequest<ProjectInvitation>(`/api/invitations/${id}`);
+  },
+
+  // Respond to invitation (accept/decline)
+  respondToInvitation: async (id: number, status: InvitationStatus) => {
+    return apiRequest(`/api/invitations/${id}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ status })
+    });
+  },
+
+  // Cancel invitation
+  cancelInvitation: async (id: number) => {
+    return apiRequest(`/api/invitations/${id}/cancel`, {
+      method: 'DELETE'
+    });
+  },
+
+  // Create invitation for a project
+  createProjectInvitation: async (projectId: number, request: CreateInvitationRequest) => {
+    try {
+      console.log("Attempting to create invitation with data:", { projectId, request });
+      const result = await apiRequest(`/api/projects/${projectId}/invitations`, {
+        method: 'POST',
+        body: JSON.stringify(request)
+      });
+      console.log("Invitation creation successful:", result);
+      return result;
+    } catch (error) {
+      console.error("Error creating project invitation:", error);
+      throw error;
+    }
+  },
+
+  // Get project invitations
+  getProjectInvitations: async (projectId: number) => {
+    return apiRequest<ProjectInvitation[]>(`/api/projects/${projectId}/invitations`);
+  }
+}; 

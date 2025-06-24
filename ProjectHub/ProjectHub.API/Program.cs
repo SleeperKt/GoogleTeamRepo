@@ -38,6 +38,12 @@ builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
 builder.Services.AddScoped<ITaskActivityRepository, TaskActivityRepository>();
 
+// Регистрация сервисов и репозиториев для настроек проектов
+builder.Services.AddScoped<IProjectSettingsRepository, ProjectSettingsRepository>();
+builder.Services.AddScoped<IProjectLabelRepository, ProjectLabelRepository>();
+builder.Services.AddScoped<IProjectWorkflowRepository, ProjectWorkflowRepository>();
+builder.Services.AddScoped<IProjectSettingsService, ProjectSettingsService>();
+
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
@@ -47,6 +53,7 @@ builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>()
 builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
 builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
+builder.Services.AddScoped<IValidator<TaskReorderRequest>, TaskReorderRequestValidator>();
 builder.Services.AddScoped<IValidator<CreateTaskCommentRequest>, CreateTaskCommentRequestValidator>();
 
 builder.Services.AddEndpointsApiExplorer();

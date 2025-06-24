@@ -6,7 +6,7 @@ namespace ProjectHub.Core.Interfaces
 {
     public interface IProjectParticipantService
     {
-        Task<ProjectParticipant> AddParticipantAsync(int projectId, Guid userId, string requestingUserId, ParticipantRole role = ParticipantRole.Participant);
+        Task<ProjectParticipant> AddParticipantAsync(int projectId, Guid userId, string requestingUserId, ParticipantRole role = ParticipantRole.Editor);
         Task RemoveParticipantAsync(int projectId, Guid userId, string requestingUserId);
         Task<IEnumerable<ProjectParticipant>> GetProjectParticipantsAsync(int projectId, string requestingUserId);
         Task<IEnumerable<ParticipantDetails>> GetProjectParticipantDetailsAsync(int projectId, string requestingUserId);

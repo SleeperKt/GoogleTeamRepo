@@ -31,7 +31,7 @@ namespace ProjectHub.Core.Services
             }
 
             return await _userRepository.GetByEmailAsync(userIdOrEmail);
-        }        public async Task<ProjectParticipant> AddParticipantAsync(int projectId, Guid userId, string requestingUserId, ParticipantRole role = ParticipantRole.Participant)
+        }        public async Task<ProjectParticipant> AddParticipantAsync(int projectId, Guid userId, string requestingUserId, ParticipantRole role = ParticipantRole.Editor)
         {
             if (!await IsUserOwnerAsync(projectId, requestingUserId))
             {
@@ -190,6 +190,7 @@ namespace ProjectHub.Core.Services
                         ParticipantId = participant.Id,
                         UserId = participantUser.UserId,
                         UserName = participantUser.UserName,
+                        Email = participantUser.Email,
                         Role = participant.Role,
                         JoinedAt = participant.JoinedAt
                     });
@@ -215,7 +216,9 @@ namespace ProjectHub.Core.Services
                         ProjectName = project.Name,
                         ProjectDescription = project.Description,
                         Role = participation.Role,
-                        JoinedAt = participation.JoinedAt
+                        JoinedAt = participation.JoinedAt,
+                        Status = project.Status,
+                        Priority = project.Priority
                     });
                 }
             }

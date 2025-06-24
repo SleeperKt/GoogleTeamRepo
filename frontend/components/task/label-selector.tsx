@@ -7,16 +7,18 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { TASK_LABELS } from "@/lib/task-constants"
+import { useProjectLabels } from "@/hooks/use-project-labels"
 
 interface LabelSelectorProps {
   value: string[]
   onChange: (value: string[]) => void
   label?: string
+  projectPublicId?: string
 }
 
-export function LabelSelector({ value, onChange, label = "Labels" }: LabelSelectorProps) {
+export function LabelSelector({ value, onChange, label = "Labels", projectPublicId }: LabelSelectorProps) {
   const [open, setOpen] = useState(false)
+  const { labels, loading } = useProjectLabels(projectPublicId)
 
   const toggleLabel = (labelName: string) => {
     const newValue = value.includes(labelName)
@@ -35,12 +37,13 @@ export function LabelSelector({ value, onChange, label = "Labels" }: LabelSelect
             role="combobox"
             aria-expanded={open}
             className="w-full justify-between"
+            disabled={loading}
           >
             <div className="flex items-center gap-2 truncate">
               {value.length > 0 ? (
                 <div className="flex flex-wrap gap-1 max-w-[300px] overflow-hidden">
                   {value.map((labelName) => {
-                    const labelData = TASK_LABELS.find((l) => l.name === labelName)
+                    const labelData = labels.find((l) => l.name === labelName)
                     return labelData ? (
                       <Badge key={labelData.id} variant="outline" className="px-1 py-0 h-5">
                         {labelData.name}
@@ -49,7 +52,9 @@ export function LabelSelector({ value, onChange, label = "Labels" }: LabelSelect
                   })}
                 </div>
               ) : (
-                <span className="text-muted-foreground">Select labels</span>
+                <span className="text-muted-foreground">
+                  {loading ? "Loading labels..." : "Select labels"}
+                </span>
               )}
             </div>
             <Tag className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -59,9 +64,11 @@ export function LabelSelector({ value, onChange, label = "Labels" }: LabelSelect
           <Command>
             <CommandInput placeholder="Search labels..." />
             <CommandList>
-              <CommandEmpty>No label found.</CommandEmpty>
+              <CommandEmpty>
+                {loading ? "Loading labels..." : "No label found."}
+              </CommandEmpty>
               <CommandGroup>
-                {TASK_LABELS.map((labelData) => (
+                {labels.map((labelData) => (
                   <CommandItem
                     key={labelData.id}
                     onSelect={() => toggleLabel(labelData.name)}

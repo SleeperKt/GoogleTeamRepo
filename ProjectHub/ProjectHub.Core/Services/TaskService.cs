@@ -16,6 +16,7 @@ namespace ProjectHub.Core.Services
         private readonly IProjectRepository _projectRepository;
         private readonly ITaskCommentRepository _commentRepository;
         private readonly ITaskActivityRepository _activityRepository;
+        private readonly IProjectWorkflowRepository _workflowRepository;
 
         public TaskService(
             ITaskRepository taskRepository,
@@ -23,7 +24,8 @@ namespace ProjectHub.Core.Services
             IUserRepository userRepository,
             IProjectRepository projectRepository,
             ITaskCommentRepository commentRepository,
-            ITaskActivityRepository activityRepository)
+            ITaskActivityRepository activityRepository,
+            IProjectWorkflowRepository workflowRepository)
         {
             _taskRepository = taskRepository;
             _participantRepository = participantRepository;
@@ -31,6 +33,7 @@ namespace ProjectHub.Core.Services
             _projectRepository = projectRepository;
             _commentRepository = commentRepository;
             _activityRepository = activityRepository;
+            _workflowRepository = workflowRepository;
         }
 
         private async Task<User?> FindUserByIdOrEmailAsync(string userIdOrEmail)
@@ -63,6 +66,43 @@ namespace ProjectHub.Core.Services
                 return parts[0].Length > 0 ? parts[0][0].ToString().ToUpper() : "?";
 
             return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpper();
+        }
+
+        private async Task<string> GetStatusDisplayNameAsync(int projectId, int statusValue)
+        {
+            // Get workflow stages for the project
+            var workflowStages = await _workflowRepository.GetProjectWorkflowStagesAsync(projectId);
+            var stagesList = workflowStages.OrderBy(s => s.Order).ToList();
+
+            // Map status value to workflow stage name
+            if (statusValue >= 1 && statusValue <= stagesList.Count)
+            {
+                var stageIndex = statusValue - 1; // Convert to 0-based index
+                return stagesList[stageIndex].Name;
+            }
+
+            // Fallback to default names for known TaskStatus enum values
+            return statusValue switch
+            {
+                1 => "Todo",
+                2 => "InProgress",
+                3 => "InReview", 
+                4 => "Done",
+                5 => "Cancelled",
+                _ => $"Stage {statusValue}"
+            };
+        }
+
+        private async Task<double> CalculateNewTaskPositionAsync(int projectId, Entities.TaskStatus status)
+        {
+            var allTasks = await _taskRepository.GetAllByProjectIdAsync(projectId);
+            var tasksInColumn = allTasks.Where(t => t.Status == status).ToList();
+            
+            if (!tasksInColumn.Any())
+                return 1000; // First task in column
+            
+            var maxPosition = tasksInColumn.Max(t => t.Position);
+            return maxPosition + 1000; // Add new task at the end
         }
 
         private async Task<TaskResponse> MapToTaskResponseAsync(ProjectTask task)
@@ -126,7 +166,8 @@ namespace ProjectHub.Core.Services
                 Type = task.Type,
                 Labels = labels,
                 Comments = commentCount,
-                Activities = activityCount
+                Activities = activityCount,
+                Position = task.Position
             };
         }
 
@@ -209,6 +250,9 @@ namespace ProjectHub.Core.Services
                 throw new ArgumentException("Invalid user ID or email", nameof(createdByUserId));
             }
 
+            // Calculate position for new task (at the end of the current status column)
+            double position = request.Position ?? await CalculateNewTaskPositionAsync(projectId, request.Status);
+
             var task = new ProjectTask
             {
                 Title = request.Title,
@@ -225,6 +269,7 @@ namespace ProjectHub.Core.Services
                 Labels = request.Labels != null && request.Labels.Length > 0 
                     ? System.Text.Json.JsonSerializer.Serialize(request.Labels)
                     : null,
+                Position = position,
                 CreatedAt = DateTime.Now
             };
 
@@ -302,6 +347,9 @@ namespace ProjectHub.Core.Services
                     : null;
             }
 
+            if (request.Position.HasValue)
+                task.Position = request.Position.Value;
+
             await _taskRepository.UpdateAsync(task);
 
             // Track if any activities were logged
@@ -310,9 +358,12 @@ namespace ProjectHub.Core.Services
             // Log activities for significant changes
             if (request.Status.HasValue && originalStatus != task.Status)
             {
+                var originalStatusName = await GetStatusDisplayNameAsync(task.ProjectId, (int)originalStatus);
+                var newStatusName = await GetStatusDisplayNameAsync(task.ProjectId, (int)task.Status);
+                
                 await LogTaskActivityAsync(id, "status_change", requestingUserId, 
-                    $"Changed status from {originalStatus} to {task.Status}", 
-                    originalStatus.ToString(), task.Status.ToString());
+                    $"Changed status from {originalStatusName} to {newStatusName}", 
+                    originalStatusName, newStatusName);
                 activityLogged = true;
             }
 
@@ -346,6 +397,55 @@ namespace ProjectHub.Core.Services
             if (!activityLogged)
             {
                 await LogTaskActivityAsync(id, "updated", requestingUserId, "Updated task details");
+            }
+
+            return await MapToTaskResponseAsync(task);
+        }
+
+        public async Task<TaskResponse> ReorderTaskAsync(int taskId, TaskReorderRequest request, string requestingUserId)
+        {
+            Console.WriteLine($"🔧 TASK REORDER: Starting reorder for task {taskId} to status {request.Status}, position {request.Position}");
+            
+            var task = await _taskRepository.GetByIdAsync(taskId);
+            if (task == null)
+            {
+                throw new ArgumentException("Task not found.");
+            }
+
+            Console.WriteLine($"🔧 TASK REORDER: Found task '{task.Title}' with current status {task.Status}");
+
+            // Check if user is participant in the project
+            if (!await IsUserProjectParticipantAsync(task.ProjectId, requestingUserId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            // Update task status and position
+            var originalStatus = task.Status;
+            
+            // Validate the status value before casting
+            if (!Enum.IsDefined(typeof(Entities.TaskStatus), request.Status))
+            {
+                Console.WriteLine($"❌ TASK REORDER: Status value {request.Status} is not defined in TaskStatus enum");
+                throw new ArgumentException($"Invalid status value: {request.Status}. Must be a valid TaskStatus enum value (1-20).");
+            }
+            
+            task.Status = (Entities.TaskStatus)request.Status;
+            task.Position = request.Position;
+            
+            Console.WriteLine($"🔧 TASK REORDER: Updated task status from {originalStatus} to {task.Status}, position to {task.Position}");
+
+            await _taskRepository.UpdateAsync(task);
+
+            // Log activity if status changed
+            if (originalStatus != task.Status)
+            {
+                var originalStatusName = await GetStatusDisplayNameAsync(task.ProjectId, (int)originalStatus);
+                var newStatusName = await GetStatusDisplayNameAsync(task.ProjectId, (int)task.Status);
+                
+                await LogTaskActivityAsync(taskId, "status_change", requestingUserId, 
+                    $"Moved task from {originalStatusName} to {newStatusName}", 
+                    originalStatusName, newStatusName);
             }
 
             return await MapToTaskResponseAsync(task);

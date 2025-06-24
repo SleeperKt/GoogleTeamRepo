@@ -2,7 +2,8 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import {
   AlertCircle,
   ArrowRight,
@@ -38,6 +39,57 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { API_BASE_URL } from "@/lib/api"
+import { useAuth } from "@/contexts/auth-context"
+import { useProject } from "@/contexts/project-context"
+import { useProjectLabels, type ProjectLabel } from "@/hooks/use-project-labels"
+
+// Types
+interface ProjectSettings {
+  id: number
+  projectId: number
+  timezone?: string
+  startDate?: string
+  endDate?: string
+  enableNotifications: boolean
+  enableTimeTracking: boolean
+  enableCommentsNotifications: boolean
+  enableTaskAssignmentNotifications: boolean
+  defaultTaskView: string
+  allowGuestAccess: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+interface WorkflowStage {
+  id: number
+  name: string
+  color: string
+  order: number
+  isDefault: boolean
+  isCompleted: boolean
+  createdAt: string
+  taskCount: number
+  tasks?: number
+}
+
+interface Project {
+  id: number
+  name: string
+  description: string
+  publicId: string
+  status: number
+  priority: number
+  createdAt: string
+}
+
+interface TeamMember {
+  userId: string
+  userName: string
+  role: number // Role comes as number from API
+  joinedAt: string
+  email: string
+}
 
 // Update the project name and description in the sample data
 const projectData = {
@@ -159,134 +211,489 @@ const labelColors = [
 ]
 
 export default function SettingsPage() {
+  const { user, token } = useAuth()
+  const { currentProject } = useProject()
+  const projectId = currentProject?.publicId // Use selected project from context
+  
+  // Use labels hook
+  const { 
+    labels, 
+    loading: labelsLoading, 
+    error: labelsError, 
+    createLabel: hookCreateLabel, 
+    updateLabel: hookUpdateLabel, 
+    deleteLabel: hookDeleteLabel 
+  } = useProjectLabels(projectId)
+  
   const [activeTab, setActiveTab] = useState("general")
+  const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [editingLabel, setEditingLabel] = useState<number | null>(null)
+  const [editingLabelData, setEditingLabelData] = useState<{name: string, color: string}>({name: "", color: ""})
   const [newLabelName, setNewLabelName] = useState("")
   const [newLabelColor, setNewLabelColor] = useState(labelColors[0])
-  const [projectSettings, setProjectSettings] = useState(projectData)
   const [draggedWorkflowId, setDraggedWorkflowId] = useState<number | null>(null)
   const [showEmptyState, setShowEmptyState] = useState(false)
+  
+  // Real data state
+  const [project, setProject] = useState<Project | null>(null)
+  const [settings, setSettings] = useState<ProjectSettings | null>(null)
+  const [workflow, setWorkflow] = useState<WorkflowStage[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [pendingInvites, setPendingInvites] = useState<any[]>([])
+  
+  // Workflow editing states
+  const [editingWorkflowId, setEditingWorkflowId] = useState<number | null>(null)
+  const [newWorkflowName, setNewWorkflowName] = useState("")
+  
+  // Debounced update refs
+  const updateProjectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Helper function to safely parse JSON responses
+  const safeParseResponse = async (response: Response, fallbackData?: any) => {
+    const contentType = response.headers.get('content-type')
+    if (contentType && contentType.includes('application/json')) {
+      const responseText = await response.text()
+      if (responseText.trim()) {
+        try {
+          return JSON.parse(responseText)
+        } catch (parseError) {
+          console.warn('Failed to parse JSON response:', parseError)
+          return fallbackData
+        }
+      } else {
+        console.warn('Empty JSON response received')
+        return fallbackData
+      }
+    } else {
+      console.warn('Non-JSON response received')
+      return fallbackData
+    }
+  }
+
+  // Fetch data on component mount
+  useEffect(() => {
+    if (currentProject) {
+      fetchData()
+    }
+  }, [currentProject, token])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (updateProjectTimeoutRef.current) {
+        clearTimeout(updateProjectTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const fetchData = async () => {
+    if (!token) return
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      if (projectId) {
+        // Fetch project-specific data
+        const projectResponse = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        })
+
+        if (projectResponse.ok) {
+          const projectData = await projectResponse.json()
+          setProject(projectData)
+        }
+
+        // Fetch project settings, workflow, and team in parallel (labels managed by hook)
+        const [settingsRes, workflowRes, teamRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          }),
+          fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/workflow`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          }),
+          fetch(`${API_BASE_URL}/api/projects/public/${projectId}/participants`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          })
+        ])
+
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json()
+          setSettings(settingsData)
+        }
+
+        // Labels are managed by the hook
+
+        if (workflowRes.ok) {
+          const workflowData = await workflowRes.json()
+          console.log('Workflow data received:', workflowData) // Debug log
+          
+          // Handle .NET serialization format with $values for workflow too
+          let workflowArray = [];
+          if (Array.isArray(workflowData)) {
+            workflowArray = workflowData;
+          } else if (workflowData && workflowData.$values && Array.isArray(workflowData.$values)) {
+            workflowArray = workflowData.$values;
+          }
+          
+          console.log('Parsed workflow array:', workflowArray);
+          setWorkflow(workflowArray)
+        } else {
+          console.error('Failed to fetch workflow:', workflowRes.status, workflowRes.statusText)
+        }
+
+        if (teamRes.ok) {
+          const teamData = await teamRes.json()
+          console.log('Team data received:', teamData) // Debug log
+          console.log('Team data type:', typeof teamData, 'Is array:', Array.isArray(teamData)) // More debug
+          console.log('Current user:', user) // Debug current user
+          
+          // Handle different response structures
+          let membersArray = [];
+          if (Array.isArray(teamData)) {
+            membersArray = teamData;
+          } else if (teamData && teamData.$values && Array.isArray(teamData.$values)) {
+            // Handle .NET serialization format with $values
+            membersArray = teamData.$values;
+          } else if (teamData && teamData.data && Array.isArray(teamData.data)) {
+            membersArray = teamData.data;
+          } else if (teamData && typeof teamData === 'object') {
+            // If it's a single object, wrap it in an array
+            membersArray = [teamData];
+          }
+          
+          console.log('Parsed members array:', membersArray);
+          if (membersArray.length > 0) {
+            console.log('First member properties:', Object.keys(membersArray[0]));
+            console.log('First member object:', membersArray[0]);
+          }
+          setTeamMembers(membersArray)
+        } else {
+          console.error('Failed to fetch team members:', teamRes.status, teamRes.statusText)
+          const errorText = await teamRes.text()
+          console.error('Error details:', errorText)
+        }
+      } else {
+        // Global settings - could be user preferences (not implemented yet)
+        // For now, use empty states
+        setProject(null)
+        setSettings(null)
+        setWorkflow([])
+        setTeamMembers([])
+      }
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Role mapping from numbers to strings
+  const getRoleName = (roleNumber: number): string => {
+    switch (roleNumber) {
+      case 1: return 'Owner'
+      case 2: return 'Admin'
+      case 3: return 'Editor'
+      case 4: return 'Viewer'
+      default: return 'Editor'
+    }
+  }
+
+  // Create a combined projectSettings object for the UI
+  const projectSettings = {
+    name: project?.name || '',
+    description: project?.description || '',
+    defaultStatus: settings?.defaultTaskView || '',
+    startDate: settings?.startDate || '',
+    endDate: settings?.endDate || '',
+    timezone: settings?.timezone || '',
+    workflow: workflow.map(stage => ({ ...stage, tasks: stage.tasks || stage.taskCount || 0 })),
+    labels: labels,
+    members: teamMembers.map(member => ({
+      id: member.userId,
+      name: member.userName || 'Unknown User',
+      email: member.email || '',
+      role: getRoleName(member.role), // Convert numeric role to string
+      avatar: '', // Add avatar logic if needed
+      initials: (member.userName || 'U').split(' ').map(n => n[0]).join('').toUpperCase(),
+      joinedAt: member.joinedAt
+    })),
+    pendingInvites: pendingInvites,
+    integrations: [] as Array<{id: number, name: string, logo: string, status: string, details: string}> // Add empty integrations array for now
+  }
+
+  // Debug log
+  console.log('Team members count:', teamMembers.length)
+  console.log('Project settings members:', projectSettings.members.length)
 
   // Handle form input changes
   const handleInputChange = (field: string, value: string) => {
-    setProjectSettings({
-      ...projectSettings,
-      [field]: value,
-    })
+    if (field === 'name' || field === 'description') {
+      // Update project properties
+      if (!project || !projectId || !token) return
+      
+      // Optimistic update - immediately update the UI
+      setProject(prev => prev ? { ...prev, [field]: value } : null)
+      
+      // Clear existing timeout
+      if (updateProjectTimeoutRef.current) {
+        clearTimeout(updateProjectTimeoutRef.current)
+      }
+      
+      // Debounce the API call
+      updateProjectTimeoutRef.current = setTimeout(async () => {
+        try {
+          setIsSaving(true)
+          const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...project,
+              [field]: value
+            }),
+          })
 
-    // Simulate saving
-    simulateSave()
+          if (!response.ok) {
+            // Revert optimistic update on failure
+            setProject(project)
+            throw new Error('Failed to update project')
+          }
+
+          // Handle potentially empty response
+          let updated = project
+          const contentType = response.headers.get('content-type')
+          if (contentType && contentType.includes('application/json')) {
+            const responseText = await response.text()
+            if (responseText.trim()) {
+              try {
+                updated = JSON.parse(responseText)
+              } catch (parseError) {
+                console.warn('Failed to parse JSON response, using optimistic update:', parseError)
+                // Keep the optimistic update since the API call was successful
+                updated = { ...project, [field]: value }
+              }
+            } else {
+              // Empty response but successful - keep optimistic update
+              updated = { ...project, [field]: value }
+            }
+          } else {
+            // Non-JSON response but successful - keep optimistic update
+            updated = { ...project, [field]: value }
+          }
+          
+          setProject(updated)
+          // Clear any previous errors on successful save
+          setError(null)
+        } catch (err) {
+          console.error('Project update error:', err)
+          setError(err instanceof Error ? err.message : 'Failed to update project')
+          // Revert optimistic update on error
+          setProject(project)
+        } finally {
+          setIsSaving(false)
+        }
+      }, 1000) // Wait 1 second after user stops typing
+    } else {
+      // Update settings properties
+      if (!settings) return
+      
+      const settingsFieldMap: { [key: string]: string } = {
+        'defaultStatus': 'defaultTaskView',
+        'startDate': 'startDate',
+        'endDate': 'endDate',
+        'timezone': 'timezone'
+      }
+      
+      const settingsField = settingsFieldMap[field] || field
+      updateSettings({ [settingsField]: value })
+    }
   }
 
-  // Simulate saving with a delay
-  const simulateSave = () => {
-    setIsSaving(true)
-    setTimeout(() => {
+  // Update settings
+  const updateSettings = async (updatedSettings: Partial<ProjectSettings>) => {
+    if (!token || !settings || !projectId) return
+
+    try {
+      setIsSaving(true)
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...settings,
+          ...updatedSettings
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update settings')
+      }
+
+      const updated = await safeParseResponse(response, { ...settings, ...updatedSettings })
+      setSettings(updated)
+      setError(null) // Clear errors on success
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update settings')
+    } finally {
       setIsSaving(false)
-    }, 1000)
+    }
   }
 
   // Handle member role change
-  const handleRoleChange = (memberId: number, newRole: string) => {
-    const updatedMembers = projectSettings.members.map((member) =>
-      member.id === memberId ? { ...member, role: newRole } : member,
-    )
+  const handleRoleChange = async (memberId: string, newRole: string) => {
+    if (!token || !projectId) return
 
-    setProjectSettings({
-      ...projectSettings,
-      members: updatedMembers,
-    })
+    // Convert role string back to number for API
+    const getRoleNumber = (roleName: string): number => {
+      switch (roleName) {
+        case 'Owner': return 1
+        case 'Admin': return 2
+        case 'Editor': return 3
+        case 'Viewer': return 4
+        default: return 3
+      }
+    }
 
-    simulateSave()
+    try {
+      setIsSaving(true)
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/participants/${memberId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role: getRoleNumber(newRole) }),
+      })
+
+      if (response.ok) {
+        // Update local state with numeric role
+        setTeamMembers(prev => prev.map(member => 
+          member.userId === memberId ? { ...member, role: getRoleNumber(newRole) } : member
+        ))
+      }
+    } catch (err) {
+      setError('Failed to update member role')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Handle member removal
-  const handleRemoveMember = (memberId: number) => {
-    const updatedMembers = projectSettings.members.filter((member) => member.id !== memberId)
+  const handleRemoveMember = async (memberId: string) => {
+    if (!token || !projectId) return
 
-    setProjectSettings({
-      ...projectSettings,
-      members: updatedMembers,
-    })
+    try {
+      setIsSaving(true)
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/participants/${memberId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
 
-    simulateSave()
+      if (response.ok) {
+        // Update local state
+        setTeamMembers(prev => prev.filter(member => member.userId !== memberId))
+      }
+    } catch (err) {
+      setError('Failed to remove member')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Handle invite member
-  const handleInviteMember = (email: string, role: string) => {
-    const newInvite = {
-      email,
-      role,
-      sentAt: "Just now",
+  const handleInviteMember = async (email: string, role: string) => {
+    if (!token || !projectId) return
+
+    try {
+      setIsSaving(true)
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/participants`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, role }),
+      })
+
+      if (response.ok) {
+        // Add to pending invites
+        const newInvite = { email, role, sentAt: "Just now" }
+        setPendingInvites(prev => [...prev, newInvite])
+      }
+    } catch (err) {
+      setError('Failed to invite member')
+    } finally {
+      setIsSaving(false)
     }
-
-    setProjectSettings({
-      ...projectSettings,
-      pendingInvites: [...projectSettings.pendingInvites, newInvite],
-    })
-
-    simulateSave()
   }
 
   // Handle cancel invite
-  const handleCancelInvite = (email: string) => {
-    const updatedInvites = projectSettings.pendingInvites.filter((invite) => invite.email !== email)
+  const handleCancelInvite = async (email: string) => {
+    if (!token || !projectId) return
 
-    setProjectSettings({
-      ...projectSettings,
-      pendingInvites: updatedInvites,
-    })
-
-    simulateSave()
+    try {
+      setIsSaving(true)
+      // Note: This would need a backend endpoint to cancel invites
+      // For now, just remove from local state
+      setPendingInvites(prev => prev.filter(invite => invite.email !== email))
+    } catch (err) {
+      setError('Failed to cancel invite')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Handle add label
-  const handleAddLabel = () => {
+  const handleAddLabel = async () => {
     if (!newLabelName.trim()) return
 
-    const newLabel = {
-      id: Math.max(0, ...projectSettings.labels.map((l) => l.id)) + 1,
-      name: newLabelName,
-      color: newLabelColor,
+    try {
+      const newLabel = await hookCreateLabel(newLabelName, newLabelColor)
+      if (newLabel) {
+        setNewLabelName("")
+        setNewLabelColor(labelColors[0])
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create label')
     }
-
-    setProjectSettings({
-      ...projectSettings,
-      labels: [...projectSettings.labels, newLabel],
-    })
-
-    setNewLabelName("")
-    simulateSave()
   }
 
-  // Handle update label
-  const handleUpdateLabel = (labelId: number, name: string, color: string) => {
-    const updatedLabels = projectSettings.labels.map((label) =>
-      label.id === labelId ? { ...label, name, color } : label,
-    )
-
-    setProjectSettings({
-      ...projectSettings,
-      labels: updatedLabels,
-    })
-
-    setEditingLabel(null)
-    simulateSave()
+  // Update existing label function to work with real data
+  const handleUpdateLabel = async (labelId: number, name: string, color: string) => {
+    try {
+      const updatedLabel = await hookUpdateLabel(labelId, name, color)
+      if (updatedLabel) {
+        setEditingLabel(null)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update label')
+    }
   }
 
-  // Handle delete label
-  const handleDeleteLabel = (labelId: number) => {
-    const updatedLabels = projectSettings.labels.filter((label) => label.id !== labelId)
-
-    setProjectSettings({
-      ...projectSettings,
-      labels: updatedLabels,
-    })
-
-    simulateSave()
+  // Delete label function
+  const handleDeleteLabel = async (labelId: number) => {
+    try {
+      await hookDeleteLabel(labelId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete label')
+    }
   }
+
+
 
   // Handle workflow drag start
   const handleWorkflowDragStart = (e: React.DragEvent, id: number) => {
@@ -298,90 +705,169 @@ export default function SettingsPage() {
     e.preventDefault()
   }
 
-  // Handle workflow drop
-  const handleWorkflowDrop = (e: React.DragEvent, targetId: number) => {
+  // Handle workflow drop (reorder workflow stages)
+  const handleWorkflowDrop = async (e: React.DragEvent, targetId: number) => {
     e.preventDefault()
 
-    if (draggedWorkflowId === null || draggedWorkflowId === targetId) return
+    if (draggedWorkflowId === null || draggedWorkflowId === targetId || !token || !projectId) return
 
-    const sourceIndex = projectSettings.workflow.findIndex((item) => item.id === draggedWorkflowId)
-    const targetIndex = projectSettings.workflow.findIndex((item) => item.id === targetId)
+    const sourceIndex = workflow.findIndex((item) => item.id === draggedWorkflowId)
+    const targetIndex = workflow.findIndex((item) => item.id === targetId)
 
     if (sourceIndex === -1 || targetIndex === -1) return
 
-    const newWorkflow = [...projectSettings.workflow]
+    const newWorkflow = [...workflow]
     const [movedItem] = newWorkflow.splice(sourceIndex, 1)
     newWorkflow.splice(targetIndex, 0, movedItem)
 
-    setProjectSettings({
-      ...projectSettings,
-      workflow: newWorkflow,
-    })
+    // Update order values based on new positions
+    const updatedWorkflow = newWorkflow.map((stage, index) => ({
+      ...stage,
+      order: index
+    }))
+
+    try {
+      // The backend expects StageIds array in the correct order
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/workflow/reorder`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          stageIds: updatedWorkflow.map(stage => stage.id)
+        }),
+      })
+
+      if (response.ok) {
+        setWorkflow(updatedWorkflow)
+        console.log('✅ Workflow stages reordered successfully')
+        
+        // Trigger board refresh by posting a message to other tabs/windows
+        // This will notify the board page that workflow has changed
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('workflowChanged', Date.now().toString())
+          // Also trigger a custom event for same-tab communication
+          window.dispatchEvent(new CustomEvent('workflowReordered', { 
+            detail: { projectId, updatedWorkflow } 
+          }))
+        }
+      } else {
+        console.error('❌ Failed to reorder workflow stages:', await response.text())
+        setError('Failed to reorder workflow stages')
+      }
+    } catch (err) {
+      console.error('❌ Error reordering workflow stages:', err)
+      setError('Failed to reorder workflow stages')
+    }
 
     setDraggedWorkflowId(null)
-    simulateSave()
   }
 
   // Handle add workflow stage
-  const handleAddWorkflowStage = (name: string) => {
-    const newStage = {
-      id: Math.max(0, ...projectSettings.workflow.map((w) => w.id)) + 1,
-      name,
-      tasks: 0,
+  const handleAddWorkflowStage = async (name: string) => {
+    if (!token || !projectId) return
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/workflow`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          color: '#94a3b8', // Default color
+          order: workflow.length
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create workflow stage')
+      }
+
+      const fallbackStage = { 
+        id: Date.now(), // Temporary ID
+        name, 
+        color: '#94a3b8', 
+        order: workflow.length,
+        isDefault: false,
+        isCompleted: false,
+        createdAt: new Date().toISOString(),
+        taskCount: 0 
+      }
+      const newStage = await safeParseResponse(response, fallbackStage)
+      setWorkflow(prev => [...prev, newStage])
+      setNewWorkflowName("")
+      setError(null) // Clear errors on success
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create workflow stage')
     }
-
-    setProjectSettings({
-      ...projectSettings,
-      workflow: [...projectSettings.workflow, newStage],
-    })
-
-    simulateSave()
   }
 
   // Handle rename workflow stage
-  const handleRenameWorkflowStage = (id: number, newName: string) => {
-    const updatedWorkflow = projectSettings.workflow.map((stage) =>
-      stage.id === id ? { ...stage, name: newName } : stage,
-    )
+  const handleRenameWorkflowStage = async (id: number, newName: string) => {
+    if (!token || !projectId) return
 
-    setProjectSettings({
-      ...projectSettings,
-      workflow: updatedWorkflow,
-    })
+    try {
+      const stage = workflow.find(w => w.id === id)
+      if (!stage) return
 
-    simulateSave()
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/workflow/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newName,
+          color: stage.color,
+          order: stage.order,
+          isDefault: stage.isDefault,
+          isCompleted: stage.isCompleted
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update workflow stage')
+      }
+
+      const fallbackStage = { ...stage, name: newName }
+      const updatedStage = await safeParseResponse(response, fallbackStage)
+      setWorkflow(prev => prev.map(w => w.id === id ? updatedStage : w))
+      setEditingWorkflowId(null)
+      setError(null) // Clear errors on success
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update workflow stage')
+    }
   }
 
   // Handle delete workflow stage
-  const handleDeleteWorkflowStage = (id: number) => {
-    const updatedWorkflow = projectSettings.workflow.filter((stage) => stage.id !== id)
+  const handleDeleteWorkflowStage = async (id: number) => {
+    if (!token || !projectId) return
 
-    setProjectSettings({
-      ...projectSettings,
-      workflow: updatedWorkflow,
-    })
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings/workflow/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
 
-    simulateSave()
+      if (!response.ok) {
+        throw new Error('Failed to delete workflow stage')
+      }
+
+      setWorkflow(prev => prev.filter(w => w.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete workflow stage')
+    }
   }
 
-  // Handle toggle integration
+  // Handle toggle integration (placeholder - integrations not implemented yet)
   const handleToggleIntegration = (id: number) => {
-    const updatedIntegrations = projectSettings.integrations.map((integration) =>
-      integration.id === id
-        ? {
-            ...integration,
-            status: integration.status === "connected" ? "disconnected" : "connected",
-            details: integration.status === "connected" ? null : `Connected to ${integration.name}`,
-          }
-        : integration,
-    )
-
-    setProjectSettings({
-      ...projectSettings,
-      integrations: updatedIntegrations,
-    })
-
-    simulateSave()
+    // TODO: Implement real integration management
+    console.log('Toggle integration:', id)
   }
 
   // Toggle empty state for demo
@@ -389,13 +875,65 @@ export default function SettingsPage() {
     setShowEmptyState(!showEmptyState)
   }
 
+  // Show loading state while fetching data
+  if (loading) {
+    return (
+      <div className="p-4 md:p-6 w-full">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="ml-2">Loading settings...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error && !projectId) {
+    return (
+      <div className="p-4 md:p-6 w-full">
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+          <h3 className="text-xl font-medium mb-2">Unable to load settings</h3>
+          <p className="text-gray-500 mb-4">{error}</p>
+          <Button onClick={fetchData}>Try Again</Button>
+        </div>
+      </div>
+    )
+  }
+
+  // If no project selected, show project selection message
+  if (!currentProject) {
+    return (
+      <div className="p-4 md:p-6 w-full">
+        <div className="mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold mb-2">Settings</h1>
+          <p className="text-muted-foreground">Please select a project from the dropdown to configure its settings</p>
+        </div>
+        
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Info className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">Project Settings</h3>
+            <p className="text-muted-foreground">
+              Select a project from the top-left dropdown to view and edit its settings
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 md:p-6 w-full">
       {/* Header Section */}
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2">Settings</h1>
+        <h1 className="text-2xl md:text-3xl font-bold mb-2">
+          {currentProject.name} Settings
+        </h1>
         <div className="flex items-center gap-2">
-          <span className="font-medium">{projectSettings.name}</span>
+          {currentProject.description && (
+            <span className="text-muted-foreground">{currentProject.description}</span>
+          )}
           {isSaving ? (
             <span className="text-sm text-muted-foreground flex items-center">
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
@@ -405,6 +943,11 @@ export default function SettingsPage() {
             <span className="text-sm text-muted-foreground">Changes saved automatically</span>
           )}
         </div>
+        {error && (
+          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+            {error}
+          </div>
+        )}
       </div>
 
       {/* Empty State */}
@@ -485,7 +1028,7 @@ export default function SettingsPage() {
                     <Label htmlFor="project-name">Project Name</Label>
                     <Input
                       id="project-name"
-                      value={projectSettings.name}
+                      value={projectSettings.name || ''}
                       onChange={(e) => handleInputChange("name", e.target.value)}
                     />
                   </div>
@@ -653,8 +1196,8 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div className="divide-y">
-                      {projectSettings.members.map((member) => (
-                        <div key={member.id} className="px-4 py-3">
+                      {projectSettings.members.map((member, index) => (
+                        <div key={member.id || `member-${index}`} className="px-4 py-3">
                           <div className="grid grid-cols-12 gap-4 items-center">
                             <div className="col-span-6 flex items-center gap-3">
                               <Avatar className="h-8 w-8">
@@ -670,7 +1213,7 @@ export default function SettingsPage() {
                               <Select
                                 value={member.role}
                                 onValueChange={(value) => handleRoleChange(member.id, value)}
-                                disabled={member.id === 1} // Disable for project owner
+                                disabled={member.role === "Owner" || member.id === user?.id} // Disable for project owner or current user
                               >
                                 <SelectTrigger className="h-8">
                                   <SelectValue placeholder="Select a role" />
@@ -685,8 +1228,8 @@ export default function SettingsPage() {
                               </Select>
                             </div>
                             <div className="col-span-3 flex justify-end">
-                              {member.id === 1 ? (
-                                <Badge variant="outline">Owner</Badge>
+                              {member.role === "Owner" || member.id === user?.id ? (
+                                <Badge variant="outline">{member.role === "Owner" ? "Owner" : "You"}</Badge>
                               ) : (
                                 <Button
                                   variant="ghost"
@@ -830,15 +1373,9 @@ export default function SettingsPage() {
                               {editingLabel === label.id ? (
                                 <div className="flex gap-2">
                                   <Input
-                                    value={label.name}
+                                    value={editingLabelData.name}
                                     onChange={(e) => {
-                                      const updatedLabels = projectSettings.labels.map((l) =>
-                                        l.id === label.id ? { ...l, name: e.target.value } : l,
-                                      )
-                                      setProjectSettings({
-                                        ...projectSettings,
-                                        labels: updatedLabels,
-                                      })
+                                      setEditingLabelData(prev => ({ ...prev, name: e.target.value }))
                                     }}
                                     className="h-8"
                                   />
@@ -849,17 +1386,11 @@ export default function SettingsPage() {
                                         type="button"
                                         className={cn(
                                           "w-6 h-6 rounded-full border",
-                                          label.color === color ? "ring-2 ring-offset-1 ring-violet-600" : "",
+                                          editingLabelData.color === color ? "ring-2 ring-offset-1 ring-violet-600" : "",
                                         )}
                                         style={{ backgroundColor: color }}
                                         onClick={() => {
-                                          const updatedLabels = projectSettings.labels.map((l) =>
-                                            l.id === label.id ? { ...l, color } : l,
-                                          )
-                                          setProjectSettings({
-                                            ...projectSettings,
-                                            labels: updatedLabels,
-                                          })
+                                          setEditingLabelData(prev => ({ ...prev, color }))
                                         }}
                                         aria-label={`Select color ${color}`}
                                       />
@@ -881,7 +1412,7 @@ export default function SettingsPage() {
                                     variant="outline"
                                     size="sm"
                                     className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    onClick={() => handleUpdateLabel(label.id, label.name, label.color)}
+                                    onClick={() => handleUpdateLabel(label.id, editingLabelData.name, editingLabelData.color)}
                                   >
                                     <Check className="h-4 w-4" />
                                     <span className="sr-only md:not-sr-only md:ml-2">Save</span>
@@ -889,7 +1420,10 @@ export default function SettingsPage() {
                                 </>
                               ) : (
                                 <>
-                                  <Button variant="ghost" size="sm" onClick={() => setEditingLabel(label.id)}>
+                                  <Button variant="ghost" size="sm" onClick={() => {
+                                    setEditingLabel(label.id)
+                                    setEditingLabelData({ name: label.name, color: label.color })
+                                  }}>
                                     <Edit className="h-4 w-4" />
                                     <span className="sr-only md:not-sr-only md:ml-2">Edit</span>
                                   </Button>
@@ -951,16 +1485,22 @@ export default function SettingsPage() {
                         <div className="space-y-4 py-4">
                           <div className="space-y-2">
                             <Label htmlFor="stage-name">Stage Name</Label>
-                            <Input id="stage-name" placeholder="e.g., In Testing" />
+                            <Input 
+                              id="stage-name" 
+                              placeholder="e.g., In Testing"
+                              value={newWorkflowName}
+                              onChange={(e) => setNewWorkflowName(e.target.value)}
+                            />
                           </div>
                         </div>
                         <DialogFooter>
-                          <Button variant="outline" onClick={() => {}}>
+                          <Button variant="outline" onClick={() => setNewWorkflowName("")}>
                             Cancel
                           </Button>
                           <Button
                             className="bg-violet-600 hover:bg-violet-700 text-white"
-                            onClick={() => handleAddWorkflowStage("In Testing")}
+                            onClick={() => handleAddWorkflowStage(newWorkflowName)}
+                            disabled={!newWorkflowName.trim()}
                           >
                             Add Stage
                           </Button>
@@ -979,7 +1519,7 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div className="divide-y">
-                      {projectSettings.workflow.map((stage) => (
+                      {workflow.map((stage) => (
                         <div
                           key={stage.id}
                           className={cn(
@@ -999,7 +1539,7 @@ export default function SettingsPage() {
                               <div className="font-medium">{stage.name}</div>
                             </div>
                             <div className="col-span-2">
-                              <Badge variant="outline">{stage.tasks}</Badge>
+                              <Badge variant="outline">{stage.taskCount || stage.tasks || 0}</Badge>
                             </div>
                             <div className="col-span-2 flex justify-end gap-2">
                               <DropdownMenu>
@@ -1021,10 +1561,11 @@ export default function SettingsPage() {
                                   <DropdownMenuItem
                                     className="text-red-600"
                                     onClick={() => {
-                                      if (stage.tasks > 0) {
+                                      const taskCount = stage.taskCount || stage.tasks || 0
+                                      if (taskCount > 0) {
                                         if (
                                           confirm(
-                                            `This stage contains ${stage.tasks} tasks. Are you sure you want to delete it?`,
+                                            `This stage contains ${taskCount} tasks. Are you sure you want to delete it?`,
                                           )
                                         ) {
                                           handleDeleteWorkflowStage(stage.id)
@@ -1055,13 +1596,13 @@ export default function SettingsPage() {
                           This is how your workflow will appear on the board. Drag and drop stages to reorder them.
                         </p>
                         <div className="flex gap-4 overflow-x-auto pb-2">
-                          {projectSettings.workflow.map((stage) => (
+                          {workflow.map((stage) => (
                             <div
                               key={stage.id}
                               className="flex-shrink-0 w-40 bg-white dark:bg-gray-800 rounded-md border shadow-sm p-3"
                             >
                               <div className="font-medium mb-2">{stage.name}</div>
-                              <div className="text-sm text-muted-foreground">{stage.tasks} tasks</div>
+                              <div className="text-sm text-muted-foreground">{stage.taskCount || stage.tasks || 0} tasks</div>
                             </div>
                           ))}
                         </div>

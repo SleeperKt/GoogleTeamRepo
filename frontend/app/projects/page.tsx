@@ -34,12 +34,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { apiRequest } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { useProject } from "@/contexts/project-context"
+import { PROJECT_PRIORITIES, PROJECT_STATUSES } from "@/lib/task-constants"
 
 // Initially empty; will be filled from backend
+
+// Helper functions to map enum values to labels
+const getStatusLabel = (statusValue: number): string => {
+  const status = PROJECT_STATUSES.find(s => s.value === statusValue)
+  return status ? status.label : "Active"
+}
+
+const getPriorityLabel = (priorityValue: number): string => {
+  const priority = PROJECT_PRIORITIES.find(p => p.value === priorityValue)
+  return priority ? priority.label : "Medium"
+}
+
+const getPriorityColor = (priorityValue: number): string => {
+  const priority = PROJECT_PRIORITIES.find(p => p.value === priorityValue)
+  return priority ? priority.color : "text-yellow-500"
+}
 
 // Status badge color mapping
 const statusColors: Record<string, string> = {
@@ -64,6 +81,7 @@ export default function ProjectsPage() {
 
   const { token } = useAuth()
   const { refreshProjects } = useProject()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     async function loadProjects() {
@@ -75,7 +93,10 @@ export default function ProjectsPage() {
             id: p.publicId ?? p.id.toString(),
             name: p.name,
             description: p.description ?? "",
-            status: "Active",
+            status: getStatusLabel(p.status || 1),
+            statusValue: p.status || 1,
+            priority: getPriorityLabel(p.priority || 2),
+            priorityValue: p.priority || 2,
             lastUpdated: new Date(p.createdAt).toLocaleDateString(),
             owner: "Me",
             initials: p.name.slice(0, 2).toUpperCase(),
@@ -95,6 +116,13 @@ export default function ProjectsPage() {
   useEffect(() => {
     setShowEmptyState(projectList.length === 0)
   }, [projectList])
+
+  // Check for create query parameter
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      setCreateProjectDialogOpen(true)
+    }
+  }, [searchParams])
 
   // Add these handler functions
   const handleEditProject = (project: any) => {
@@ -130,9 +158,10 @@ export default function ProjectsPage() {
     e.preventDefault()
     const formData = new FormData(e.target as HTMLFormElement)
     const payload = {
-      id: editingProject.id,
       name: formData.get("project-name") as string,
       description: formData.get("project-description") as string,
+      status: parseInt(formData.get("project-status") as string),
+      priority: parseInt(formData.get("project-priority") as string),
     }
 
     try {
@@ -144,7 +173,15 @@ export default function ProjectsPage() {
         method: "PUT",
         body: JSON.stringify(payload),
       })
-      setProjectList(projectList.map((p) => (p.id === editingProject.id ? { ...p, ...payload } : p)))
+      setProjectList(projectList.map((p) => (p.id === editingProject.id ? { 
+        ...p, 
+        name: payload.name,
+        description: payload.description,
+        status: getStatusLabel(payload.status),
+        statusValue: payload.status,
+        priority: getPriorityLabel(payload.priority),
+        priorityValue: payload.priority
+      } : p)))
       setEditProjectDialogOpen(false)
       setEditingProject(null)
     } catch (err: any) {
@@ -218,9 +255,11 @@ export default function ProjectsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="All">All</SelectItem>
-                <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="On Hold">On Hold</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
+                {PROJECT_STATUSES.map((status) => (
+                  <SelectItem key={status.value} value={status.label}>
+                    {status.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={sortBy} onValueChange={setSortBy}>
@@ -311,9 +350,13 @@ export default function ProjectsPage() {
               const descriptionInput = form.elements.namedItem(
                 "project-description",
               ) as HTMLTextAreaElement
+              const statusSelect = form.elements.namedItem("project-status") as HTMLSelectElement
+              const prioritySelect = form.elements.namedItem("project-priority") as HTMLSelectElement
               const newProjectPayload = {
                 name: nameInput.value,
                 description: descriptionInput.value,
+                status: parseInt(statusSelect.value),
+                priority: parseInt(prioritySelect.value),
               }
 
               try {
@@ -326,7 +369,10 @@ export default function ProjectsPage() {
                   id: created.publicId ?? created.id.toString(),
                   name: created.name,
                   description: created.description ?? "",
-                  status: "Active",
+                  status: getStatusLabel(created.status || newProjectPayload.status),
+                  statusValue: created.status || newProjectPayload.status,
+                  priority: getPriorityLabel(created.priority || newProjectPayload.priority),
+                  priorityValue: created.priority || newProjectPayload.priority,
                   lastUpdated: new Date(created.createdAt).toLocaleDateString(),
                   owner: "Me",
                   initials: created.name.slice(0, 2).toUpperCase(),
@@ -350,6 +396,35 @@ export default function ProjectsPage() {
               <div className="grid gap-2">
                 <Label htmlFor="project-description">Description</Label>
                 <Textarea id="project-description" placeholder="Enter project description" rows={3} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="project-status">Status</Label>
+                  <Select name="project-status" defaultValue="1">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Active</SelectItem>
+                      <SelectItem value="2">On Hold</SelectItem>
+                      <SelectItem value="3">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="project-priority">Priority</Label>
+                  <Select name="project-priority" defaultValue="2">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Low</SelectItem>
+                      <SelectItem value="2">Medium</SelectItem>
+                      <SelectItem value="3">High</SelectItem>
+                      <SelectItem value="4">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -388,14 +463,28 @@ export default function ProjectsPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="project-status">Status</Label>
-                <Select name="project-status" defaultValue={editingProject?.status || "Active"}>
+                <Select name="project-status" defaultValue={editingProject?.statusValue?.toString() || "1"}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="On Hold">On Hold</SelectItem>
-                    <SelectItem value="Completed">Completed</SelectItem>
+                    <SelectItem value="1">Active</SelectItem>
+                    <SelectItem value="2">On Hold</SelectItem>
+                    <SelectItem value="3">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="project-priority">Priority</Label>
+                <Select name="project-priority" defaultValue={editingProject?.priorityValue?.toString() || "2"}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Low</SelectItem>
+                    <SelectItem value="2">Medium</SelectItem>
+                    <SelectItem value="3">High</SelectItem>
+                    <SelectItem value="4">Critical</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -528,10 +617,15 @@ function ProjectCard({
       <CardContent>
         <CardDescription className="line-clamp-2 min-h-[40px]">{project.description}</CardDescription>
         <div className="mt-4 flex items-center justify-between">
-          <Badge className={`${statusColors[project.status]} font-normal`}>{project.status}</Badge>
+          <div className="flex items-center gap-2">
+            <Badge className={`${statusColors[project.status]} font-normal`}>{project.status}</Badge>
+            <Badge variant="outline" className={`${getPriorityColor(project.priorityValue)} border-current font-normal`}>
+              {project.priority}
+            </Badge>
+          </div>
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
-              <AvatarImage src={`/placeholder.svg?height=32&width=32`} alt={project.owner} />
+              <AvatarImage src="/placeholder-user.jpg" alt={project.owner} />
               <AvatarFallback className="text-xs bg-violet-100 text-violet-600">{project.initials}</AvatarFallback>
             </Avatar>
             <span className="text-sm text-gray-500 dark:text-gray-400">Updated {project.lastUpdated}</span>

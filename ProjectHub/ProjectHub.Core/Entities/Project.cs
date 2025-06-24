@@ -3,6 +3,21 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ProjectHub.Core.Entities
 {
+    public enum ProjectStatus
+    {
+        Active = 1,
+        OnHold = 2,
+        Completed = 3
+    }
+
+    public enum ProjectPriority
+    {
+        Low = 1,
+        Medium = 2,
+        High = 3,
+        Critical = 4
+    }
+
     public class Project
     {
         public int Id { get; set; }
@@ -19,5 +34,9 @@ namespace ProjectHub.Core.Entities
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         
         public Guid PublicId { get; set; } = Guid.NewGuid();
+        
+        public ProjectStatus Status { get; set; } = ProjectStatus.Active;
+        
+        public ProjectPriority Priority { get; set; } = ProjectPriority.Medium;
     }
 }

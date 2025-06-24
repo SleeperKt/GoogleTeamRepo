@@ -42,5 +42,7 @@ namespace ProjectHub.Core.Entities
         
         [MaxLength(500)]
         public string? Labels { get; set; } // JSON string of labels: ["Frontend", "Bug"]
+        
+        public double Position { get; set; } = 0; // For ordering tasks within columns
     }
 }

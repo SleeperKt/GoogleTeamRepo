@@ -14,5 +14,6 @@ namespace ProjectHub.Core.DataTransferObjects
         public int? Priority { get; set; }
         public string? Type { get; set; }
         public string[]? Labels { get; set; }
+        public double? Position { get; set; }
     }
 }

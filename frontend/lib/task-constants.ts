@@ -36,4 +36,17 @@ export const PRIORITY_MAP: Record<string | number, number> = {
   2: 2,
   3: 3,
   4: 4,
-} as const 
+} as const
+
+export const PROJECT_PRIORITIES = [
+  { value: 1, label: "Low", color: "text-blue-500" },
+  { value: 2, label: "Medium", color: "text-yellow-500" },
+  { value: 3, label: "High", color: "text-orange-500" },
+  { value: 4, label: "Critical", color: "text-red-500" },
+] as const
+
+export const PROJECT_STATUSES = [
+  { value: 1, label: "Active", color: "text-green-500" },
+  { value: 2, label: "On Hold", color: "text-gray-500" },
+  { value: 3, label: "Completed", color: "text-blue-500" },
+] as const 

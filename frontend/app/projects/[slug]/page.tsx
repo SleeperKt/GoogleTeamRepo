@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { API_BASE_URL } from "@/lib/api"
+import { PROJECT_PRIORITIES, PROJECT_STATUSES } from "@/lib/task-constants"
 
 // Interface definitions
 interface TeamMember {
@@ -100,18 +101,40 @@ interface ProjectActivity {
   color: string
 }
 
-// Status colors
-const statusColors: Record<string, string> = {
-  Active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-  "On Hold": "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
-  Completed: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+// Helper functions for status and priority
+const getStatusLabel = (status: number): string => {
+  const statusItem = PROJECT_STATUSES.find(s => s.value === status)
+  return statusItem?.label || "Unknown"
 }
 
-// Priority colors
-const priorityColors: Record<string, string> = {
-  High: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-  Medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-  Low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
+const getPriorityLabel = (priority: number): string => {
+  const priorityItem = PROJECT_PRIORITIES.find(p => p.value === priority)
+  return priorityItem?.label || "Unknown"
+}
+
+const getPriorityColor = (priority: number): string => {
+  const priorityItem = PROJECT_PRIORITIES.find(p => p.value === priority)
+  if (!priorityItem) return "text-gray-500"
+  
+  switch (priorityItem.label) {
+    case "Low": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+    case "Medium": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+    case "High": return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+    case "Critical": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+    default: return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+  }
+}
+
+const getStatusColor = (status: number): string => {
+  const statusItem = PROJECT_STATUSES.find(s => s.value === status)
+  if (!statusItem) return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+  
+  switch (statusItem.label) {
+    case "Active": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+    case "On Hold": return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+    case "Completed": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+    default: return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+  }
 }
 
 // Task status mapping
@@ -123,35 +146,31 @@ const TaskStatusMap: Record<number, string> = {
   4: "Cancelled"
 }
 
-// Metric card data
+// Metric card data - removed hardcoded change percentages since we don't have historical data
 const getMetricCards = (statistics: TaskStatistics | null, teamMembersCount: number) => [
   {
     label: "Total Tasks",
     value: statistics?.taskCounts.total || 0,
     icon: FileText,
     color: "bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-300",
-    change: "+12%"
   },
   {
     label: "Completed",
     value: statistics?.taskCounts.done || 0,
     icon: CheckCircle2,
     color: "bg-green-50 text-green-600 dark:bg-green-900 dark:text-green-300",
-    change: "+5%"
   },
   {
     label: "In Progress",
     value: statistics?.taskCounts.inProgress || 0,
     icon: PlayCircle,
     color: "bg-violet-50 text-violet-600 dark:bg-violet-900 dark:text-violet-300",
-    change: "-2%"
   },
   {
     label: "Team Members",
     value: teamMembersCount,
     icon: Users,
     color: "bg-amber-50 text-amber-600 dark:bg-amber-900 dark:text-amber-300",
-    change: "0%"
   },
 ]
 
@@ -326,17 +345,18 @@ export default function ProjectDetailPage() {
            completionPercentage = Math.round((statsData.taskCounts.done / statsData.taskCounts.total) * 100)
          }
 
-         // Set enhanced project data
+         // Set enhanced project data - use real backend data
          const enhancedProject = {
            ...projectData,
-           status: "Active",
-           priority: "High",
-           lastUpdated: new Date(projectData.createdAt).toLocaleString(),
-           owner: "Me",
+           // Use real status and priority from backend, with fallbacks
+           status: projectData.status || 1, // Default to Active if not set
+           priority: projectData.priority || 2, // Default to Medium if not set
+           lastUpdated: new Date(projectData.updatedAt || projectData.createdAt).toLocaleString(),
            initials: projectData.name.slice(0, 2).toUpperCase(),
            progress: completionPercentage,
            startDate: new Date(projectData.createdAt).toLocaleDateString(),
-           endDate: "2024-12-31" // Default end date, could be made configurable
+           // Use project's endDate if available, otherwise show as ongoing
+           endDate: projectData.endDate ? new Date(projectData.endDate).toLocaleDateString() : "Ongoing"
          }
 
          setProject(enhancedProject)
@@ -445,9 +465,11 @@ export default function ProjectDetailPage() {
                   <Edit className="mr-2 h-4 w-4" />
                   Edit Project
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
+                <DropdownMenuItem asChild>
+                  <Link href={`/projects/${publicId}/settings`}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -463,12 +485,12 @@ export default function ProjectDetailPage() {
               
               <div className="flex items-center space-x-6 mb-6">
                 <div className="flex items-center space-x-2">
-                  <Badge className={statusColors[project.status] ?? ""}>
-                    {project.status}
+                  <Badge className={getStatusColor(project.status)}>
+                    {getStatusLabel(project.status)}
                   </Badge>
-                  <Badge className={priorityColors[project.priority] ?? ""}>
-                    {project.priority} Priority
-                  </Badge>
+                                      <Badge className={getPriorityColor(project.priority)}>
+                     {getPriorityLabel(project.priority)} Priority
+                   </Badge>
                 </div>
                 
                 <div className="flex items-center space-x-4 text-sm text-gray-500">
@@ -478,7 +500,7 @@ export default function ProjectDetailPage() {
                   </div>
                   <div className="flex items-center">
                     <Clock className="mr-1 h-4 w-4" />
-                    Updated {new Date(project.createdAt).toLocaleDateString()}
+                    Updated {new Date(project.updatedAt || project.createdAt).toLocaleDateString()}
                   </div>
                 </div>
               </div>
@@ -531,11 +553,6 @@ export default function ProjectDetailPage() {
                       <div>
                         <p className="text-sm font-medium text-gray-600 mb-1">{card.label}</p>
                         <p className="text-3xl font-bold text-gray-900">{card.value}</p>
-                        <div className="flex items-center mt-2">
-                          <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
-                          <span className="text-xs text-green-600 font-medium">{card.change}</span>
-                          <span className="text-xs text-gray-500 ml-1">vs last month</span>
-                        </div>
                       </div>
                       <div className={`p-3 rounded-lg ${card.color}`}>
                         <card.icon className="h-6 w-6" />
@@ -575,10 +592,12 @@ export default function ProjectDetailPage() {
                     </Link>
                   </Button>
                   
-                  <Button variant="outline" className="h-auto p-4 flex flex-col items-start">
-                    <Settings className="h-5 w-5 mb-2" />
-                    <span className="font-medium">Project Settings</span>
-                    <span className="text-xs text-gray-500">Configure project options</span>
+                  <Button variant="outline" className="h-auto p-4 flex flex-col items-start" asChild>
+                    <Link href={`/projects/${publicId}/settings`}>
+                      <Settings className="h-5 w-5 mb-2" />
+                      <span className="font-medium">Project Settings</span>
+                      <span className="text-xs text-gray-500">Configure project options</span>
+                    </Link>
                   </Button>
                 </div>
               </CardContent>

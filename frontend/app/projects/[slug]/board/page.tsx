@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils"
 import { TaskDetailView } from "@/components/task-detail-view"
 import { CreateTaskSidebar } from "@/components/create-task-sidebar"
 import { apiRequest } from "@/lib/api"
+import { useProjectLabels } from "@/hooks/use-project-labels"
 
 // Type definitions
 interface Task {
@@ -55,20 +56,22 @@ interface Task {
   attachments?: number
   dueDate?: string | Date
   estimatedHours?: number
+  position: number
 }
 
 interface Column {
   id: string
   title: string
   tasks: Task[]
+  color?: string
+  order?: number
+  isCompleted?: boolean
+  stageId?: number
   status?: string
 }
 
 interface BoardData {
-  todo: Column
-  inprogress: Column
-  inreview: Column
-  done: Column
+  [key: string]: Column
 }
 
 interface ApiResponse {
@@ -76,7 +79,11 @@ interface ApiResponse {
   columns: Array<{
     id: string
     title: string
-    status: string
+    color?: string
+    order?: number
+    isCompleted?: boolean
+    stageId?: number
+    status?: string
     tasks: Task[]
   }>
 }
@@ -122,25 +129,26 @@ const priorityLevels = {
   4: { label: "Critical", icon: ArrowUp, color: "text-red-600" },
 }
 
-// Column definitions
-const columnDefinitions = [
-  { id: "todo", title: "To Do", icon: Clock, status: "Todo" },
-  { id: "inprogress", title: "In Progress", icon: ArrowUp, status: "InProgress" },
-  { id: "inreview", title: "In Review", icon: CheckCircle, status: "InReview" },
-  { id: "done", title: "Done", icon: CheckCircle, status: "Done" },
-]
+// Default icons for stages (can be customized later)
+const getStageIcon = (stageIndex: number, isCompleted: boolean) => {
+  if (isCompleted) return CheckCircle
+  switch (stageIndex) {
+    case 0: return Clock
+    case 1: return ArrowUp
+    case 2: return CheckCircle
+    default: return LayoutGrid
+  }
+}
 
 export default function ProjectBoardPage() {
   const params = useParams()
   const projectId = params.slug as string
   
+  // Use labels hook to access project labels
+  const { labels: projectLabels } = useProjectLabels(projectId)
+  
   const [project, setProject] = useState<Project | null>(null)
-  const [boardData, setBoardData] = useState<BoardData>({
-    todo: { id: "todo", title: "To Do", tasks: [] },
-    inprogress: { id: "inprogress", title: "In Progress", tasks: [] },
-    inreview: { id: "inreview", title: "In Review", tasks: [] },
-    done: { id: "done", title: "Done", tasks: [] },
-  })
+  const [boardData, setBoardData] = useState<BoardData>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -161,7 +169,7 @@ export default function ProjectBoardPage() {
   const [scrollDirection, setScrollDirection] = useState<string | null>(null)
   const scrollInterval = useRef<NodeJS.Timeout | null>(null)
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
-  const [selectedColumn, setSelectedColumn] = useState("todo")
+  const [selectedColumn, setSelectedColumn] = useState("")
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [lastSynced, setLastSynced] = useState<string | null>(null)
@@ -183,18 +191,19 @@ export default function ProjectBoardPage() {
       const data = await apiRequest<ApiResponse>(endpoint)
       
       // Transform API data to match frontend structure
-      const transformedData: BoardData = {
-        todo: { id: "todo", title: "To Do", tasks: [] },
-        inprogress: { id: "inprogress", title: "In Progress", tasks: [] },
-        inreview: { id: "inreview", title: "In Review", tasks: [] },
-        done: { id: "done", title: "Done", tasks: [] },
-      }
+      const transformedData: BoardData = {}
 
-      // Map tasks to columns based on status
+      // Map columns from workflow stages
       data.columns.forEach((column) => {
-        const columnKey = column.id.toLowerCase() as keyof BoardData
-        if (transformedData[columnKey]) {
-          transformedData[columnKey].tasks = column.tasks || []
+        transformedData[column.id] = {
+          id: column.id,
+          title: column.title,
+          tasks: column.tasks || [],
+          color: column.color,
+          order: column.order,
+          isCompleted: column.isCompleted,
+          stageId: column.stageId,
+          status: column.status
         }
       })
 
@@ -254,6 +263,36 @@ export default function ProjectBoardPage() {
 
     initializeBoard()
   }, [projectId])
+
+  // Listen for workflow changes from settings page
+  useEffect(() => {
+    const handleWorkflowReordered = (event: CustomEvent) => {
+      console.log('🔄 Board: Detected workflow reorder, refreshing board data...')
+      fetchBoardData()
+    }
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'workflowChanged') {
+        console.log('🔄 Board: Detected workflow change from storage, refreshing board data...')
+        fetchBoardData()
+      }
+      if (event.key === 'labelsChanged') {
+        console.log('🔄 Board: Detected labels change from storage, refreshing board data...')
+        fetchBoardData()
+      }
+    }
+
+    // Listen for same-tab events
+    window.addEventListener('workflowReordered', handleWorkflowReordered as EventListener)
+    
+    // Listen for cross-tab events
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      window.removeEventListener('workflowReordered', handleWorkflowReordered as EventListener)
+      window.removeEventListener('storage', handleStorageChange)
+    }
+  }, [fetchBoardData])
 
   // Refetch when filters change (but not on initial mount)
   useEffect(() => {
@@ -409,6 +448,33 @@ export default function ProjectBoardPage() {
     setScrollDirection(null)
   }
 
+  // Calculate position for reordering
+  const calculatePosition = (targetColumnId: string, targetTaskId: number | null): number => {
+    const targetColumn = boardData[targetColumnId as keyof BoardData]
+    if (!targetColumn) return 1000
+    
+    const tasks = targetColumn.tasks.sort((a, b) => a.position - b.position)
+    
+    if (!targetTaskId) {
+      // Dropped at the end of the column
+      return tasks.length > 0 ? tasks[tasks.length - 1].position + 1000 : 1000
+    }
+    
+    // Find the position to insert before targetTaskId
+    const targetIndex = tasks.findIndex(t => t.id === targetTaskId)
+    if (targetIndex === -1) return 1000
+    
+    if (targetIndex === 0) {
+      // Insert at the beginning
+      return tasks[0].position / 2
+    }
+    
+    // Insert between two tasks
+    const prevTask = tasks[targetIndex - 1]
+    const nextTask = tasks[targetIndex]
+    return (prevTask.position + nextTask.position) / 2
+  }
+
   // Handle drop
   const handleDrop = (e: React.DragEvent, targetColumnId: string, targetTaskId: number | null = null) => {
     e.preventDefault()
@@ -427,15 +493,18 @@ export default function ProjectBoardPage() {
       dropTarget.style.transform = "scale(1)"
     }, 150)
     
-    // Don't do anything if dropped in the same position
-    if (sourceColumnId === targetColumnId && !targetTaskId) {
+    // Calculate new position
+    const newPosition = calculatePosition(targetColumnId, targetTaskId)
+    
+    // Don't do anything if dropped in the same position (same column and same task)
+    if (sourceColumnId === targetColumnId && targetTaskId === task.id) {
       setDraggedTask(null)
       setDragOverColumn(null)
       setDragOverTaskId(null)
       return
     }
     
-    updateTaskStatus(task.id, targetColumnId)
+    reorderTask(task.id, targetColumnId, newPosition)
     
     // Clear drag state immediately for visual feedback, but with a slight delay to ensure all operations complete
     setTimeout(() => {
@@ -445,23 +514,47 @@ export default function ProjectBoardPage() {
     }, 10)
   }
 
-  // Update task status via API
-  const updateTaskStatus = async (taskId: number, newColumnId: string) => {
+  // Reorder task with position
+  const reorderTask = async (taskId: number, newColumnId: string, newPosition: number) => {
     if (!projectId) return
 
-    const statusMap: Record<string, number> = {
-      todo: 1,        // Todo
-      inprogress: 2,  // InProgress
-      inreview: 3,    // InReview
-      done: 4         // Done
-    }
-
+    // Create dynamic status mapping based on actual board columns
+    const boardColumns = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const columnToStatusMap: Record<string, number> = {};
     const statusNames: Record<number, string> = {
       1: "Todo",
       2: "InProgress", 
       3: "InReview",
-      4: "Done"
+      4: "Done",
+      5: "Cancelled"
     }
+
+    console.log('🔧 DRAG & DROP: Board columns available:', boardColumns.map(c => ({ id: c.id, title: c.title, order: c.order })));
+    console.log('🔧 DRAG & DROP: Target column ID:', newColumnId);
+
+    // Map actual column IDs to TaskStatus enum values based on order
+    boardColumns.forEach((column, index) => {
+      let statusValue = index + 1; // TaskStatus starts at 1
+      
+      // Cap at maximum supported TaskStatus value (20)
+      if (statusValue > 20) {
+        console.warn(`⚠️ Column ${column.title} exceeds maximum supported stages (20). Capping at 20.`);
+        statusValue = 20;
+      }
+      
+      columnToStatusMap[column.id] = statusValue;
+      
+      // Extend statusNames for additional columns beyond the default 4
+      if (statusValue > 4) {
+        statusNames[statusValue] = column.title || `Stage ${statusValue}`;
+      }
+    });
+
+    console.log('📊 Column mapping created:', {
+      boardColumns: boardColumns.map(c => ({ id: c.id, title: c.title, order: c.order })),
+      columnToStatusMap,
+      statusNames
+    });
 
     // Find the current task to preserve its data
     let currentTask: Task | undefined
@@ -475,19 +568,15 @@ export default function ProjectBoardPage() {
     }
 
     if (!currentTask || !sourceColumnId) {
-      console.error('Task not found for status update')
-      return
-    }
-
-    // Don't update if already in the target column
-    if (sourceColumnId === newColumnId) {
+      console.error('Task not found for reordering')
       return
     }
 
     // Create optimistic update data
     const optimisticTask: Task = {
       ...currentTask,
-      status: statusNames[statusMap[newColumnId]]
+      status: statusNames[columnToStatusMap[newColumnId]],
+      position: newPosition
     }
 
     // Apply optimistic update immediately
@@ -500,10 +589,13 @@ export default function ProjectBoardPage() {
         tasks: newBoardData[sourceColumnId as keyof BoardData].tasks.filter(t => t.id !== taskId)
       }
       
-      // Add task to target column
+      // Add task to target column and sort by position
+      const targetTasks = [...newBoardData[newColumnId as keyof BoardData].tasks, optimisticTask]
+      targetTasks.sort((a, b) => a.position - b.position)
+      
       newBoardData[newColumnId as keyof BoardData] = {
         ...newBoardData[newColumnId as keyof BoardData],
-        tasks: [optimisticTask, ...newBoardData[newColumnId as keyof BoardData].tasks]
+        tasks: targetTasks
       }
       
       return newBoardData
@@ -511,34 +603,51 @@ export default function ProjectBoardPage() {
 
     // Delay selected task update to prevent UI lag during drag
     if (selectedTask && selectedTask.id === taskId) {
-      // Use a small delay to ensure drag operation completes smoothly
       setTimeout(() => {
         setSelectedTask(optimisticTask)
       }, 100)
     }
 
     try {
+      // Check if the target column exists in boardData
+      if (!(newColumnId in boardData)) {
+        console.error('❌ Target column not found in board data:', newColumnId);
+        console.error('Available columns:', Object.keys(boardData));
+        return;
+      }
+
+      // Check if we have a valid status mapping for this column
+      if (!(newColumnId in columnToStatusMap)) {
+        console.error('❌ No status mapping found for column:', newColumnId);
+        console.error('Available columns:', Object.keys(boardData));
+        console.error('Available mappings:', columnToStatusMap);
+        console.error('Board columns:', boardColumns.map(c => ({ id: c.id, title: c.title, order: c.order })));
+        return;
+      }
+
+      // Use the new reorder API endpoint
       const payload = {
-        status: statusMap[newColumnId],
-        // Preserve existing labels and other fields to prevent data loss
-        ...(currentTask?.labels && { labels: currentTask.labels }),
-        ...(currentTask?.title && { title: currentTask.title }),
-        ...(currentTask?.description && { description: currentTask.description }),
-        ...(currentTask?.priority && { priority: currentTask.priority }),
-        ...(currentTask?.type && { type: currentTask.type }),
-        ...(currentTask?.estimatedHours && { estimatedHours: currentTask.estimatedHours }),
-        // Handle assignee properly - preserve the assigneeId (which can be null for unassigned)
-        assigneeId: currentTask?.assigneeId || null
+        status: columnToStatusMap[newColumnId],
+        position: newPosition
       };
 
-      await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}`, {
+      console.log('🔄 Sending reorder request:', { taskId, newColumnId, payload });
+      console.log('🔄 Full request details:', {
+        url: `/api/projects/public/${projectId}/tasks/${taskId}/reorder`,
+        method: 'PUT',
+        payload: JSON.stringify(payload)
+      });
+
+      const response = await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}/reorder`, {
         method: 'PUT',
         body: JSON.stringify(payload)
       })
+      
+      console.log('✅ Reorder response received:', response);
 
-      console.log('✅ Task status updated successfully via drag and drop')
+      console.log('✅ Task reordered successfully via drag and drop')
     } catch (err) {
-      console.error('❌ Error updating task status via drag and drop:', err)
+      console.error('❌ Error reordering task via drag and drop:', err)
       
       // Revert optimistic update on failure
       setBoardData(prevBoardData => {
@@ -550,10 +659,13 @@ export default function ProjectBoardPage() {
           tasks: newBoardData[newColumnId as keyof BoardData].tasks.filter(t => t.id !== taskId)
         }
         
-        // Add task back to source column
+        // Add task back to source column and sort by position
+        const sourceTasks = [...newBoardData[sourceColumnId as keyof BoardData].tasks, currentTask]
+        sourceTasks.sort((a, b) => a.position - b.position)
+        
         newBoardData[sourceColumnId as keyof BoardData] = {
           ...newBoardData[sourceColumnId as keyof BoardData],
-          tasks: [currentTask, ...newBoardData[sourceColumnId as keyof BoardData].tasks]
+          tasks: sourceTasks
         }
         
         return newBoardData
@@ -607,13 +719,18 @@ export default function ProjectBoardPage() {
 
   // Map column ID to initial stage for task creation
   const getInitialStageFromColumn = (columnId: string): string => {
-    const columnToStageMap: Record<string, string> = {
-      "todo": "To Do",
-      "inprogress": "In Progress", 
-      "inreview": "Review",
-      "done": "Done"
+    // Return default if no columnId provided
+    if (!columnId || columnId.trim() === "") {
+      return "To Do"
     }
-    return columnToStageMap[columnId] || "To Do"
+    
+    const column = boardData[columnId]
+    if (column && column.title) {
+      console.log('🎯 Board: getInitialStageFromColumn - columnId:', columnId, 'title:', column.title)
+      return column.title
+    }
+    console.log('🎯 Board: getInitialStageFromColumn - columnId:', columnId, 'no column found, defaulting to "To Do"')
+    return "To Do"
   }
 
   // Handle task creation
@@ -634,6 +751,24 @@ export default function ProjectBoardPage() {
     }
   }
 
+  // Helper function to get dynamic status mapping
+  const getStatusMapping = () => {
+    // Sort columns by their configured workflow order (fallback to index order)
+    const boardColumns = Object.values(boardData).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+
+    const statusIdToColumnKey: Record<number, string | undefined> = {}
+    const statusIdToDisplayStatusString: Record<number, string | undefined> = {}
+
+    boardColumns.forEach((column, index) => {
+      const statusId = index + 1 // TaskStatus enum starts at 1
+      statusIdToColumnKey[statusId] = column.id
+      // Prefer the column title for the human-readable status string
+      statusIdToDisplayStatusString[statusId] = column.title ?? `Stage ${statusId}`
+    })
+
+    return { statusIdToColumnKey, statusIdToDisplayStatusString }
+  }
+
   // Handle task update (called optimistically and on success from TaskDetailView)
   const handleTaskUpdated = (updatedTaskData?: any, isOptimistic?: boolean) => {
     console.log('📋 PROJECT BOARD: handleTaskUpdated called with status:', updatedTaskData?.status, 'isOptimistic:', isOptimistic);
@@ -651,20 +786,13 @@ export default function ProjectBoardPage() {
       return;
     }
 
-    const statusIdToColumnKey: Record<number, keyof BoardData | undefined> = {
-      1: "todo", 2: "inprogress", 3: "inreview", 4: "done",
-    };
-    const statusIdToDisplayStatusString: Record<number, string | undefined> = {
-      1: "Todo", 2: "InProgress", 3: "InReview", 4: "Done",
-    };
+    const { statusIdToColumnKey, statusIdToDisplayStatusString } = getStatusMapping();
 
     // Handle both numeric and string status formats
-    const statusStringToId: Record<string, number> = {
-      "Todo": 1,
-      "InProgress": 2,
-      "InReview": 3,
-      "Done": 4,
-    };
+    const statusStringToId: Record<string, number> = {}
+    Object.entries(statusIdToDisplayStatusString).forEach(([id, name]) => {
+      if (name) statusStringToId[name] = Number(id)
+    })
 
     // Normalize status to numeric ID
     let statusId: number;
@@ -704,6 +832,7 @@ export default function ProjectBoardPage() {
       estimatedHours: updatedTaskData.estimatedHours,
       comments: updatedTaskData.comments,
       attachments: updatedTaskData.attachments,
+      position: updatedTaskData.position || 0,
     };
 
     setBoardData(prevBoardData => {
@@ -761,20 +890,13 @@ export default function ProjectBoardPage() {
   const handleTaskUpdateFailed = (originalTaskData: any, attemptedOptimisticTaskData: any) => {
     console.warn('ProjectBoard: Task update failed. Reverting optimistic changes for task ID:', originalTaskData.id);
 
-    const statusIdToColumnKey: Record<number, keyof BoardData | undefined> = {
-      1: "todo", 2: "inprogress", 3: "inreview", 4: "done",
-    };
-    const statusIdToDisplayStatusString: Record<number, string | undefined> = {
-      1: "Todo", 2: "InProgress", 3: "InReview", 4: "Done",
-    };
+    const { statusIdToColumnKey, statusIdToDisplayStatusString } = getStatusMapping();
 
     // Handle both numeric and string status formats
-    const statusStringToId: Record<string, number> = {
-      "Todo": 1,
-      "InProgress": 2,
-      "InReview": 3,
-      "Done": 4,
-    };
+    const statusStringToId: Record<string, number> = {}
+    Object.entries(statusIdToDisplayStatusString).forEach(([id, name]) => {
+      if (name) statusStringToId[name] = Number(id)
+    })
 
     // Normalize original status to numeric ID
     let originalNumericStatus: number;
@@ -825,6 +947,7 @@ export default function ProjectBoardPage() {
       estimatedHours: originalTaskData.estimatedHours,
       comments: originalTaskData.comments,
       attachments: originalTaskData.attachments,
+      position: originalTaskData.position || 0,
     };
 
     setBoardData(prevBoardData => {
@@ -928,7 +1051,11 @@ export default function ProjectBoardPage() {
         </div>
         <Button
           className="bg-violet-600 hover:bg-violet-700 text-white"
-          onClick={() => handleOpenCreateTask("todo")}
+          onClick={() => {
+            // Use the first column ID instead of hardcoded "todo"
+            const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
+            handleOpenCreateTask(firstColumn?.id || "")
+          }}
         >
           <Plus className="mr-2 h-4 w-4" /> Add Task
         </Button>
@@ -944,7 +1071,11 @@ export default function ProjectBoardPage() {
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
             Start by adding tasks to your board to track your work visually.
           </p>
-          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => handleOpenCreateTask("todo")}>
+          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => {
+            // Use the first column ID instead of hardcoded "todo"
+            const firstColumn = Object.values(boardData).sort((a, b) => (a.order || 0) - (b.order || 0))[0]
+            handleOpenCreateTask(firstColumn?.id || "")
+          }}>
             <Plus className="mr-2 h-4 w-4" /> Create Task
           </Button>
         </div>
@@ -1062,9 +1193,10 @@ export default function ProjectBoardPage() {
             className="flex gap-4 pb-4 min-h-[calc(100vh-300px)] w-full"
             style={{ scrollBehavior: isScrolling ? "auto" : "smooth" }}
           >
-            {columnDefinitions.map((column) => {
-              const columnData = boardData[column.id as keyof BoardData]
-              const filteredTasks = filterTasks(columnData.tasks)
+            {Object.values(boardData)
+              .sort((a, b) => (a.order || 0) - (b.order || 0))
+              .map((column) => {
+              const filteredTasks = filterTasks(column.tasks)
 
               // Deduplicate tasks by id to avoid duplicate key warnings (can occur with rapid drag/drop)
               const uniqueTasks: Task[] = []
@@ -1076,8 +1208,11 @@ export default function ProjectBoardPage() {
                 }
               }
 
+              // Sort tasks by position
+              uniqueTasks.sort((a, b) => a.position - b.position)
+
               const isEmpty = uniqueTasks.length === 0
-              const ColumnIcon = column.icon
+              const ColumnIcon = getStageIcon(column.order || 0, column.isCompleted || false)
 
               return (
                 <div
@@ -1092,7 +1227,7 @@ export default function ProjectBoardPage() {
                 >
                   <div className="p-3 border-b bg-muted/30 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <ColumnIcon className="h-4 w-4 text-muted-foreground" />
+                      <ColumnIcon className="h-4 w-4" style={{ color: column.color || '#6b7280' }} />
                       <h3 className="font-medium">{column.title}</h3>
                       <Badge
                         variant="outline"
@@ -1130,6 +1265,7 @@ export default function ProjectBoardPage() {
                                 "p-3 bg-white dark:bg-gray-800 rounded-md border shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer",
                                 dragOverTaskId === task.id && "border-violet-500 ring-2 ring-violet-500 ring-opacity-50 bg-violet-50 dark:bg-violet-950/20",
                                 draggedTask?.task.id === task.id && "opacity-40 scale-95 shadow-none",
+                                selectedTask?.id === task.id && taskDetailOpen && "border-violet-600 ring-2 ring-violet-600 ring-opacity-40 bg-violet-50 dark:bg-violet-950/30 shadow-lg",
                                 viewMode === "compact" ? "p-2" : "p-3",
                                 taskTypeColor.includes("border") &&
                                   `border-l-4 ${taskTypeColor.split(" ").find((c: string) => c.startsWith("border-"))}`,
@@ -1222,7 +1358,7 @@ export default function ProjectBoardPage() {
         onTaskCreated={handleTaskCreated}
         projectPublicId={projectId}
         selectedColumnId={selectedColumn}
-        initialStage={getInitialStageFromColumn(selectedColumn)}
+        initialStage={selectedColumn ? getInitialStageFromColumn(selectedColumn) : "To Do"}
       />
 
       {/* Task Detail View Sidebar - Optimized for drag performance */}

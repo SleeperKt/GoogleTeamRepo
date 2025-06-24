@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth-context"
 import { Check, ChevronDown, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -18,9 +20,42 @@ import { cn } from "@/lib/utils"
 
 export function ProjectSelector() {
   const { currentProject, projects, setCurrentProject } = useProject()
+  const { isHydrated, token } = useAuth()
   const [open, setOpen] = useState(false)
+  const router = useRouter()
 
-  if (!currentProject) {
+  // Handle auto-selecting first project when available
+  useEffect(() => {
+    if (isHydrated && !currentProject && projects.length > 0) {
+      setCurrentProject(projects[0])
+    }
+  }, [isHydrated, currentProject, projects, setCurrentProject])
+
+  // Handle empty state - no projects available (prioritize this over loading)
+  if (isHydrated && projects.length === 0) {
+    return (
+      <div className="px-3 py-2">
+        <Button
+          variant="outline"
+          className="w-full justify-start h-auto p-3 border-dashed border-violet-300 text-violet-600 hover:bg-violet-50"
+          onClick={() => router.push("/projects?create=true")}
+        >
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full border-2 border-dashed border-violet-300 flex items-center justify-center">
+              <Plus className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start">
+              <span className="font-medium text-sm">Create Your First Project</span>
+              <span className="text-xs text-muted-foreground">Get started with ProjectHub</span>
+            </div>
+          </div>
+        </Button>
+      </div>
+    )
+  }
+
+  // Show loading state only if not hydrated yet
+  if (!isHydrated) {
     return (
       <div className="px-3 py-2">
         <div className="animate-pulse">
@@ -28,6 +63,22 @@ export function ProjectSelector() {
         </div>
       </div>
     )
+  }
+
+  // At this point, if no current project and we have projects, show loading while useEffect handles selection
+  if (!currentProject && projects.length > 0) {
+    return (
+      <div className="px-3 py-2">
+        <div className="animate-pulse">
+          <div className="h-10 bg-gray-200 rounded-md"></div>
+        </div>
+      </div>
+    )
+  }
+
+  // At this point, if no current project and no projects, we already handled empty state above
+  if (!currentProject) {
+    return null
   }
 
   return (
@@ -79,7 +130,7 @@ export function ProjectSelector() {
                       "text-xs px-1.5 py-0.5",
                       project.status === "Active" && "bg-green-50 text-green-700 border-green-200",
                       project.status === "On Hold" && "bg-gray-50 text-gray-700 border-gray-200",
-                      project.status === "Planning" && "bg-blue-50 text-blue-700 border-blue-200",
+                      project.status === "Completed" && "bg-blue-50 text-blue-700 border-blue-200",
                     )}
                   >
                     {project.status}
@@ -89,7 +140,13 @@ export function ProjectSelector() {
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="flex items-center gap-2 p-3 cursor-pointer text-violet-600">
+          <DropdownMenuItem 
+            className="flex items-center gap-2 p-3 cursor-pointer text-violet-600"
+            onClick={() => {
+              setOpen(false)
+              router.push("/projects?create=true")
+            }}
+          >
             <div className="h-8 w-8 rounded-full border-2 border-dashed border-violet-300 flex items-center justify-center">
               <Plus className="h-4 w-4" />
             </div>

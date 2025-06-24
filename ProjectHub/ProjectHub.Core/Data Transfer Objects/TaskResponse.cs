@@ -30,5 +30,6 @@ namespace ProjectHub.Core.DataTransferObjects
         public string[]? Labels { get; set; }
         public int? Comments { get; set; }
         public int? Activities { get; set; }
+        public double Position { get; set; }
     }
 }

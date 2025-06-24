@@ -18,6 +18,10 @@ interface RequestOptions extends RequestInit {
    * will be attached to the request if one is present in localStorage.
    */
   auth?: boolean;
+  /**
+   * Request timeout in milliseconds (default: 30000ms/30s)
+   */
+  timeout?: number;
 }
 
 function getAuthToken(): string | null {
@@ -27,7 +31,7 @@ function getAuthToken(): string | null {
 
 export async function apiRequest<T = unknown>(
   endpoint: string,
-  { auth = true, headers, ...options }: RequestOptions = {}
+  { auth = true, timeout = 30000, headers, ...options }: RequestOptions = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
@@ -42,36 +46,53 @@ export async function apiRequest<T = unknown>(
     }
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...headers,
-    },
-  });
+  // Create an AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  if (!response.ok) {
-    // Try to read server error message
-    let message = `Request failed with ${response.status}`;
-    try {
-      const json = await response.json();
-      if (json && typeof json === "object" && "message" in json) {
-        message = (json as any).message as string;
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...headers,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      // Try to read server error message
+      let message = `Request failed with ${response.status}`;
+      try {
+        const json = await response.json();
+        if (json && typeof json === "object" && "message" in json) {
+          message = (json as any).message as string;
+        }
+      } catch {
+        /* ignore JSON parse error */
       }
-    } catch {
-      /* ignore JSON parse error */
+      throw new Error(message);
     }
-    throw new Error(message);
+
+    // If server responds with no content
+    if (response.status === 204) return undefined as T;
+
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      return (await response.json()) as T;
+    }
+
+    // Fallback to text for non-JSON responses
+    return (await response.text()) as unknown as T;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeout}ms`);
+    }
+    
+    throw error;
   }
-
-  // If server responds with no content
-  if (response.status === 204) return undefined as T;
-
-  const contentType = response.headers.get("content-type");
-  if (contentType && contentType.includes("application/json")) {
-    return (await response.json()) as T;
-  }
-
-  // Fallback to text for non-JSON responses
-  return (await response.text()) as unknown as T;
 } 

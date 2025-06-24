@@ -12,6 +12,7 @@ namespace ProjectHub.Core.Interfaces
         Task<IEnumerable<TaskResponse>> GetProjectTasksAsync(int projectId, string requestingUserId, TaskFilterRequest? filter = null);
         Task<TaskResponse> CreateTaskAsync(int projectId, CreateTaskRequest request, string createdByUserId);
         Task<TaskResponse> UpdateTaskAsync(int id, UpdateTaskRequest request, string requestingUserId);
+        Task<TaskResponse> ReorderTaskAsync(int taskId, TaskReorderRequest request, string requestingUserId);
         Task DeleteTaskAsync(int id, string requestingUserId);
         Task<int> GetTaskCountAsync(int projectId, string requestingUserId, TaskFilterRequest? filter = null);
         Task<IEnumerable<TaskResponse>> GetMyTasksAsync(string userId);

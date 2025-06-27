@@ -12,12 +12,6 @@ export default function BillingPage() {
   return (
     <div className="p-4 md:p-6">
       <div className="mb-6">
-        <Button variant="ghost" size="sm" asChild className="mb-4">
-          <Link href="/projects">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to projects
-          </Link>
-        </Button>
         <h1 className="text-2xl md:text-3xl font-bold">Billing</h1>
         <p className="text-muted-foreground mt-2">Manage your subscription and payment methods</p>
       </div>

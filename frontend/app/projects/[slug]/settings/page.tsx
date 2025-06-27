@@ -2407,10 +2407,6 @@ export default function ProjectGeneralSettingsPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-2">Project Not Found</h1>
           <p className="text-muted-foreground mb-4">The project you're looking for doesn't exist or you don't have access to it.</p>
-          <Button onClick={() => router.push('/projects')} variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Projects
-          </Button>
         </div>
       </div>
     )
@@ -2431,17 +2427,6 @@ export default function ProjectGeneralSettingsPage() {
     <div className="p-4 md:p-6 w-full">
       {/* Header Section */}
       <div className="mb-6">
-        <div className="flex items-center gap-4 mb-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(`/projects/${projectId}`)}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Project
-          </Button>
-        </div>
         <h1 className="text-2xl md:text-3xl font-bold mb-2">
           {project.name} Settings
         </h1>

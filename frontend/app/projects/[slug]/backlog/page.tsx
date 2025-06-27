@@ -340,14 +340,6 @@ export default function ProjectBacklogPage() {
 
   return (
     <div className="p-4 md:p-6 w-full">
-      {/* Back Button */}
-      <Button variant="ghost" size="sm" asChild className="mb-4">
-        <Link href={`/projects/${projectId}`}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to project
-        </Link>
-      </Button>
-
       {/* Header Section */}
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold mb-2">Backlog</h1>

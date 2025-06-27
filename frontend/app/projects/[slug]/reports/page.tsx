@@ -252,11 +252,6 @@ export default function ProjectReportsPage() {
   if (!project) {
     return (
       <div className="p-4 md:p-6">
-        <Button variant="ghost" size="sm" asChild className="mb-4">
-          <Link href="/projects">
-            <ArrowLeft className="mr-2 h-4 w-4" />Back to projects
-          </Link>
-        </Button>
         <div className="text-center mt-10">
           <h1 className="text-2xl font-bold mb-2">Project Not Found</h1>
           <p className="text-muted-foreground mb-6">The project you're looking for doesn't exist.</p>
@@ -276,13 +271,6 @@ export default function ProjectReportsPage() {
 
   return (
     <div className="p-4 md:p-6 w-full">
-      {/* Back Button */}
-      <Button variant="ghost" size="sm" asChild className="mb-4">
-        <Link href={`/projects/${publicId}`}>
-          <ArrowLeft className="mr-2 h-4 w-4" />Back to project
-        </Link>
-      </Button>
-
       {/* Header Section */}
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold mb-2">Reports</h1>

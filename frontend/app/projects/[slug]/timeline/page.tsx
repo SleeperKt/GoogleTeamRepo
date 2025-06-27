@@ -458,6 +458,31 @@ function GanttView({ tasks }: { tasks: Task[] }) {
         <h3 className="text-lg font-medium mb-4">Gantt Chart</h3>
         
         <div className="overflow-x-auto">
+          {/* Today Indicator Above Timeline */}
+          {(() => {
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            const todayIndex = timelineDates.findIndex((date: Date) => 
+              date.toDateString() === today.toDateString()
+            )
+            if (todayIndex >= 0) {
+              const leftPosition = 16 + (todayIndex / timelineDates.length) * (100 - 16) + ((100 - 16) / timelineDates.length / 2)
+              return (
+                <div 
+                  className="relative mb-2 h-6"
+                >
+                  <div 
+                    className="absolute bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap font-medium transform -translate-x-1/2"
+                    style={{ left: `${leftPosition}%` }}
+                  >
+                    Today
+                  </div>
+                </div>
+              )
+            }
+            return null
+          })()}
+          
           {/* Timeline Header */}
           <div className="flex items-center mb-4">
             <div className="w-64 flex-shrink-0"></div>

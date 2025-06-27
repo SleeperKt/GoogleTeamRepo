@@ -421,6 +421,85 @@ export default function ProjectReportsPage() {
     )
   }
 
+  const exportReportAsCSV = () => {
+    if (!project) return
+
+    // Prepare CSV content
+    const csvContent = []
+    
+    // Header with project info
+    csvContent.push(`Project Report: ${project.name}`)
+    csvContent.push(`Generated: ${new Date().toLocaleDateString()}`)
+    csvContent.push(`Date Range: ${filters.dateRange}`)
+    csvContent.push('') // Empty line
+    
+    // Summary statistics
+    csvContent.push('Summary Statistics')
+    csvContent.push('Metric,Value')
+    csvContent.push(`Total Tasks,${dynamicStatistics.total}`)
+    csvContent.push(`Completed Tasks,${dynamicStatistics.completedCount}`)
+    csvContent.push(`In Progress Tasks,${dynamicStatistics.inProgressCount}`)
+    const completionRate = dynamicStatistics.total > 0 
+      ? Math.round((dynamicStatistics.completedCount / dynamicStatistics.total) * 100) 
+      : 0
+    csvContent.push(`Completion Rate,${completionRate}%`)
+    csvContent.push(`Team Members,${participants.length}`)
+    csvContent.push('') // Empty line
+    
+    // Task Status Distribution
+    csvContent.push('Task Status Distribution')
+    csvContent.push('Stage,Task Count,Percentage')
+    
+    const taskStatusDistribution = getTaskStatusDistribution()
+    const totalTasks = taskStatusDistribution.reduce((sum, item) => sum + item.count, 0)
+    
+    taskStatusDistribution.forEach(stage => {
+      const percentage = totalTasks > 0 ? Math.round((stage.count / totalTasks) * 100) : 0
+      csvContent.push(`${stage.status},${stage.count},${percentage}%`)
+    })
+    
+    // Add active filters info if any
+    if (hasActiveFilters()) {
+      csvContent.push('') // Empty line
+      csvContent.push('Active Filters')
+      if (filters.assigneeId) {
+        const assigneeName = filters.assigneeId === "unassigned" 
+          ? "Unassigned" 
+          : participants.find((p: any) => p.id === filters.assigneeId)?.name || "Unknown"
+        csvContent.push(`Assignee: ${assigneeName}`)
+      }
+      if (filters.labelIds.length > 0) {
+        const labelNames = filters.labelIds.map(id => labels.find(l => l.id === id)?.name || "Unknown").join(", ")
+        csvContent.push(`Labels: ${labelNames}`)
+      }
+      if (filters.stageIds.length > 0) {
+        const stageNames = filters.stageIds.map(id => workflowStages.find(s => s.id === id)?.name || "Unknown").join(", ")
+        csvContent.push(`Stages: ${stageNames}`)
+      }
+      if (filters.taskTypes.length > 0) {
+        csvContent.push(`Task Types: ${filters.taskTypes.join(", ")}`)
+      }
+      if (filters.priorities.length > 0) {
+        const priorityNames = filters.priorities.map(p => PRIORITY_LEVELS.find(pl => pl.value === p)?.label || "Unknown").join(", ")
+        csvContent.push(`Priorities: ${priorityNames}`)
+      }
+    }
+    
+    // Convert to CSV string
+    const csvString = csvContent.join('\n')
+    
+    // Create and download file
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `${project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-report.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   if (loading || stagesLoading || labelsLoading || participantsLoading) {
     return (
       <div className="p-4 md:p-6">
@@ -478,9 +557,9 @@ export default function ProjectReportsPage() {
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
-            <Button variant="outline" size="sm" className="h-9">
+            <Button variant="outline" size="sm" className="h-9" onClick={exportReportAsCSV}>
               <Download className="mr-2 h-4 w-4" />
-              Export
+              Export CSV
             </Button>
           </div>
         </div>

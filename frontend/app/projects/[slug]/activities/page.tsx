@@ -216,6 +216,8 @@ export default function ProjectActivitiesPage() {
     // Generate activities with real participant names
     for (let i = 0; i < 10; i++) {
       const participant = getRandomParticipant()
+      console.log('Selected participant for activity:', participant)
+      
       const actions = [
         'created task',
         'updated task status', 
@@ -227,17 +229,24 @@ export default function ProjectActivitiesPage() {
       const action = actions[Math.floor(Math.random() * actions.length)]
       const taskName = getRandomTaskName()
       
+      // Get participant name with better fallbacks
+      const participantName = participant.userName || participant.UserName || participant.email || participant.Email || 'Unknown User'
+      console.log('Using participant name:', participantName)
+      
       mockActivities.push({
         id: i + 1,
         action,
-        actorName: participant.userName || participant.UserName,
+        actorName: participantName,
         timestamp: new Date(Date.now() - (i + 1) * 60 * 60 * 1000).toISOString(), // Spread over hours
         objectType: 'task',
         objectName: taskName,
         details: action === 'created task' ? 'Added new task to the backlog' :
                 action === 'updated task status' ? 'Updated task status' :
                 action === 'added comment' ? 'Added a comment to this task' :
-                action === 'assigned user' ? `Assigned to ${getRandomParticipant().userName || getRandomParticipant().UserName}` :
+                action === 'assigned user' ? (() => {
+                  const assignee = getRandomParticipant()
+                  return `Assigned to ${assignee.userName || assignee.UserName || assignee.email || assignee.Email || 'Unknown User'}`
+                })() :
                 action === 'updated task priority' ? 'Changed task priority' :
                 'Marked task as completed',
         metadata: action === 'updated task status' ? {

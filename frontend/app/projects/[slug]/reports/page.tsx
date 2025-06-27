@@ -260,16 +260,18 @@ export default function ProjectReportsPage() {
 
     // Stage filter (based on workflow stages)
     if (filters.stageIds.length > 0) {
-      const stageStatusMap = new Map<number, number>()
       const sortedStages = [...workflowStages].sort((a, b) => a.order - b.order)
-      sortedStages.forEach((stage, index) => {
-        stageStatusMap.set(stage.id, index)
-      })
       
       filtered = filtered.filter(task => {
         return filters.stageIds.some(stageId => {
-          const statusValue = stageStatusMap.get(stageId)
-          return statusValue !== undefined && task.status === statusValue
+          // Find the stage index by ID
+          const stageIndex = sortedStages.findIndex(stage => stage.id === stageId)
+          if (stageIndex !== -1) {
+            // Convert stage index to TaskStatus (1-based)
+            const expectedTaskStatus = stageIndex + 1
+            return task.status === expectedTaskStatus
+          }
+          return false
         })
       })
     }
@@ -301,43 +303,19 @@ export default function ProjectReportsPage() {
       stageCounts.set(index, 0)
     })
 
-    // Count tasks by stage
+        // Count tasks by stage
     filteredTasks.forEach(task => {
-      console.log('🔍 Task status debug:', { taskId: task.id, status: task.status, statusType: typeof task.status })
-      
-      // Find the stage that matches this task's status
-      let stageIndex = -1
-      
+      // TaskStatus enum is 1-based (1=Todo, 2=InProgress, etc.)
+      // Workflow stages are sorted by order, so we need to map TaskStatus to stage index
       if (typeof task.status === 'number') {
-        // If status is a number, it could be stage order or stage ID
-        // First try to find by stage ID
-        const stageByIdIndex = sortedStages.findIndex(stage => stage.id === task.status)
-        if (stageByIdIndex !== -1) {
-          stageIndex = stageByIdIndex
-        } else {
-          // If not found by ID, treat as stage order (0-based index)
-          stageIndex = task.status
+        // Convert 1-based TaskStatus to 0-based stage index
+        const stageIndex = task.status - 1
+        
+        // Only count if we have a valid stage at this index
+        if (stageIndex >= 0 && stageIndex < sortedStages.length) {
+          const currentCount = stageCounts.get(stageIndex) || 0
+          stageCounts.set(stageIndex, currentCount + 1)
         }
-             } else if (typeof task.status === 'string') {
-         // If status is a string, find stage by name
-         const taskStatusStr = task.status as string
-         stageIndex = sortedStages.findIndex(stage => 
-           stage.name.toLowerCase() === taskStatusStr.toLowerCase() ||
-           stage.name.toLowerCase().replace(/\s+/g, '') === taskStatusStr.toLowerCase().replace(/\s+/g, '')
-         )
-       }
-      
-      console.log('🎯 Stage mapping:', { 
-        taskStatus: task.status, 
-        foundStageIndex: stageIndex, 
-        stageName: stageIndex >= 0 ? sortedStages[stageIndex]?.name : 'NOT_FOUND',
-        allStages: sortedStages.map((s, i) => ({ index: i, id: s.id, name: s.name, order: s.order }))
-      })
-      
-      // Only count if we found a valid stage
-      if (stageIndex >= 0 && stageIndex < sortedStages.length) {
-        const currentCount = stageCounts.get(stageIndex) || 0
-        stageCounts.set(stageIndex, currentCount + 1)
       }
     })
 

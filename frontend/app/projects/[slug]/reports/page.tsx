@@ -296,16 +296,49 @@ export default function ProjectReportsPage() {
     const stageCounts = new Map<number, number>()
     const sortedStages = [...workflowStages].sort((a, b) => a.order - b.order)
     
-    // Initialize counts
+    // Initialize counts for each stage
     sortedStages.forEach((stage, index) => {
       stageCounts.set(index, 0)
     })
 
     // Count tasks by stage
     filteredTasks.forEach(task => {
-      const stageIndex = task.status
-      const currentCount = stageCounts.get(stageIndex) || 0
-      stageCounts.set(stageIndex, currentCount + 1)
+      console.log('🔍 Task status debug:', { taskId: task.id, status: task.status, statusType: typeof task.status })
+      
+      // Find the stage that matches this task's status
+      let stageIndex = -1
+      
+      if (typeof task.status === 'number') {
+        // If status is a number, it could be stage order or stage ID
+        // First try to find by stage ID
+        const stageByIdIndex = sortedStages.findIndex(stage => stage.id === task.status)
+        if (stageByIdIndex !== -1) {
+          stageIndex = stageByIdIndex
+        } else {
+          // If not found by ID, treat as stage order (0-based index)
+          stageIndex = task.status
+        }
+             } else if (typeof task.status === 'string') {
+         // If status is a string, find stage by name
+         const taskStatusStr = task.status as string
+         stageIndex = sortedStages.findIndex(stage => 
+           stage.name.toLowerCase() === taskStatusStr.toLowerCase() ||
+           stage.name.toLowerCase().replace(/\s+/g, '') === taskStatusStr.toLowerCase().replace(/\s+/g, '')
+         )
+       }
+      
+      console.log('🎯 Stage mapping:', { 
+        taskStatus: task.status, 
+        foundStageIndex: stageIndex, 
+        stageName: stageIndex >= 0 ? sortedStages[stageIndex]?.name : 'NOT_FOUND',
+        allStages: sortedStages.map((s, i) => ({ index: i, id: s.id, name: s.name, order: s.order }))
+      })
+      
+      // Only count if we found a valid stage
+      if (stageIndex >= 0 && stageIndex < sortedStages.length) {
+        const currentCount = stageCounts.get(stageIndex) || 0
+        stageCounts.set(stageIndex, currentCount + 1)
+      }
     })
 
     return {

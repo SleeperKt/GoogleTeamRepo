@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Calendar, ChevronDown, Flag, ListFilter, Plus, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react"
+import { Calendar, ChevronDown, Flag, ListFilter, Plus, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, MoreHorizontal, Edit, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { MilestoneManagementDialog } from "@/components/milestone-management-dialog"
 import { useParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { API_BASE_URL } from "@/lib/api"
@@ -37,7 +39,7 @@ interface Task {
 }
 
 interface Milestone {
-  id: number
+  id: number | string
   title: string
   date: string
   status: string
@@ -75,6 +77,9 @@ export default function ProjectTimelinePage() {
   const [loading, setLoading] = useState(true)
   const [viewType, setViewType] = useState<ViewType>("gantt")
   const [expandedMilestone, setExpandedMilestone] = useState<string | number | null>(null)
+  const [createMilestoneOpen, setCreateMilestoneOpen] = useState(false)
+  const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null)
+  const [projectMilestones, setProjectMilestones] = useState<Milestone[]>([]) // Local state for milestones
 
   // Fetch project and tasks data
   useEffect(() => {
@@ -139,6 +144,37 @@ export default function ProjectTimelinePage() {
     fetchData()
   }, [token, publicId])
 
+  // Milestone management handlers
+  const handleCreateMilestone = async (milestoneData: Omit<Milestone, 'id'>) => {
+    // Here you would normally save to backend
+    const newMilestone: Milestone = {
+      ...milestoneData,
+      id: Date.now() // Temporary ID for demo
+    }
+    setProjectMilestones(prev => [...prev, newMilestone])
+    console.log('Created milestone:', newMilestone)
+  }
+
+  const handleUpdateMilestone = async (milestoneData: Omit<Milestone, 'id'>) => {
+    if (!editingMilestone) return
+    
+    // Here you would normally update in backend
+    const updatedMilestone: Milestone = {
+      ...milestoneData,
+      id: editingMilestone.id
+    }
+    setProjectMilestones(prev => 
+      prev.map(m => m.id === editingMilestone.id ? updatedMilestone : m)
+    )
+    console.log('Updated milestone:', updatedMilestone)
+  }
+
+  const handleDeleteMilestone = (milestoneId: number | string) => {
+    // Here you would normally delete from backend
+    setProjectMilestones(prev => prev.filter(m => m.id !== milestoneId))
+    console.log('Deleted milestone:', milestoneId)
+  }
+
   if (loading) {
     return (
       <div className="p-4 md:p-6">
@@ -189,8 +225,31 @@ export default function ProjectTimelinePage() {
 
       {/* Content based on selected view */}
       {viewType === "gantt" && <GanttView tasks={tasks} />}
-      {viewType === "milestones" && <MilestonesView milestones={milestones} tasks={tasks} expandedMilestone={expandedMilestone} setExpandedMilestone={setExpandedMilestone} />}
+      {viewType === "milestones" && (
+        <MilestonesView 
+          milestones={[...milestones, ...projectMilestones]} 
+          tasks={tasks} 
+          expandedMilestone={expandedMilestone} 
+          setExpandedMilestone={setExpandedMilestone}
+          onCreateMilestone={() => setCreateMilestoneOpen(true)}
+          onEditMilestone={setEditingMilestone}
+          onDeleteMilestone={handleDeleteMilestone}
+        />
+      )}
       {viewType === "calendar" && <CalendarView tasks={tasks} />}
+      
+      {/* Milestone Management Dialog */}
+      <MilestoneManagementDialog
+        open={createMilestoneOpen || editingMilestone !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreateMilestoneOpen(false)
+            setEditingMilestone(null)
+          }
+        }}
+        milestone={editingMilestone}
+        onSave={editingMilestone ? handleUpdateMilestone : handleCreateMilestone}
+      />
     </div>
   )
 }
@@ -399,12 +458,18 @@ function MilestonesView({
   milestones, 
   tasks, 
   expandedMilestone, 
-  setExpandedMilestone 
+  setExpandedMilestone,
+  onCreateMilestone,
+  onEditMilestone,
+  onDeleteMilestone
 }: { 
   milestones: Milestone[]
   tasks: Task[]
   expandedMilestone: string | number | null
   setExpandedMilestone: (id: string | number | null) => void
+  onCreateMilestone: () => void
+  onEditMilestone: (milestone: Milestone) => void
+  onDeleteMilestone: (id: number | string) => void
 }) {
   // Generate additional milestones based on project data
   const allMilestones = [
@@ -433,7 +498,7 @@ function MilestonesView({
             <p className="text-muted-foreground mb-4">
               Milestones help track important project markers and completed tasks.
             </p>
-            <Button>
+            <Button onClick={onCreateMilestone}>
               <Plus className="h-4 w-4 mr-2" />
               Add Milestone
             </Button>
@@ -498,9 +563,15 @@ function MilestonesView({
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-medium">Project Milestones</h3>
-          <Badge variant="secondary" className="text-xs">
-            {allMilestones.length} milestones
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="secondary" className="text-xs">
+              {allMilestones.length} milestones
+            </Badge>
+            <Button size="sm" onClick={onCreateMilestone}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Milestone
+            </Button>
+          </div>
         </div>
         
         <div className="space-y-4">
@@ -534,10 +605,36 @@ function MilestonesView({
                     <div className="flex items-center gap-2">
                       <Badge 
                         variant="outline" 
-                        className={statusColors[milestone.status as keyof typeof statusColors] || statusColors.upcoming}
+                        className="text-gray-600 bg-gray-50 border-gray-200"
                       >
                         {milestone.status.replace('-', ' ')}
                       </Badge>
+                      {/* Only add edit/delete for non-task milestones */}
+                      {!milestone.id.toString().startsWith('task-') && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation()
+                              onEditMilestone(milestone)
+                            }}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation()
+                              onDeleteMilestone(milestone.id)
+                            }} className="text-red-600">
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                       <ChevronDown 
                         className={`h-4 w-4 text-muted-foreground transition-transform ${
                           isExpanded ? 'rotate-180' : ''

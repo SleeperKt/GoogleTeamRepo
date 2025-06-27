@@ -129,13 +129,13 @@ export default function ProjectActivitiesPage() {
     fetchData()
   }, [token, publicId])
 
-  // Generate mock activities when participants are loaded and no real activities exist
+  // Generate demo message when no real activities exist
   useEffect(() => {
-    if (participants.length > 0 && activities.length === 0 && !loading) {
-      console.log('Participants loaded, generating mock activities')
+    if (activities.length === 0 && !loading) {
+      console.log('No activities found, showing demo message')
       generateMockActivities()
     }
-  }, [participants, activities.length, loading])
+  }, [activities.length, loading])
 
   const fetchActivities = async (pageNum: number = 1) => {
     try {
@@ -171,93 +171,22 @@ export default function ProjectActivitiesPage() {
   }
 
   const generateMockActivities = () => {
-    console.log('generateMockActivities called with participants:', participants)
-    // Use real project participants if available, otherwise show message about backend
-    if (!participants || participants.length === 0) {
-      console.log('No participants found, showing system message')
-      const noBackendActivities: ActivityItem[] = [
-        {
-          id: 1,
-          action: "system message",
-          actorName: "System",
-          timestamp: new Date().toISOString(),
-          objectType: 'project',
-          objectName: 'Activities Feature',
-          details: 'Activities endpoint not yet connected to backend. Real project activities will appear here once the backend API is implemented.'
-        }
-      ]
-      setActivities(noBackendActivities)
-      setHasMore(false)
-      return
-    }
-
-    console.log('Using participants for mock activities:', participants)
-
-    // Generate realistic activities using actual project participants
-    const getRandomParticipant = () => participants[Math.floor(Math.random() * participants.length)]
-    const getRandomTaskName = () => {
-      const taskNames = [
-        'Implement user authentication',
-        'Fix navigation bug', 
-        'Update UI components',
-        'Database optimization',
-        'API Integration',
-        'Write documentation',
-        'Code review',
-        'Bug fixes',
-        'Feature development',
-        'Testing improvements'
-      ]
-      return taskNames[Math.floor(Math.random() * taskNames.length)]
-    }
-
-    const mockActivities: ActivityItem[] = []
+    console.log('Showing demo message for Activities page')
+    // Show clear demo message instead of confusing fake data
+    const demoMessage: ActivityItem[] = [
+      {
+        id: 1,
+        action: "demo notice",
+        actorName: "System",
+        timestamp: new Date().toISOString(),
+        objectType: 'project',
+        objectName: 'Activities Feature - Demo Mode',
+        details: '🚧 This is a demo/placeholder view. Real project activities will appear here once the backend API is implemented to track actual task creation, updates, comments, and other project actions.'
+      }
+    ]
     
-    // Generate activities with real participant names
-    for (let i = 0; i < 10; i++) {
-      const participant = getRandomParticipant()
-      console.log('Selected participant for activity:', participant)
-      
-      const actions = [
-        'created task',
-        'updated task status', 
-        'added comment',
-        'assigned user',
-        'updated task priority',
-        'completed task'
-      ]
-      const action = actions[Math.floor(Math.random() * actions.length)]
-      const taskName = getRandomTaskName()
-      
-      // Get participant name with better fallbacks
-      const participantName = participant.userName || participant.UserName || participant.email || participant.Email || 'Unknown User'
-      console.log('Using participant name:', participantName)
-      
-      mockActivities.push({
-        id: i + 1,
-        action,
-        actorName: participantName,
-        timestamp: new Date(Date.now() - (i + 1) * 60 * 60 * 1000).toISOString(), // Spread over hours
-        objectType: 'task',
-        objectName: taskName,
-        details: action === 'created task' ? 'Added new task to the backlog' :
-                action === 'updated task status' ? 'Updated task status' :
-                action === 'added comment' ? 'Added a comment to this task' :
-                action === 'assigned user' ? (() => {
-                  const assignee = getRandomParticipant()
-                  return `Assigned to ${assignee.userName || assignee.UserName || assignee.email || assignee.Email || 'Unknown User'}`
-                })() :
-                action === 'updated task priority' ? 'Changed task priority' :
-                'Marked task as completed',
-        metadata: action === 'updated task status' ? {
-          fromStatus: 'In Progress',
-          toStatus: 'Done'
-        } : undefined
-      })
-    }
-    
-    setActivities(mockActivities)
-    setHasMore(false) // No more mock data to load
+    setActivities(demoMessage)
+    setHasMore(false)
   }
 
   const loadMore = () => {
@@ -318,6 +247,8 @@ export default function ProjectActivitiesPage() {
         return <User className="h-4 w-4 text-orange-600" />
       case 'system message':
         return <MessageSquare className="h-4 w-4 text-gray-600" />
+      case 'demo notice':
+        return <MessageSquare className="h-4 w-4 text-blue-600" />
       case 'deleted task':
         return <Trash className="h-4 w-4 text-red-600" />
       default:

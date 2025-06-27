@@ -53,6 +53,7 @@ import {
 import { ProjectSelector } from "@/components/project-selector"
 import { useAuth } from "@/contexts/auth-context"
 import { useProject } from "@/contexts/project-context"
+import { DynamicTitle } from "@/components/dynamic-title"
 import { API_BASE_URL } from "@/lib/api"
 
 interface Project {
@@ -193,6 +194,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
+      <DynamicTitle />
       <div className="flex h-screen w-screen overflow-hidden">
         <Sidebar className="border-r">
           <SidebarHeader className="border-b h-14 px-4 py-3">

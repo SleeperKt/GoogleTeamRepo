@@ -74,7 +74,7 @@ export default function ProjectTimelinePage() {
   const [milestones, setMilestones] = useState<Milestone[]>([])
   const [loading, setLoading] = useState(true)
   const [viewType, setViewType] = useState<ViewType>("gantt")
-  const [expandedMilestone, setExpandedMilestone] = useState<number | null>(null)
+  const [expandedMilestone, setExpandedMilestone] = useState<string | number | null>(null)
 
   // Fetch project and tasks data
   useEffect(() => {
@@ -355,7 +355,7 @@ function GanttView({ tasks }: { tasks: Task[] }) {
   )
 }
 
-// Milestones View Component - Placeholder for now
+// Milestones View Component
 function MilestonesView({ 
   milestones, 
   tasks, 
@@ -364,23 +364,220 @@ function MilestonesView({
 }: { 
   milestones: Milestone[]
   tasks: Task[]
-  expandedMilestone: number | null
-  setExpandedMilestone: (id: number | null) => void
+  expandedMilestone: string | number | null
+  setExpandedMilestone: (id: string | number | null) => void
 }) {
+  // Generate additional milestones based on project data
+  const allMilestones = [
+    ...milestones,
+    // Add completed tasks as mini-milestones
+    ...tasks
+      .filter(task => task.status === 4 && task.dueDate) // Only completed tasks with due dates
+      .map(task => ({
+        id: `task-${task.id}`,
+        title: `Completed: ${task.title}`,
+        date: task.dueDate!,
+        status: "completed",
+        description: `Task completed${task.assigneeName ? ` by ${task.assigneeName}` : ''}`,
+        linkedTasks: [task.id]
+      }))
+  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+  if (allMilestones.length === 0) {
+    return (
+      <Card className="bg-white dark:bg-gray-800">
+        <CardContent className="p-6">
+          <h3 className="text-lg font-medium mb-4">Project Milestones</h3>
+          <div className="text-center py-8">
+            <Flag className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">No milestones yet</h3>
+            <p className="text-muted-foreground mb-4">
+              Milestones help track important project markers and completed tasks.
+            </p>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Milestone
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const getMilestoneIcon = (status: string) => {
+    switch (status) {
+      case "completed":
+        return <Flag className="h-5 w-5 text-green-600" />
+      case "in-progress":
+        return <Flag className="h-5 w-5 text-blue-600" />
+      case "upcoming":
+        return <Flag className="h-5 w-5 text-gray-400" />
+      default:
+        return <Flag className="h-5 w-5 text-gray-400" />
+    }
+  }
+
+  const getMilestoneColor = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900"
+      case "in-progress":
+        return "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900"
+      case "upcoming":
+        return "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800"
+      default:
+        return "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800"
+    }
+  }
+
+  const getLinkedTasks = (milestone: any) => {
+    if (!milestone.linkedTasks) return []
+    return tasks.filter(task => milestone.linkedTasks.includes(task.id))
+  }
+
+  const formatMilestoneDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffTime = date.getTime() - now.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    
+    if (diffDays === 0) return "Today"
+    if (diffDays === 1) return "Tomorrow"
+    if (diffDays === -1) return "Yesterday"
+    if (diffDays > 0) return `In ${diffDays} days`
+    if (diffDays < 0) return `${Math.abs(diffDays)} days ago`
+    
+    return date.toLocaleDateString('en-US', { 
+      month: 'long', 
+      day: 'numeric', 
+      year: 'numeric' 
+    })
+  }
+
   return (
     <Card className="bg-white dark:bg-gray-800">
       <CardContent className="p-6">
-        <h3 className="text-lg font-medium mb-4">Project Milestones</h3>
-        <p className="text-muted-foreground">Milestones view implementation coming soon...</p>
-        <div className="mt-4 space-y-2">
-          {milestones.map(milestone => (
-            <div key={milestone.id} className="p-3 border rounded">
-              <div className="font-medium">{milestone.title}</div>
-              <div className="text-sm text-muted-foreground">
-                {new Date(milestone.date).toLocaleDateString()}
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-medium">Project Milestones</h3>
+          <Badge variant="secondary" className="text-xs">
+            {allMilestones.length} milestones
+          </Badge>
+        </div>
+        
+        <div className="space-y-4">
+          {allMilestones.map((milestone, index) => {
+            const isExpanded = expandedMilestone === milestone.id
+            const linkedTasks = getLinkedTasks(milestone)
+            const milestoneDate = new Date(milestone.date)
+            const isOverdue = milestoneDate < new Date() && milestone.status !== "completed"
+            
+            return (
+              <div key={milestone.id} className={`border rounded-lg ${getMilestoneColor(milestone.status)}`}>
+                <div 
+                  className="p-4 cursor-pointer"
+                  onClick={() => setExpandedMilestone(isExpanded ? null : milestone.id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {getMilestoneIcon(milestone.status)}
+                      <div>
+                        <div className="font-medium flex items-center gap-2">
+                          {milestone.title}
+                          {isOverdue && (
+                            <Badge variant="destructive" className="text-xs">Overdue</Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {formatMilestoneDate(milestone.date)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        variant="outline" 
+                        className={statusColors[milestone.status as keyof typeof statusColors] || statusColors.upcoming}
+                      >
+                        {milestone.status.replace('-', ' ')}
+                      </Badge>
+                      <ChevronDown 
+                        className={`h-4 w-4 text-muted-foreground transition-transform ${
+                          isExpanded ? 'rotate-180' : ''
+                        }`} 
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t bg-white/50 dark:bg-gray-800/50">
+                    {milestone.description && (
+                      <p className="text-sm text-muted-foreground mt-3 mb-3">
+                        {milestone.description}
+                      </p>
+                    )}
+                    
+                    {linkedTasks.length > 0 && (
+                      <div className="mt-3">
+                        <h4 className="text-sm font-medium mb-2">Linked Tasks ({linkedTasks.length})</h4>
+                        <div className="space-y-2">
+                          {linkedTasks.map(task => (
+                            <div key={task.id} className="flex items-center gap-2 text-sm">
+                              <div className={`w-2 h-2 rounded-full ${
+                                task.status === 4 ? 'bg-green-500' : 
+                                task.status === 2 ? 'bg-blue-500' : 'bg-gray-400'
+                              }`}></div>
+                              <span>{task.title}</span>
+                              {task.assigneeName && (
+                                <span className="text-muted-foreground">({task.assigneeName})</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="mt-3 text-xs text-muted-foreground">
+                      {milestone.date && `Date: ${new Date(milestone.date).toLocaleDateString('en-US', { 
+                        weekday: 'long',
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}`}
+                    </div>
+                  </div>
+                )}
               </div>
+            )
+          })}
+        </div>
+        
+        {/* Timeline visualization */}
+        <div className="mt-8 pt-6 border-t">
+          <h4 className="text-sm font-medium mb-4">Timeline</h4>
+          <div className="relative">
+            <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
+            <div className="space-y-6">
+              {allMilestones.map((milestone, index) => (
+                <div key={`timeline-${milestone.id}`} className="relative flex items-center gap-4">
+                  <div className={`relative z-10 w-8 h-8 rounded-full border-2 flex items-center justify-center ${
+                    milestone.status === "completed" 
+                      ? "bg-green-500 border-green-500" 
+                      : milestone.status === "in-progress"
+                      ? "bg-blue-500 border-blue-500"
+                      : "bg-white border-gray-300 dark:bg-gray-800 dark:border-gray-600"
+                  }`}>
+                    {getMilestoneIcon(milestone.status)}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{milestone.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(milestone.date).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       </CardContent>
     </Card>

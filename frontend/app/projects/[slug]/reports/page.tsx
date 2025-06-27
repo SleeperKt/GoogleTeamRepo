@@ -100,6 +100,13 @@ export default function ProjectReportsPage() {
   const params = useParams()
   const { token } = useAuth()
   const publicId = params.slug as string
+  
+  // Debug authentication
+  useEffect(() => {
+    console.log('Auth token available:', !!token)
+    console.log('Token from localStorage:', !!localStorage.getItem('token'))
+    console.log('PublicId:', publicId)
+  }, [token, publicId])
 
   const [project, setProject] = useState<ProjectData | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
@@ -108,7 +115,7 @@ export default function ProjectReportsPage() {
   // Use hooks for dynamic data
   const { stages: workflowStages, loading: stagesLoading } = useProjectWorkflowStages(publicId)
   const { labels, loading: labelsLoading } = useProjectLabels(publicId)
-  const { teamMembers: participants, isLoading: participantsLoading } = useProjectParticipants(publicId)
+  const { teamMembers: participants, isLoading: participantsLoading } = useProjectParticipants(publicId, true)
 
   // Filter state
   const [filters, setFilters] = useState<FilterState>({
@@ -122,25 +129,38 @@ export default function ProjectReportsPage() {
 
   const fetchData = async () => {
     if (!token) {
+      console.log('No token available for API calls')
       setLoading(false)
       return
     }
 
     try {
+      console.log('Fetching project data for:', publicId)
       const projectRes = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
       })
       
       if (!projectRes.ok) {
+        console.error('Project API error:', projectRes.status, projectRes.statusText)
+        const errorText = await projectRes.text()
+        console.error('Project API error details:', errorText)
         setLoading(false)
         return
       }
 
       const projectData = await projectRes.json()
+      console.log('Project data loaded:', projectData)
       setProject(projectData)
 
+      console.log('Fetching tasks data...')
       const tasksRes = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/tasks`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
       })
 
       if (tasksRes.ok) {
@@ -160,7 +180,12 @@ export default function ProjectReportsPage() {
           tasksArray = []
         }
         
+        console.log('Tasks loaded:', tasksArray.length)
         setTasks(tasksArray)
+      } else {
+        console.error('Tasks API error:', tasksRes.status, tasksRes.statusText)
+        const errorText = await tasksRes.text()
+        console.error('Tasks API error details:', errorText)
       }
 
     } catch (error) {

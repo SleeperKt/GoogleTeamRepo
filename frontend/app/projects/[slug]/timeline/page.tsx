@@ -340,15 +340,6 @@ function GanttView({ tasks }: { tasks: Task[] }) {
     return 'bg-gray-400' // Not started
   }
 
-  const getPriorityColor = (priority: number) => {
-    switch (priority) {
-      case 4: return 'border-l-red-600'
-      case 3: return 'border-l-red-400'
-      case 2: return 'border-l-yellow-400'
-      default: return 'border-l-blue-400'
-    }
-  }
-
   return (
     <Card className="bg-white dark:bg-gray-800">
       <CardContent className="p-6">
@@ -411,18 +402,31 @@ function GanttView({ tasks }: { tasks: Task[] }) {
             {tasksWithDates.map((task) => {
               const barStyle = getTaskBarStyle(task)
               const statusColor = getStatusColor(task)
-              const priorityColor = getPriorityColor(task.priority)
               
               return (
                 <div key={task.id} className="flex items-center">
                   {/* Task Info */}
-                  <div className={`w-64 flex-shrink-0 pr-4 border-l-4 ${priorityColor}`}>
+                  <div className="w-64 flex-shrink-0 pr-4">
                     <div className="font-medium text-sm truncate">{task.title}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {task.assigneeName && (
-                        <span className="inline-block mr-2">{task.assigneeName}</span>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      {task.assigneeName ? (
+                        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                          </svg>
+                          {task.assigneeName}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-500 px-2 py-1 rounded text-xs">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                          </svg>
+                          Unassigned
+                        </span>
                       )}
-                      Due: {new Date(task.dueDate!).toLocaleDateString()}
+                      <span className="text-gray-400">
+                        Due: {new Date(task.dueDate!).toLocaleDateString()}
+                      </span>
                     </div>
                   </div>
                   

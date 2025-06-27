@@ -20,6 +20,7 @@ namespace ProjectHub.Infrastructure.Data
         public DbSet<ProjectLabel> ProjectLabels { get; set; } = null!;
         public DbSet<ProjectWorkflowStage> ProjectWorkflowStages { get; set; } = null!;
         public DbSet<ProjectInvitation> ProjectInvitations { get; set; } = null!;
+        public DbSet<ProjectMilestone> ProjectMilestones { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -257,6 +258,43 @@ namespace ProjectHub.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(pi => pi.InviteeId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure ProjectMilestone entity
+            modelBuilder.Entity<ProjectMilestone>()
+                .HasKey(pm => pm.Id);
+
+            modelBuilder.Entity<ProjectMilestone>()
+                .Property(pm => pm.ProjectId)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectMilestone>()
+                .Property(pm => pm.Title)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectMilestone>()
+                .Property(pm => pm.Description)
+                .HasMaxLength(1000);
+
+            modelBuilder.Entity<ProjectMilestone>()
+                .Property(pm => pm.TargetDate)
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectMilestone>()
+                .Property(pm => pm.Status)
+                .HasConversion<int>()
+                .IsRequired();
+
+            modelBuilder.Entity<ProjectMilestone>()
+                .Property(pm => pm.CreatedById)
+                .IsRequired();
+
+            // Configure navigation properties for ProjectMilestone
+            modelBuilder.Entity<ProjectMilestone>()
+                .HasOne(pm => pm.Project)
+                .WithMany()
+                .HasForeignKey(pm => pm.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

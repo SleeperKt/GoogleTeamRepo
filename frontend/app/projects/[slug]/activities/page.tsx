@@ -23,26 +23,31 @@ import {
   FileText,
   ArrowRight,
   RefreshCw,
+  UserPlus,
+  GitBranch,
+  Target,
 } from "lucide-react"
 
-// Activity Types
-interface ActivityItem {
+// Backend API Response Types
+interface ProjectActivityResponse {
   id: number
-  action: string
-  actorName: string
-  actorId?: string
-  timestamp: string
-  objectType: 'task' | 'milestone' | 'comment' | 'project' | 'user'
-  objectName: string
-  objectId?: number
-  details?: string
-  metadata?: {
-    fromStatus?: string
-    toStatus?: string
-    fieldName?: string
-    oldValue?: string
-    newValue?: string
-  }
+  taskId: number
+  taskTitle: string
+  userId: string
+  userName: string
+  activityType: string
+  description?: string
+  oldValue?: string
+  newValue?: string
+  createdAt: string
+}
+
+interface ActivityApiResponse {
+  activities: ProjectActivityResponse[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
 }
 
 interface ProjectData {
@@ -53,7 +58,7 @@ interface ProjectData {
 }
 
 interface GroupedActivities {
-  [date: string]: ActivityItem[]
+  [date: string]: ProjectActivityResponse[]
 }
 
 export default function ProjectActivitiesPage() {
@@ -62,12 +67,12 @@ export default function ProjectActivitiesPage() {
   const { token } = useAuth()
   
   const [project, setProject] = useState<ProjectData | null>(null)
-  const [participants, setParticipants] = useState<any[]>([])
-  const [activities, setActivities] = useState<ActivityItem[]>([])
+  const [activities, setActivities] = useState<ProjectActivityResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
+  const [totalCount, setTotalCount] = useState(0)
 
   // Fetch project data and initial activities
   useEffect(() => {
@@ -90,32 +95,6 @@ export default function ProjectActivitiesPage() {
           setProject(projectData)
         }
 
-        // Fetch project participants 
-        try {
-          const participantsResponse = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/participants`, {
-            headers: { 
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-          })
-
-          if (participantsResponse.ok) {
-            const participantsData = await participantsResponse.json()
-            console.log('Raw participants data:', participantsData)
-            // Handle ASP.NET response format
-            const participantArray = Array.isArray(participantsData) ? participantsData : ((participantsData as any)?.$values || [])
-            console.log('Processed participants array:', participantArray)
-            setParticipants(participantArray)
-            console.log('Loaded participants for activities:', participantArray)
-          } else {
-            console.log('Failed to fetch participants for activities, status:', participantsResponse.status)
-            setParticipants([])
-          }
-        } catch (error) {
-          console.log('Error fetching participants for activities:', error)
-          setParticipants([])
-        }
-
         // Fetch activities
         await fetchActivities(1)
 
@@ -129,17 +108,9 @@ export default function ProjectActivitiesPage() {
     fetchData()
   }, [token, publicId])
 
-  // Generate demo message when no real activities exist
-  useEffect(() => {
-    if (activities.length === 0 && !loading) {
-      console.log('No activities found, showing demo message')
-      generateMockActivities()
-    }
-  }, [activities.length, loading])
-
   const fetchActivities = async (pageNum: number = 1) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/activities?page=${pageNum}&limit=20`, {
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/activities?page=${pageNum}&pageSize=20`, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -147,8 +118,8 @@ export default function ProjectActivitiesPage() {
       })
 
       if (response.ok) {
-        const data = await response.json()
-        const newActivities = Array.isArray(data) ? data : data.activities || data.data || []
+        const data: ActivityApiResponse = await response.json()
+        const newActivities = data.activities || []
         
         if (pageNum === 1) {
           setActivities(newActivities)
@@ -156,37 +127,25 @@ export default function ProjectActivitiesPage() {
           setActivities(prev => [...prev, ...newActivities])
         }
         
-        setHasMore(newActivities.length === 20) // If we got less than 20, no more pages
+        setTotalCount(data.totalCount || 0)
+        setHasMore(pageNum < (data.totalPages || 1))
         setPage(pageNum)
       } else {
-        throw new Error('Activities endpoint not available')
+        console.error('Failed to fetch activities:', response.status)
+        if (pageNum === 1) {
+          setActivities([])
+          setTotalCount(0)
+          setHasMore(false)
+        }
       }
     } catch (error) {
-      console.log('Activities endpoint not available, will generate mock data after participants are loaded')
-      // Don't generate mock activities here - let the effect handle it after participants are loaded
+      console.error('Error fetching activities:', error)
       if (pageNum === 1) {
-        setActivities([]) // Clear activities, will be set by useEffect below
+        setActivities([])
+        setTotalCount(0)
+        setHasMore(false)
       }
     }
-  }
-
-  const generateMockActivities = () => {
-    console.log('Activities endpoint not available, showing demo message')
-    // Show clear demo message instead of confusing fake data
-    const demoMessage: ActivityItem[] = [
-      {
-        id: 1,
-        action: "demo notice",
-        actorName: "System",
-        timestamp: new Date().toISOString(),
-        objectType: 'project',
-        objectName: 'Activities Feature - Demo Mode',
-        details: '🚧 This is a demo/placeholder view. Real project activities will appear here once the backend API is implemented to track actual task creation, updates, comments, and other project actions.'
-      }
-    ]
-    
-    setActivities(demoMessage)
-    setHasMore(false)
   }
 
   const loadMore = () => {
@@ -204,18 +163,20 @@ export default function ProjectActivitiesPage() {
 
   // Group activities by day
   const groupedActivities: GroupedActivities = activities.reduce((groups, activity) => {
-    const date = new Date(activity.timestamp).toDateString()
-    if (!groups[date]) {
-      groups[date] = []
+    const date = new Date(activity.createdAt)
+    const dateString = date.toDateString()
+    
+    if (!groups[dateString]) {
+      groups[dateString] = []
     }
-    groups[date].push(activity)
+    groups[dateString].push(activity)
     return groups
   }, {} as GroupedActivities)
 
   // Helper functions
   const formatTimeAgo = (timestamp: string) => {
-    const now = new Date()
     const activityTime = new Date(timestamp)
+    const now = new Date()
     const diffInMinutes = Math.floor((now.getTime() - activityTime.getTime()) / (1000 * 60))
     
     if (diffInMinutes < 1) return 'Just now'
@@ -230,44 +191,63 @@ export default function ProjectActivitiesPage() {
     return activityTime.toLocaleDateString()
   }
 
-  const getActivityIcon = (activity: ActivityItem) => {
-    switch (activity.action) {
-      case 'created task':
-      case 'created milestone':
+  const getActivityIcon = (activity: ProjectActivityResponse) => {
+    switch (activity.activityType.toLowerCase()) {
+      case 'created':
         return <Plus className="h-4 w-4 text-green-600" />
-      case 'updated task status':
-      case 'updated task priority':
-      case 'updated project settings':
+      case 'updated':
+      case 'status_change':
         return <Edit className="h-4 w-4 text-blue-600" />
-      case 'completed task':
+      case 'completed':
         return <CheckCircle className="h-4 w-4 text-green-600" />
-      case 'added comment':
+      case 'comment':
         return <MessageSquare className="h-4 w-4 text-purple-600" />
-      case 'assigned user':
-        return <User className="h-4 w-4 text-orange-600" />
-      case 'system message':
-        return <MessageSquare className="h-4 w-4 text-gray-600" />
-      case 'demo notice':
-        return <MessageSquare className="h-4 w-4 text-blue-600" />
-      case 'deleted task':
-        return <Trash className="h-4 w-4 text-red-600" />
+      case 'assigned':
+      case 'assignee_change':
+        return <UserPlus className="h-4 w-4 text-orange-600" />
+      case 'priority_change':
+        return <Flag className="h-4 w-4 text-red-600" />
+      case 'stage_change':
+        return <GitBranch className="h-4 w-4 text-indigo-600" />
       default:
         return <Activity className="h-4 w-4 text-gray-600" />
     }
   }
 
-  const getObjectIcon = (objectType: string) => {
-    switch (objectType) {
-      case 'task':
-        return <FileText className="h-3 w-3" />
-      case 'milestone':
-        return <Flag className="h-3 w-3" />
+  const getActivityDescription = (activity: ProjectActivityResponse) => {
+    const { activityType, description, oldValue, newValue, taskTitle } = activity
+    
+    if (description) {
+      return description
+    }
+
+    // Generate descriptions based on activity type
+    switch (activityType.toLowerCase()) {
+      case 'created':
+        return `created task "${taskTitle}"`
+      case 'updated':
+        return `updated task "${taskTitle}"`
+      case 'status_change':
+        if (oldValue && newValue) {
+          return `changed status of "${taskTitle}" from ${oldValue} to ${newValue}`
+        }
+        return `updated status of "${taskTitle}"`
+      case 'assignee_change':
+        if (newValue) {
+          return `assigned "${taskTitle}" to ${newValue}`
+        }
+        return `updated assignee for "${taskTitle}"`
+      case 'priority_change':
+        if (oldValue && newValue) {
+          return `changed priority of "${taskTitle}" from ${oldValue} to ${newValue}`
+        }
+        return `updated priority of "${taskTitle}"`
       case 'comment':
-        return <MessageSquare className="h-3 w-3" />
-      case 'project':
-        return <Calendar className="h-3 w-3" />
+        return `added a comment to "${taskTitle}"`
+      case 'completed':
+        return `completed task "${taskTitle}"`
       default:
-        return <Activity className="h-3 w-3" />
+        return `performed ${activityType} on "${taskTitle}"`
     }
   }
 
@@ -289,6 +269,15 @@ export default function ProjectActivitiesPage() {
         day: 'numeric' 
       })
     }
+  }
+
+  const getUserInitials = (userName: string) => {
+    return userName
+      .split(' ')
+      .map(name => name.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
   }
 
   if (loading) {
@@ -327,7 +316,7 @@ export default function ProjectActivitiesPage() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{project.name}</span>
             <span>•</span>
-            <span>{activities.length} activities</span>
+            <span>{totalCount} total activities</span>
           </div>
         </div>
         <Button onClick={refreshActivities} variant="outline" size="sm">
@@ -344,7 +333,7 @@ export default function ProjectActivitiesPage() {
               <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium mb-2">No activities yet</h3>
               <p className="text-muted-foreground">
-                Project activities will appear here as team members work on tasks and milestones.
+                Project activities will appear here as team members work on tasks and make changes.
               </p>
             </div>
           </CardContent>
@@ -371,8 +360,8 @@ export default function ProjectActivitiesPage() {
                   <CardContent className="p-0">
                     <div className="divide-y divide-gray-100 dark:divide-gray-700">
                       {dayActivities
-                        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                        .map((activity, index) => (
+                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                        .map((activity) => (
                           <div key={activity.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                             <div className="flex items-start gap-3">
                               {/* Activity Icon */}
@@ -387,62 +376,53 @@ export default function ProjectActivitiesPage() {
                                   <div className="flex items-center gap-2">
                                     <Avatar className="h-6 w-6">
                                       <AvatarFallback className="text-xs">
-                                        {activity.actorName ? activity.actorName.split(' ').map(n => n[0]).join('') : 'U'}
+                                        {getUserInitials(activity.userName)}
                                       </AvatarFallback>
                                     </Avatar>
                                     <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                      {activity.actorName || 'Unknown User'}
+                                      {activity.userName}
                                     </span>
                                   </div>
 
-                                  {/* Action */}
+                                  {/* Action Description */}
                                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    {activity.action}
+                                    {getActivityDescription(activity)}
                                   </span>
-
-                                  {/* Object */}
-                                  <div className="flex items-center gap-1">
-                                    {getObjectIcon(activity.objectType)}
-                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                      {activity.objectName}
-                                    </span>
-                                  </div>
                                 </div>
 
-                                {/* Details & Metadata */}
-                                {(activity.details || activity.metadata) && (
-                                  <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                    {activity.details && (
-                                      <p>{activity.details}</p>
-                                    )}
-                                    {activity.metadata && (
-                                      <div className="flex items-center gap-2 mt-1">
-                                        {activity.metadata.fromStatus && activity.metadata.toStatus && (
-                                          <div className="flex items-center gap-1">
-                                            <Badge variant="outline" className="text-xs">
-                                              {activity.metadata.fromStatus}
-                                            </Badge>
-                                            <ArrowRight className="h-3 w-3" />
-                                            <Badge variant="outline" className="text-xs">
-                                              {activity.metadata.toStatus}
-                                            </Badge>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
+                                {/* Status Change Details */}
+                                {(activity.oldValue && activity.newValue) && (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="text-xs">
+                                      {activity.oldValue}
+                                    </Badge>
+                                    <ArrowRight className="h-3 w-3 text-gray-400" />
+                                    <Badge variant="outline" className="text-xs">
+                                      {activity.newValue}
+                                    </Badge>
                                   </div>
                                 )}
+
+                                {/* Task Reference */}
+                                <div className="flex items-center gap-1 mt-1">
+                                  <FileText className="h-3 w-3 text-gray-400" />
+                                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    {activity.taskTitle}
+                                  </span>
+                                </div>
 
                                 {/* Timestamp */}
                                 <div className="flex items-center gap-1 mt-2 text-xs text-gray-500 dark:text-gray-400">
                                   <Clock className="h-3 w-3" />
-                                  <span>{formatTimeAgo(activity.timestamp)}</span>
+                                  <span>{formatTimeAgo(activity.createdAt)}</span>
                                   <span>•</span>
-                                  <span>{new Date(activity.timestamp).toLocaleTimeString('en-US', { 
-                                    hour: 'numeric', 
-                                    minute: '2-digit',
-                                    hour12: true 
-                                  })}</span>
+                                  <span>
+                                    {new Date(activity.createdAt).toLocaleTimeString('en-US', { 
+                                      hour: 'numeric', 
+                                      minute: '2-digit',
+                                      hour12: true 
+                                    })}
+                                  </span>
                                 </div>
                               </div>
                             </div>

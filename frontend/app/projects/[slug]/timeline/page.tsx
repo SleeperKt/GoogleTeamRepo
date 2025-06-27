@@ -174,7 +174,7 @@ export default function ProjectTimelinePage() {
   // Milestone management handlers
   const handleCreateMilestone = async (milestoneData: Omit<Milestone, 'id'>) => {
     try {
-      // Save to backend
+      // Save to backend - this endpoint doesn't exist yet, so we'll catch the error
       const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/milestones`, {
         method: 'POST',
         headers: {
@@ -194,22 +194,17 @@ export default function ProjectTimelinePage() {
         setProjectMilestones(prev => [...prev, newMilestone])
         console.log('Created milestone:', newMilestone)
       } else {
-        console.error('Failed to create milestone:', response.statusText)
-        // Fallback to local state for demo
-        const newMilestone: Milestone = {
-          ...milestoneData,
-          id: Date.now()
-        }
-        setProjectMilestones(prev => [...prev, newMilestone])
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
     } catch (error) {
-      console.error('Error creating milestone:', error)
-      // Fallback to local state
+      console.log('Milestone API not available, using local state only:', error)
+      // Create milestone locally for now
       const newMilestone: Milestone = {
         ...milestoneData,
         id: Date.now()
       }
       setProjectMilestones(prev => [...prev, newMilestone])
+      console.log('Created milestone locally:', newMilestone)
     }
   }
 
@@ -217,7 +212,7 @@ export default function ProjectTimelinePage() {
     if (!editingMilestone) return
     
     try {
-      // Update in backend
+      // Update in backend - this endpoint doesn't exist yet, so we'll catch the error
       const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/milestones/${editingMilestone.id}`, {
         method: 'PUT',
         headers: {
@@ -239,19 +234,11 @@ export default function ProjectTimelinePage() {
         )
         console.log('Updated milestone:', updatedMilestone)
       } else {
-        console.error('Failed to update milestone:', response.statusText)
-        // Fallback to local state
-        const updatedMilestone: Milestone = {
-          ...milestoneData,
-          id: editingMilestone.id
-        }
-        setProjectMilestones(prev => 
-          prev.map(m => m.id === editingMilestone.id ? updatedMilestone : m)
-        )
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
     } catch (error) {
-      console.error('Error updating milestone:', error)
-      // Fallback to local state
+      console.log('Milestone API not available, using local state only:', error)
+      // Update milestone locally for now
       const updatedMilestone: Milestone = {
         ...milestoneData,
         id: editingMilestone.id
@@ -259,12 +246,13 @@ export default function ProjectTimelinePage() {
       setProjectMilestones(prev => 
         prev.map(m => m.id === editingMilestone.id ? updatedMilestone : m)
       )
+      console.log('Updated milestone locally:', updatedMilestone)
     }
   }
 
   const handleDeleteMilestone = async (milestoneId: number | string) => {
     try {
-      // Delete from backend
+      // Delete from backend - this endpoint doesn't exist yet, so we'll catch the error
       const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/milestones/${milestoneId}`, {
         method: 'DELETE',
         headers: {
@@ -276,14 +264,13 @@ export default function ProjectTimelinePage() {
         setProjectMilestones(prev => prev.filter(m => m.id !== milestoneId))
         console.log('Deleted milestone:', milestoneId)
       } else {
-        console.error('Failed to delete milestone:', response.statusText)
-        // Still remove from local state for demo
-        setProjectMilestones(prev => prev.filter(m => m.id !== milestoneId))
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
     } catch (error) {
-      console.error('Error deleting milestone:', error)
-      // Still remove from local state
+      console.log('Milestone API not available, using local state only:', error)
+      // Delete milestone locally for now
       setProjectMilestones(prev => prev.filter(m => m.id !== milestoneId))
+      console.log('Deleted milestone locally:', milestoneId)
     }
   }
 

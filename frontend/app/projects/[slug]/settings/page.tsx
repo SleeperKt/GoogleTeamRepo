@@ -98,6 +98,9 @@ export default function ProjectGeneralSettingsPage() {
   // Timeout ref for debounced saving
   const updateProjectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const updateSettingsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Track if there are unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   // Safe response parser
   const safeParseResponse = async (response: Response, fallbackData?: any) => {
@@ -229,6 +232,75 @@ export default function ProjectGeneralSettingsPage() {
     fetchData()
   }, [token, projectId])
 
+  // Manual save function
+  const handleManualSave = async () => {
+    if (!project || !settings || !projectId || !token || !hasUnsavedChanges) return
+
+    try {
+      setIsSaving(true)
+      setError(null)
+
+      // Save project changes
+      const projectResponse = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: project.name,
+          description: project.description,
+          status: project.status,
+          priority: project.priority,
+        }),
+      })
+
+      if (!projectResponse.ok) {
+        const errorText = await projectResponse.text()
+        throw new Error(`Failed to save project: ${projectResponse.status} ${errorText}`)
+      }
+
+      // Save settings changes
+      const settingsResponse = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+      })
+
+      if (!settingsResponse.ok) {
+        const errorText = await settingsResponse.text()
+        throw new Error(`Failed to save settings: ${settingsResponse.status} ${errorText}`)
+      }
+
+      // Update settings with response
+      const updatedSettings = await safeParseResponse(settingsResponse, settings)
+      setSettings(updatedSettings)
+
+      // Clear unsaved changes flag
+      setHasUnsavedChanges(false)
+
+      // Show success message
+      toast({
+        title: "Success",
+        description: "All changes saved successfully",
+      })
+
+    } catch (err) {
+      console.error('Manual save error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to save changes')
+      toast({
+        title: "Error",
+        description: "Failed to save changes",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   // Handle form input changes
   const handleInputChange = (field: string, value: string | boolean) => {
     if (field === 'name' || field === 'description') {
@@ -241,6 +313,9 @@ export default function ProjectGeneralSettingsPage() {
       
       // Optimistic update - immediately update the UI
       setProject(updatedProject)
+      
+      // Mark as having unsaved changes
+      setHasUnsavedChanges(true)
       
       // Clear existing timeout
       if (updateProjectTimeoutRef.current) {
@@ -285,6 +360,9 @@ export default function ProjectGeneralSettingsPage() {
           
           // Clear any previous errors on successful save
           setError(null)
+          
+          // Clear unsaved changes flag
+          setHasUnsavedChanges(false)
         } catch (err) {
           console.error('Project update error:', err)
           setError(err instanceof Error ? err.message : 'Failed to update project')
@@ -298,7 +376,7 @@ export default function ProjectGeneralSettingsPage() {
         } finally {
           setIsSaving(false)
         }
-      }, 1000) // Wait 1 second after user stops typing
+      }, 5000) // Wait 5 seconds after user stops typing (longer delay for manual save preference)
     } else {
       // Update settings properties
       if (!settings) return
@@ -309,6 +387,9 @@ export default function ProjectGeneralSettingsPage() {
       
       // Optimistic update for settings
       setSettings(updatedSettings)
+      
+      // Mark as having unsaved changes
+      setHasUnsavedChanges(true)
       
       // Clear existing timeout
       if (updateSettingsTimeoutRef.current) {
@@ -350,6 +431,9 @@ export default function ProjectGeneralSettingsPage() {
           })
           
           setError(null) // Clear errors on success
+          
+          // Clear unsaved changes flag
+          setHasUnsavedChanges(false)
         } catch (err) {
           console.error('Settings update error:', err)
           setError(err instanceof Error ? err.message : 'Failed to update settings')
@@ -363,7 +447,7 @@ export default function ProjectGeneralSettingsPage() {
         } finally {
           setIsSaving(false)
         }
-      }, 1000) // Wait 1 second after user stops typing
+      }, 5000) // Wait 5 seconds after user stops typing (longer delay for manual save preference)
     }
   }
 
@@ -435,8 +519,16 @@ export default function ProjectGeneralSettingsPage() {
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
               Saving changes...
             </span>
+          ) : hasUnsavedChanges ? (
+            <span className="text-sm text-amber-600 flex items-center">
+              <div className="w-2 h-2 bg-amber-500 rounded-full mr-2"></div>
+              Unsaved changes - click Save Changes to save
+            </span>
           ) : (
-            <span className="text-sm text-muted-foreground">Changes saved automatically</span>
+            <span className="text-sm text-green-600 flex items-center">
+              <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+              All changes saved
+            </span>
           )}
         </div>
         {error && (
@@ -663,6 +755,43 @@ export default function ProjectGeneralSettingsPage() {
               </p>
             </div>
           </div>
+
+          {/* Save Changes Button */}
+          {permissions.canManageProject && (
+            <div className="flex items-center justify-between pt-6 border-t">
+              <div className="flex items-center gap-2">
+                {hasUnsavedChanges && (
+                  <div className="flex items-center gap-2 text-sm text-amber-600">
+                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                    Unsaved changes
+                  </div>
+                )}
+                {!hasUnsavedChanges && !isSaving && (
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    All changes saved
+                  </div>
+                )}
+              </div>
+              <Button
+                onClick={handleManualSave}
+                disabled={!hasUnsavedChanges || isSaving}
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -123,7 +123,34 @@ export default function ProjectTimelinePage() {
           setTasks(tasksArray)
         }
 
-        // For now, use mock milestones since backend might not have this endpoint
+        // Fetch milestones
+        try {
+          const milestonesRes = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/milestones`, {
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+          })
+
+          if (milestonesRes.ok) {
+            const milestonesData = await milestonesRes.json()
+            let milestonesArray: Milestone[] = []
+            if (Array.isArray(milestonesData)) {
+              milestonesArray = milestonesData
+            } else if (milestonesData && Array.isArray(milestonesData.milestones)) {
+              milestonesArray = milestonesData.milestones
+            } else if (milestonesData && Array.isArray(milestonesData.data)) {
+              milestonesArray = milestonesData.data
+            }
+            setProjectMilestones(milestonesArray)
+          } else {
+            console.log('Milestones endpoint not available')
+          }
+        } catch (error) {
+          console.log('Error fetching milestones:', error)
+        }
+
+        // For now, use mock milestones for auto-generated ones
         setMilestones([
           {
             id: 1,
@@ -146,33 +173,118 @@ export default function ProjectTimelinePage() {
 
   // Milestone management handlers
   const handleCreateMilestone = async (milestoneData: Omit<Milestone, 'id'>) => {
-    // Here you would normally save to backend
-    const newMilestone: Milestone = {
-      ...milestoneData,
-      id: Date.now() // Temporary ID for demo
+    try {
+      // Save to backend
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/milestones`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: milestoneData.title,
+          description: milestoneData.description,
+          date: milestoneData.date,
+          status: milestoneData.status
+        })
+      })
+
+      if (response.ok) {
+        const newMilestone = await response.json()
+        setProjectMilestones(prev => [...prev, newMilestone])
+        console.log('Created milestone:', newMilestone)
+      } else {
+        console.error('Failed to create milestone:', response.statusText)
+        // Fallback to local state for demo
+        const newMilestone: Milestone = {
+          ...milestoneData,
+          id: Date.now()
+        }
+        setProjectMilestones(prev => [...prev, newMilestone])
+      }
+    } catch (error) {
+      console.error('Error creating milestone:', error)
+      // Fallback to local state
+      const newMilestone: Milestone = {
+        ...milestoneData,
+        id: Date.now()
+      }
+      setProjectMilestones(prev => [...prev, newMilestone])
     }
-    setProjectMilestones(prev => [...prev, newMilestone])
-    console.log('Created milestone:', newMilestone)
   }
 
   const handleUpdateMilestone = async (milestoneData: Omit<Milestone, 'id'>) => {
     if (!editingMilestone) return
     
-    // Here you would normally update in backend
-    const updatedMilestone: Milestone = {
-      ...milestoneData,
-      id: editingMilestone.id
+    try {
+      // Update in backend
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/milestones/${editingMilestone.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: milestoneData.title,
+          description: milestoneData.description,
+          date: milestoneData.date,
+          status: milestoneData.status
+        })
+      })
+
+      if (response.ok) {
+        const updatedMilestone = await response.json()
+        setProjectMilestones(prev => 
+          prev.map(m => m.id === editingMilestone.id ? updatedMilestone : m)
+        )
+        console.log('Updated milestone:', updatedMilestone)
+      } else {
+        console.error('Failed to update milestone:', response.statusText)
+        // Fallback to local state
+        const updatedMilestone: Milestone = {
+          ...milestoneData,
+          id: editingMilestone.id
+        }
+        setProjectMilestones(prev => 
+          prev.map(m => m.id === editingMilestone.id ? updatedMilestone : m)
+        )
+      }
+    } catch (error) {
+      console.error('Error updating milestone:', error)
+      // Fallback to local state
+      const updatedMilestone: Milestone = {
+        ...milestoneData,
+        id: editingMilestone.id
+      }
+      setProjectMilestones(prev => 
+        prev.map(m => m.id === editingMilestone.id ? updatedMilestone : m)
+      )
     }
-    setProjectMilestones(prev => 
-      prev.map(m => m.id === editingMilestone.id ? updatedMilestone : m)
-    )
-    console.log('Updated milestone:', updatedMilestone)
   }
 
-  const handleDeleteMilestone = (milestoneId: number | string) => {
-    // Here you would normally delete from backend
-    setProjectMilestones(prev => prev.filter(m => m.id !== milestoneId))
-    console.log('Deleted milestone:', milestoneId)
+  const handleDeleteMilestone = async (milestoneId: number | string) => {
+    try {
+      // Delete from backend
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/milestones/${milestoneId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        setProjectMilestones(prev => prev.filter(m => m.id !== milestoneId))
+        console.log('Deleted milestone:', milestoneId)
+      } else {
+        console.error('Failed to delete milestone:', response.statusText)
+        // Still remove from local state for demo
+        setProjectMilestones(prev => prev.filter(m => m.id !== milestoneId))
+      }
+    } catch (error) {
+      console.error('Error deleting milestone:', error)
+      // Still remove from local state
+      setProjectMilestones(prev => prev.filter(m => m.id !== milestoneId))
+    }
   }
 
   if (loading) {
@@ -349,23 +461,24 @@ function GanttView({ tasks }: { tasks: Task[] }) {
           {/* Timeline Header */}
           <div className="flex items-center mb-4">
             <div className="w-64 flex-shrink-0"></div>
-            <div className="flex-1 relative">
-              <div className="flex">
+            <div className="flex-1 relative overflow-visible">
+              <div className="flex overflow-visible">
                 {timelineDates.map((date, index) => {
                   const isWeekend = date.getDay() === 0 || date.getDay() === 6
                   const isToday = date.toDateString() === new Date().toDateString()
+                  
                   return (
                     <div 
                       key={index} 
-                      className={`flex-1 text-center text-xs border-r last:border-r-0 py-1 min-w-[40px] ${
+                      className={`flex-1 text-center text-xs border-r last:border-r-0 py-1 min-w-[40px] relative ${
                         isWeekend ? 'bg-gray-50 text-gray-400' : 'text-muted-foreground'
                       } ${isToday ? 'bg-red-50 font-medium text-red-700' : ''}`}
                     >
-                      <div className="font-medium">
-                        {date.toLocaleDateString('en-US', { day: 'numeric' })}
-                      </div>
                       <div className="text-xs opacity-70">
                         {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                      </div>
+                      <div className="font-medium">
+                        {date.toLocaleDateString('en-US', { day: 'numeric' })}
                       </div>
                     </div>
                   )
@@ -374,7 +487,7 @@ function GanttView({ tasks }: { tasks: Task[] }) {
             </div>
           </div>
           
-          {/* Chart Area with Today Line */}
+          {/* Chart Area */}
           <div className="relative">
             {/* Task Bars */}
             <div className="space-y-3">
@@ -426,29 +539,6 @@ function GanttView({ tasks }: { tasks: Task[] }) {
                 )
               })}
             </div>
-            
-            {/* Today Line - Positioned Absolutely Across Entire Chart */}
-            {(() => {
-              const todayNormalized = new Date()
-              todayNormalized.setHours(0, 0, 0, 0)
-              const displayDays = Math.ceil((displayEndDate.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
-              const todayPosition = (todayNormalized.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24)
-              const todayPercentage = (todayPosition / displayDays) * 100
-              
-              if (todayPercentage >= 0 && todayPercentage <= 100) {
-                return (
-                  <div 
-                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
-                    style={{ left: `calc(16rem + ${todayPercentage}%)` }}
-                  >
-                    <div className="absolute -top-6 -left-6 bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap font-medium">
-                      Today
-                    </div>
-                  </div>
-                )
-              }
-              return null
-            })()}
           </div>
           
           {/* Legend */}

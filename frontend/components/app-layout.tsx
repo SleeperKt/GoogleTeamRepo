@@ -155,7 +155,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         },
         {
           name: "Timeline",
-          href: "/timeline",
+          href: `/projects/${currentProject.publicId}/timeline`,
           icon: Calendar,
         },
         {

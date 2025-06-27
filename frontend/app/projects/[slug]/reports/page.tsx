@@ -294,16 +294,7 @@ export default function ProjectReportsPage() {
         </div>
       </div>
 
-      {/* Report Type Tabs */}
-      <div className="mb-6">
-        <Tabs defaultValue="overview" value={reportType} onValueChange={setReportType}>
-          <TabsList className="grid w-full grid-cols-3 md:w-auto">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="sprint">Sprint</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+
 
       {/* Empty State */}
       {showEmptyState ? (

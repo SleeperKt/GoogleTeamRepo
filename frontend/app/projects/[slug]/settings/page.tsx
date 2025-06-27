@@ -48,6 +48,7 @@ import { useUserPermissions } from "@/hooks/use-user-permissions"
 import { SendInvitationDialog } from "@/components/send-invitation-dialog"
 import { ParticipantRole, InvitationStatus, ProjectInvitation } from "@/lib/types"
 import { useProjectLabels, ProjectLabel } from "@/hooks/use-project-labels"
+import { useProjectWorkflowStages, ProjectWorkflowStage } from "@/hooks/use-project-workflow-stages"
 
 // Types
 interface Project {
@@ -924,6 +925,566 @@ function TagsAndLabelsTab({ projectId, projectPublicId, permissions }: TagsAndLa
   )
 }
 
+// Workflow Tab Component
+interface WorkflowTabProps {
+  projectId: number
+  projectPublicId: string
+  permissions: any
+}
+
+function WorkflowTab({ projectId, projectPublicId, permissions }: WorkflowTabProps) {
+  const { stages, loading, error, createStage, updateStage, deleteStage, reorderStages } = useProjectWorkflowStages(projectPublicId)
+  const [editingStage, setEditingStage] = useState<ProjectWorkflowStage | null>(null)
+  const [newStageName, setNewStageName] = useState("")
+  const [newStageColor, setNewStageColor] = useState("#3b82f6")
+  const [newStageIsCompleted, setNewStageIsCompleted] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [draggedStage, setDraggedStage] = useState<ProjectWorkflowStage | null>(null)
+
+  // Predefined color options
+  const colorOptions = [
+    "#6b7280", // Gray - To Do
+    "#3b82f6", // Blue - In Progress  
+    "#f59e0b", // Yellow - In Review
+    "#10b981", // Green - Done
+    "#8b5cf6", // Purple
+    "#06b6d4", // Cyan
+    "#f97316", // Orange
+    "#84cc16", // Lime
+    "#ec4899", // Pink
+    "#ef4444", // Red
+  ]
+
+  // Handle create new stage
+  const handleCreateStage = async () => {
+    if (!newStageName.trim()) {
+      toast({
+        title: "Error",
+        description: "Stage name is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsCreating(true)
+    try {
+      const result = await createStage(newStageName.trim(), newStageColor, newStageIsCompleted)
+      if (result) {
+        toast({
+          title: "Success",
+          description: "Workflow stage created successfully",
+        })
+        setNewStageName("")
+        setNewStageColor("#3b82f6")
+        setNewStageIsCompleted(false)
+        setShowCreateForm(false)
+      }
+    } catch (error) {
+      console.error('Error creating workflow stage:', error)
+      toast({
+        title: "Error",
+        description: "Failed to create workflow stage",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  // Handle edit stage
+  const handleEditStage = async (stage: ProjectWorkflowStage, newName: string, newColor: string, newIsCompleted: boolean) => {
+    if (!newName.trim()) {
+      toast({
+        title: "Error",
+        description: "Stage name is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const result = await updateStage(stage.id, newName.trim(), newColor, stage.order, newIsCompleted)
+      if (result) {
+        toast({
+          title: "Success",
+          description: "Workflow stage updated successfully",
+        })
+        setEditingStage(null)
+      }
+    } catch (error) {
+      console.error('Error updating workflow stage:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update workflow stage",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Handle delete stage
+  const handleDeleteStage = async (stage: ProjectWorkflowStage) => {
+    if (stage.taskCount && stage.taskCount > 0) {
+      toast({
+        title: "Cannot Delete Stage",
+        description: `This stage contains ${stage.taskCount} task(s). Move or complete all tasks before deleting.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!confirm(`Are you sure you want to delete the "${stage.name}" stage? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const result = await deleteStage(stage.id)
+      if (result) {
+        toast({
+          title: "Success",
+          description: "Workflow stage deleted successfully",
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting workflow stage:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete workflow stage",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Handle drag and drop reordering
+  const handleDragStart = (stage: ProjectWorkflowStage) => {
+    setDraggedStage(stage)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetStage: ProjectWorkflowStage) => {
+    e.preventDefault()
+    
+    if (!draggedStage || draggedStage.id === targetStage.id) {
+      setDraggedStage(null)
+      return
+    }
+
+    // Create new order based on drag and drop
+    const sortedStages = [...stages].sort((a, b) => a.order - b.order)
+    const draggedIndex = sortedStages.findIndex(s => s.id === draggedStage.id)
+    const targetIndex = sortedStages.findIndex(s => s.id === targetStage.id)
+    
+    if (draggedIndex === -1 || targetIndex === -1) return
+
+    // Remove dragged item and insert at target position
+    const newStages = [...sortedStages]
+    const [draggedItem] = newStages.splice(draggedIndex, 1)
+    newStages.splice(targetIndex, 0, draggedItem)
+
+    // Create new stage IDs array in the new order
+    const newStageIds = newStages.map(s => s.id)
+
+    try {
+      const result = await reorderStages(newStageIds)
+      if (result) {
+        toast({
+          title: "Success",
+          description: "Workflow stages reordered successfully",
+        })
+      }
+    } catch (error) {
+      console.error('Error reordering workflow stages:', error)
+      toast({
+        title: "Error",
+        description: "Failed to reorder workflow stages",
+        variant: "destructive",
+      })
+    } finally {
+      setDraggedStage(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Workflow</CardTitle>
+          <CardDescription>Customize your project workflow stages</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-32">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Workflow Stages Management */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Workflow Stages</CardTitle>
+              <CardDescription>
+                Define the stages that tasks move through in your project workflow
+              </CardDescription>
+            </div>
+            {permissions.canManageProject && (
+              <Button 
+                onClick={() => setShowCreateForm(true)}
+                size="sm" 
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Stage
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Create Stage Form */}
+          {showCreateForm && permissions.canManageProject && (
+            <Card className="mb-6 border-violet-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Create New Stage</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-stage-name">Stage Name</Label>
+                  <Input
+                    id="new-stage-name"
+                    value={newStageName}
+                    onChange={(e) => setNewStageName(e.target.value)}
+                    placeholder="Enter stage name"
+                    maxLength={50}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Color</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {colorOptions.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setNewStageColor(color)}
+                        className={`w-8 h-8 rounded-full border-2 hover:scale-110 transition-transform ${
+                          newStageColor === color ? 'border-gray-800' : 'border-gray-300'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={newStageColor}
+                      onChange={(e) => setNewStageColor(e.target.value)}
+                      className="w-8 h-8 rounded border"
+                    />
+                    <span className="text-sm text-muted-foreground">Custom color</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="new-stage-completed"
+                    checked={newStageIsCompleted}
+                    onCheckedChange={setNewStageIsCompleted}
+                  />
+                  <Label htmlFor="new-stage-completed">Mark as completion stage</Label>
+                  <span className="text-sm text-muted-foreground">(Tasks in this stage are considered done)</span>
+                </div>
+
+                {/* Preview */}
+                <div className="space-y-2">
+                  <Label>Preview</Label>
+                  <div className="flex items-center gap-2">
+                    <Badge 
+                      variant="outline" 
+                      style={{ 
+                        backgroundColor: newStageColor, 
+                        color: '#fff',
+                        borderColor: newStageColor 
+                      }}
+                    >
+                      {newStageName || 'Stage Name'}
+                    </Badge>
+                    {newStageIsCompleted && (
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Completion Stage
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleCreateStage}
+                    disabled={isCreating || !newStageName.trim()}
+                    className="bg-violet-600 hover:bg-violet-700 text-white"
+                  >
+                    {isCreating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create Stage
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowCreateForm(false)
+                      setNewStageName("")
+                      setNewStageColor("#3b82f6")
+                      setNewStageIsCompleted(false)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Stages List */}
+          <div className="space-y-3">
+            {stages.length > 0 ? (
+              stages
+                .sort((a, b) => a.order - b.order)
+                .map((stage, index) => (
+                  <div 
+                    key={stage.id} 
+                    className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${
+                      draggedStage?.id === stage.id ? 'bg-gray-100' : 'hover:bg-gray-50'
+                    }`}
+                    draggable={permissions.canManageProject}
+                    onDragStart={() => handleDragStart(stage)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, stage)}
+                  >
+                    {editingStage?.id === stage.id ? (
+                      <EditStageForm
+                        stage={stage}
+                        colorOptions={colorOptions}
+                        onSave={handleEditStage}
+                        onCancel={() => setEditingStage(null)}
+                      />
+                    ) : (
+                      <>
+                        <div className="flex items-center space-x-3">
+                          {permissions.canManageProject && (
+                            <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                          )}
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            #{index + 1}
+                          </div>
+                          <Badge 
+                            variant="outline" 
+                            style={{ 
+                              backgroundColor: stage.color, 
+                              color: '#fff',
+                              borderColor: stage.color 
+                            }}
+                          >
+                            {stage.name}
+                          </Badge>
+                          {stage.isCompleted && (
+                            <Badge variant="outline" className="text-green-600 border-green-600">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Completion
+                            </Badge>
+                          )}
+                          {stage.isDefault && (
+                            <Badge variant="outline" className="text-blue-600 border-blue-600">
+                              Default
+                            </Badge>
+                          )}
+                          <span className="text-sm text-muted-foreground">
+                            {stage.taskCount || 0} task{(stage.taskCount || 0) !== 1 ? 's' : ''}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            Created {new Date(stage.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        {permissions.canManageProject && (
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingStage(stage)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteStage(stage)}
+                              className="text-red-600 hover:text-red-700"
+                              disabled={(stage.taskCount ?? 0) > 0}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Workflow className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No workflow stages found</p>
+                {permissions.canManageProject && (
+                  <p className="text-sm">Click "Add Stage" to create your first workflow stage</p>
+                )}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Workflow Usage Information */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Workflow Usage</CardTitle>
+          <CardDescription>How workflow stages work in your project</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3">
+              <Workflow className="h-5 w-5 text-violet-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Task Progression</p>
+                <p className="text-sm text-muted-foreground">
+                  Tasks move through these stages from start to completion. Drag and drop to reorder stages.
+                </p>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-start space-x-3">
+              <CheckCircle className="h-5 w-5 text-violet-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Completion Stages</p>
+                <p className="text-sm text-muted-foreground">
+                  Mark stages as "completion stages" to indicate when tasks are considered done
+                </p>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-start space-x-3">
+              <Palette className="h-5 w-5 text-violet-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Visual Organization</p>
+                <p className="text-sm text-muted-foreground">
+                  Use different colors to visually distinguish between different types of workflow stages
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// Edit Stage Form Component
+interface EditStageFormProps {
+  stage: ProjectWorkflowStage
+  colorOptions: string[]
+  onSave: (stage: ProjectWorkflowStage, newName: string, newColor: string, newIsCompleted: boolean) => void
+  onCancel: () => void
+}
+
+function EditStageForm({ stage, colorOptions, onSave, onCancel }: EditStageFormProps) {
+  const [name, setName] = useState(stage.name)
+  const [color, setColor] = useState(stage.color)
+  const [isCompleted, setIsCompleted] = useState(stage.isCompleted)
+
+  return (
+    <div className="flex-1 space-y-3">
+      <div className="flex items-center space-x-3">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Stage name"
+          maxLength={50}
+          className="max-w-xs"
+        />
+        <div className="flex gap-1">
+          {colorOptions.slice(0, 6).map((colorOption) => (
+            <button
+              key={colorOption}
+              type="button"
+              onClick={() => setColor(colorOption)}
+              className={`w-6 h-6 rounded-full border hover:scale-110 transition-transform ${
+                color === colorOption ? 'border-gray-800 border-2' : 'border-gray-300'
+              }`}
+              style={{ backgroundColor: colorOption }}
+            />
+          ))}
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            className="w-6 h-6 rounded border"
+          />
+        </div>
+        <div className="flex items-center space-x-2">
+          <Switch
+            id={`edit-stage-completed-${stage.id}`}
+            checked={isCompleted}
+            onCheckedChange={setIsCompleted}
+          />
+          <Label htmlFor={`edit-stage-completed-${stage.id}`} className="text-sm">Completion</Label>
+        </div>
+        <Badge 
+          variant="outline" 
+          style={{ 
+            backgroundColor: color, 
+            color: '#fff',
+            borderColor: color 
+          }}
+        >
+          {name || 'Stage Name'}
+        </Badge>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          onClick={() => onSave(stage, name, color, isCompleted)}
+          disabled={!name.trim()}
+          className="bg-violet-600 hover:bg-violet-700 text-white"
+        >
+          Save
+        </Button>
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // Edit Label Form Component
 interface EditLabelFormProps {
   label: ProjectLabel
@@ -1783,15 +2344,11 @@ export default function ProjectGeneralSettingsPage() {
             </TabsContent>
 
             <TabsContent value="workflow" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Workflow</CardTitle>
-                  <CardDescription>Customize your project workflow stages</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">Workflow management coming soon...</p>
-                </CardContent>
-              </Card>
+              <WorkflowTab 
+                projectId={project.id}
+                projectPublicId={projectId}
+                permissions={permissions}
+              />
             </TabsContent>
 
             <TabsContent value="integrations" className="mt-0">

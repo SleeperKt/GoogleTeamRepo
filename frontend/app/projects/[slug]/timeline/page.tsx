@@ -345,14 +345,75 @@ export default function ProjectTimelinePage() {
 
 // Gantt View Component
 function GanttView({ tasks }: { tasks: Task[] }) {
+  const [currentViewDate, setCurrentViewDate] = useState(new Date())
   const tasksWithDates = tasks.filter(task => task.dueDate)
   const tasksWithoutDates = tasks.filter(task => !task.dueDate)
+
+  // Navigation functions
+  const navigatePrevious = () => {
+    const newDate = new Date(currentViewDate)
+    newDate.setDate(newDate.getDate() - 7) // Move back 1 week
+    setCurrentViewDate(newDate)
+  }
+
+  const navigateNext = () => {
+    const newDate = new Date(currentViewDate)
+    newDate.setDate(newDate.getDate() + 7) // Move forward 1 week
+    setCurrentViewDate(newDate)
+  }
+
+  const goToToday = () => {
+    setCurrentViewDate(new Date())
+  }
+
+  // Calculate date range - show 15 days starting from current view date
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
   
+  // Show 15 days starting from current view date
+  const displayStartDate = new Date(currentViewDate)
+  displayStartDate.setHours(0, 0, 0, 0)
+  
+  const displayEndDate = new Date(currentViewDate)
+  displayEndDate.setDate(displayEndDate.getDate() + 14)
+  displayEndDate.setHours(23, 59, 59, 999)
+  
+  // Generate timeline dates - 15 days total
+  const timelineDates: Date[] = []
+  const currentDate = new Date(displayStartDate)
+  for (let i = 0; i < 15; i++) {
+    timelineDates.push(new Date(currentDate))
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  // Filter tasks that are visible in current view
+  const visibleTasks = tasksWithDates.filter(task => {
+    const taskDue = new Date(task.dueDate!)
+    const taskStart = new Date(task.createdAt)
+    return (taskStart <= displayEndDate && taskDue >= displayStartDate)
+  })
+
   if (tasksWithDates.length === 0) {
     return (
       <Card className="bg-white dark:bg-gray-800">
         <CardContent className="p-6">
-          <h3 className="text-lg font-medium mb-4">Gantt Chart</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium">Gantt Chart</h3>
+            {/* Navigation controls even when no tasks */}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={navigatePrevious}>
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" onClick={goToToday}>
+                Today
+              </Button>
+              <Button variant="outline" size="sm" onClick={navigateNext}>
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
           <div className="text-center py-8">
             <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium mb-2">No tasks with dates</h3>
@@ -382,60 +443,28 @@ function GanttView({ tasks }: { tasks: Task[] }) {
     )
   }
 
-  // Calculate date range
-  const dates = tasksWithDates.map(task => new Date(task.dueDate!))
-  const today = new Date()
-  today.setHours(0, 0, 0, 0) // Normalize to midnight for accurate comparison
-  
-  // Include today in the date range calculation
-  const allDates = [...dates, today]
-  const minDate = new Date(Math.min(...allDates.map(d => d.getTime())))
-  const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())))
-  
-  // Add padding to date range
-  const startDate = new Date(minDate)
-  startDate.setDate(startDate.getDate() - 7)
-  startDate.setHours(0, 0, 0, 0)
-  
-  const endDate = new Date(maxDate)
-  endDate.setDate(endDate.getDate() + 7)
-  endDate.setHours(0, 0, 0, 0)
-  
-  const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-  
-  // Generate timeline dates - show EVERY SINGLE DAY for proper Gantt chart
-  const timelineDates = []
-  // Limit range if too many days to prevent UI issues
-  const maxDisplayDays = 90 // Show max 3 months at once
-  const actualRange = Math.min(totalDays, maxDisplayDays)
-  const displayStartDate = totalDays > maxDisplayDays 
-    ? new Date(today.getTime() - (maxDisplayDays/2 * 24 * 60 * 60 * 1000))
-    : startDate
-  const displayEndDate = new Date(displayStartDate.getTime() + (actualRange * 24 * 60 * 60 * 1000))
-  
-  const currentDate = new Date(displayStartDate)
-  while (currentDate <= displayEndDate) {
-    timelineDates.push(new Date(currentDate))
-    currentDate.setDate(currentDate.getDate() + 1) // Show EVERY day
-  }
-
   const getTaskBarStyle = (task: Task) => {
     if (!task.dueDate) return { left: '0%', width: '0%' }
     
     const taskDue = new Date(task.dueDate)
     const taskStart = new Date(task.createdAt)
     
-    // Calculate position and width using display range
-    const displayDays = Math.ceil((displayEndDate.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
-    const daysFromStart = Math.max(0, (taskStart.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
-    const taskDuration = Math.max(1, (taskDue.getTime() - taskStart.getTime()) / (1000 * 60 * 60 * 24))
+    // Simple calculation based on 15-day timeline
+    const totalDays = 15
+    const daysFromStart = Math.max(0, Math.floor((taskStart.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24)))
+    const taskDuration = Math.max(1, Math.ceil((taskDue.getTime() - taskStart.getTime()) / (1000 * 60 * 60 * 24)))
     
-    const left = (daysFromStart / displayDays) * 100
-    const width = Math.min((taskDuration / displayDays) * 100, 100 - left)
+    // Make sure task is within the visible range
+    if (daysFromStart >= totalDays || daysFromStart + taskDuration < 0) {
+      return { left: '0%', width: '0%' }
+    }
+    
+    const left = Math.max(0, (daysFromStart / totalDays) * 100)
+    const width = Math.min((taskDuration / totalDays) * 100, 100 - left)
     
     return {
       left: `${left}%`,
-      width: `${Math.max(width, 2)}%`
+      width: `${Math.max(width, 3)}%`
     }
   }
 
@@ -452,55 +481,72 @@ function GanttView({ tasks }: { tasks: Task[] }) {
   return (
     <Card className="bg-white dark:bg-gray-800">
       <CardContent className="p-6">
-        <h3 className="text-lg font-medium mb-4">Gantt Chart</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-medium">Gantt Chart</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              {currentViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </span>
+            <Button variant="outline" size="sm" onClick={navigatePrevious}>
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+            <Button variant="outline" size="sm" onClick={goToToday}>
+              Today
+            </Button>
+            <Button variant="outline" size="sm" onClick={navigateNext}>
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
         
         <div className="overflow-x-auto">
           {/* Today Indicator Above Timeline */}
-          {(() => {
-            const today = new Date()
-            today.setHours(0, 0, 0, 0)
-            const todayIndex = timelineDates.findIndex((date: Date) => 
-              date.toDateString() === today.toDateString()
-            )
-            if (todayIndex >= 0) {
-              const leftPosition = 16 + (todayIndex / timelineDates.length) * (100 - 16) + ((100 - 16) / timelineDates.length / 2)
-              return (
-                <div 
-                  className="relative mb-2 h-6"
-                >
-                  <div 
-                    className="absolute bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap font-medium transform -translate-x-1/2"
-                    style={{ left: `${leftPosition}%` }}
-                  >
-                    Today
-                  </div>
-                </div>
-              )
-            }
-            return null
-          })()}
+          <div className="flex items-center mb-2">
+            <div className="w-64 flex-shrink-0"></div>
+            <div className="flex-1">
+              <div className="flex">
+                {timelineDates.map((date, index) => {
+                  const isToday = date.toDateString() === today.toDateString()
+                  return (
+                    <div key={index} className="flex-1 text-center min-w-[60px]">
+                      {isToday && (
+                        <div className="bg-red-500 text-white text-xs px-2 py-1 rounded font-medium">
+                          Today
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
           
           {/* Timeline Header */}
           <div className="flex items-center mb-4">
             <div className="w-64 flex-shrink-0"></div>
-            <div className="flex-1 relative overflow-visible">
-              <div className="flex overflow-visible">
+            <div className="flex-1">
+              <div className="flex">
                 {timelineDates.map((date, index) => {
                   const isWeekend = date.getDay() === 0 || date.getDay() === 6
-                  const isToday = date.toDateString() === new Date().toDateString()
+                  const isToday = date.toDateString() === today.toDateString()
                   
                   return (
                     <div 
                       key={index} 
-                      className={`flex-1 text-center text-xs border-r last:border-r-0 py-1 min-w-[40px] relative ${
+                      className={`flex-1 text-center text-xs border-r py-2 min-w-[60px] ${
                         isWeekend ? 'bg-gray-50 text-gray-400' : 'text-muted-foreground'
-                      } ${isToday ? 'bg-red-50 font-medium text-red-700' : ''}`}
+                      } ${isToday ? 'bg-red-100 font-bold text-red-700' : ''}`}
                     >
                       <div className="text-xs opacity-70">
                         {date.toLocaleDateString('en-US', { weekday: 'short' })}
                       </div>
                       <div className="font-medium">
-                        {date.toLocaleDateString('en-US', { day: 'numeric' })}
+                        {date.getDate()}
+                      </div>
+                      <div className="text-xs opacity-60">
+                        {date.toLocaleDateString('en-US', { month: 'short' })}
                       </div>
                     </div>
                   )
@@ -512,8 +558,8 @@ function GanttView({ tasks }: { tasks: Task[] }) {
           {/* Chart Area */}
           <div className="relative">
             {/* Task Bars */}
-            <div className="space-y-3">
-              {tasksWithDates.map((task) => {
+            <div className="space-y-4">
+              {visibleTasks.map((task) => {
                 const barStyle = getTaskBarStyle(task)
                 const statusColor = getStatusColor(task)
                 
@@ -521,14 +567,14 @@ function GanttView({ tasks }: { tasks: Task[] }) {
                   <div key={task.id} className="flex items-center">
                     {/* Task Info */}
                     <div className="w-64 flex-shrink-0 pr-4">
-                      <div className="font-medium text-sm truncate">{task.title}</div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <div className="font-medium text-sm break-words">{task.title}</div>
+                      <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-1 mt-1">
                         {task.assigneeName ? (
                           <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                             </svg>
-                            {task.assigneeName}
+                            <span className="truncate max-w-[80px]">{task.assigneeName}</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-500 px-2 py-1 rounded text-xs">
@@ -538,21 +584,29 @@ function GanttView({ tasks }: { tasks: Task[] }) {
                             Unassigned
                           </span>
                         )}
-                        <span className="text-gray-400">
-                          Due: {new Date(task.dueDate!).toLocaleDateString()}
+                        <span className="text-gray-400 text-xs">
+                          Due: {new Date(task.dueDate!).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </span>
                       </div>
                     </div>
                     
                     {/* Timeline */}
-                    <div className="flex-1 relative">
-                      <div className="h-8 bg-gray-100 dark:bg-gray-700 rounded">
+                    <div className="flex-1">
+                      <div className="flex relative">
+                        {/* Background grid */}
+                        {timelineDates.map((_, index) => (
+                          <div key={index} className="flex-1 h-8 border-r bg-gray-100 dark:bg-gray-700 min-w-[60px]"></div>
+                        ))}
+                        
+                        {/* Task bar overlay */}
                         <div
-                          className={`h-full ${statusColor} rounded relative`}
+                          className={`absolute h-8 ${statusColor} rounded z-10`}
                           style={barStyle}
                         >
-                          <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-medium">
-                            {task.title.substring(0, 20)}
+                          <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-medium px-1">
+                            <span className="truncate">
+                              {task.title}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -718,14 +772,14 @@ function CalendarView({ tasks }: { tasks: Task[] }) {
           <div className="grid grid-cols-7">
             {calendarDays.map((day, index) => {
               if (day === null) {
-                return <div key={index} className="h-32 border-r border-b last:border-r-0"></div>
+                return <div key={`empty-${index}`} className="h-32 border-r border-b last:border-r-0"></div>
               }
 
               const dayTasks = getTasksForDay(day)
               const isCurrentDay = isToday(day)
 
               return (
-                <div key={day} className="h-32 border-r border-b last:border-r-0 p-2 overflow-hidden">
+                <div key={`day-${day}-${month}-${year}`} className="h-32 border-r border-b last:border-r-0 p-2 overflow-hidden">
                   <div className={`text-sm font-medium mb-2 ${
                     isCurrentDay 
                       ? 'bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center' 
@@ -735,14 +789,15 @@ function CalendarView({ tasks }: { tasks: Task[] }) {
                   </div>
                   
                   <div className="space-y-1">
-                    {dayTasks.slice(0, 3).map(task => (
+                    {dayTasks.slice(0, 3).map((task, taskIndex) => (
                       <div 
-                        key={task.id} 
-                        className={`text-xs p-1 rounded border truncate ${getTaskColor(task)}`}
+                        key={`day-${day}-task-${task.id}-${taskIndex}`} 
+                        className={`text-xs p-1 rounded border ${getTaskColor(task)}`}
                         title={task.title}
                       >
-                        {task.title.substring(0, 12)}
-                        {task.title.length > 12 && '...'}
+                        <div className="break-words leading-tight">
+                          {task.title}
+                        </div>
                       </div>
                     ))}
                     {dayTasks.length > 3 && (
@@ -787,8 +842,8 @@ function CalendarView({ tasks }: { tasks: Task[] }) {
                 return taskDate.getFullYear() === year && taskDate.getMonth() === month
               })
               .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
-              .map(task => (
-                <div key={task.id} className="flex items-center gap-3 p-2 rounded border">
+              .map((task, taskIndex) => (
+                <div key={`summary-task-${task.id}-${taskIndex}`} className="flex items-center gap-3 p-2 rounded border">
                   <div className={`w-3 h-3 rounded-full ${
                     task.status === 4 ? 'bg-green-500' : 
                     task.status === 2 ? 'bg-blue-500' : 'bg-gray-400'

@@ -263,13 +263,72 @@ function MembersAndAccessTab({ projectId, projectPublicId, permissions }: Member
     }
   }
 
-  // Handle remove participant (placeholder - would need backend implementation)
-  const handleRemoveParticipant = async (participantId: string) => {
-    // This would require backend implementation
-    toast({
-      title: "Info",
-      description: "Remove participant functionality coming soon",
-    })
+  // Handle role change
+  const handleRoleChange = async (participant: Participant, newRole: ParticipantRole) => {
+    if (newRole === participant.role) return
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/participants/${participant.userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ newRole }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Failed to update role: ${response.status} ${errorText}`)
+      }
+
+      await loadData() // Refresh data
+      toast({
+        title: "Success",
+        description: `Role updated to ${getRoleLabel(newRole)}`,
+      })
+    } catch (error) {
+      console.error('Error updating role:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update participant role",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Handle remove participant
+  const handleRemoveParticipant = async (participant: Participant) => {
+    if (!confirm(`Are you sure you want to remove ${participant.userName} from this project?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/participants/${participant.userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Failed to remove participant: ${response.status} ${errorText}`)
+      }
+
+      await loadData() // Refresh data
+      toast({
+        title: "Success",
+        description: `${participant.userName} removed from project`,
+      })
+    } catch (error) {
+      console.error('Error removing participant:', error)
+      toast({
+        title: "Error",
+        description: "Failed to remove participant",
+        variant: "destructive",
+      })
+    }
   }
 
   if (loading) {
@@ -341,26 +400,54 @@ function MembersAndAccessTab({ projectId, projectPublicId, permissions }: Member
                       Joined {new Date(participant.joinedAt).toLocaleDateString()}
                     </p>
                   </div>
-                </div>
+                                </div>
                 <div className="flex items-center space-x-2">
-                  <Badge variant={getRoleBadgeVariant(participant.role)}>
-                    {getRoleLabel(participant.role)}
-                  </Badge>
                   {permissions.canManageProject && participant.role !== ParticipantRole.Owner && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleRemoveParticipant(participant.userId)}>
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Remove from project
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+                        <div className="flex items-center space-x-2">
+                          {/* Role Selector */}
+                          <Select
+                            value={participant.role.toString()}
+                            onValueChange={(value) => handleRoleChange(participant, parseInt(value) as ParticipantRole)}
+                          >
+                            <SelectTrigger className="w-24 h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={ParticipantRole.Admin.toString()}>
+                                Admin
+                              </SelectItem>
+                              <SelectItem value={ParticipantRole.Viewer.toString()}>
+                                Viewer
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          
+                          {/* More Actions */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={() => handleRemoveParticipant(participant)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Remove from project
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
+                      
+                      {/* Show role badge for non-editable roles */}
+                      {(!permissions.canManageProject || participant.role === ParticipantRole.Owner) && (
+                        <Badge variant={getRoleBadgeVariant(participant.role)}>
+                          {getRoleLabel(participant.role)}
+                        </Badge>
+                      )}
                 </div>
               </div>
             ))}

@@ -128,48 +128,6 @@ namespace ProjectHub.Infrastructure.Migrations
                     b.ToTable("ProjectLabels");
                 });
 
-            modelBuilder.Entity("ProjectHub.Core.Entities.ProjectMilestone", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("CreatedById")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ProjectId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("TargetDate")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProjectId");
-
-                    b.ToTable("ProjectMilestones");
-                });
 
             modelBuilder.Entity("ProjectHub.Core.Entities.ProjectParticipant", b =>
                 {
@@ -477,16 +435,7 @@ namespace ProjectHub.Infrastructure.Migrations
                     b.Navigation("Project");
                 });
 
-            modelBuilder.Entity("ProjectHub.Core.Entities.ProjectMilestone", b =>
-                {
-                    b.HasOne("ProjectHub.Core.Entities.Project", "Project")
-                        .WithMany()
-                        .HasForeignKey("ProjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
-                    b.Navigation("Project");
-                });
 
             modelBuilder.Entity("ProjectHub.Core.Entities.TaskActivity", b =>
                 {

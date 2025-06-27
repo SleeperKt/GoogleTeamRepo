@@ -48,9 +48,7 @@ builder.Services.AddScoped<IProjectSettingsService, ProjectSettingsService>();
 builder.Services.AddScoped<IProjectInvitationRepository, ProjectInvitationRepository>();
 builder.Services.AddScoped<IProjectInvitationService, ProjectInvitationService>();
 
-// Регистрация сервисов и репозиториев для вех проектов
-builder.Services.AddScoped<IMilestoneRepository, MilestoneRepository>();
-builder.Services.AddScoped<IMilestoneService, MilestoneService>();
+
 
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
@@ -63,8 +61,6 @@ builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValid
 builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
 builder.Services.AddScoped<IValidator<TaskReorderRequest>, TaskReorderRequestValidator>();
 builder.Services.AddScoped<IValidator<CreateTaskCommentRequest>, CreateTaskCommentRequestValidator>();
-builder.Services.AddScoped<IValidator<CreateMilestoneRequest>, CreateMilestoneRequestValidator>();
-builder.Services.AddScoped<IValidator<UpdateMilestoneRequest>, UpdateMilestoneRequestValidator>();
 
 builder.Services.AddEndpointsApiExplorer();
 var jwtKey = builder.Configuration["Jwt:Key"];

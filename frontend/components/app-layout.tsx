@@ -162,7 +162,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     },
     {
       name: "Settings",
-      href: "/settings",
+      href: `/projects/${currentProject.publicId}/settings`,
       icon: Cog,
     },
   ] : [

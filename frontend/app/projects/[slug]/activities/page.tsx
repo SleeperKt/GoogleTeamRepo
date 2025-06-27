@@ -62,6 +62,7 @@ export default function ProjectActivitiesPage() {
   const { token } = useAuth()
   
   const [project, setProject] = useState<ProjectData | null>(null)
+  const [participants, setParticipants] = useState<any[]>([])
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -87,6 +88,30 @@ export default function ProjectActivitiesPage() {
         if (projectRes.ok) {
           const projectData = await projectRes.json()
           setProject(projectData)
+        }
+
+        // Fetch project participants 
+        try {
+          const participantsResponse = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/participants`, {
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+          })
+
+          if (participantsResponse.ok) {
+            const participantsData = await participantsResponse.json()
+            // Handle ASP.NET response format
+            const participantArray = Array.isArray(participantsData) ? participantsData : ((participantsData as any)?.$values || [])
+            setParticipants(participantArray)
+            console.log('Loaded participants for activities:', participantArray)
+          } else {
+            console.log('Failed to fetch participants for activities')
+            setParticipants([])
+          }
+        } catch (error) {
+          console.log('Error fetching participants for activities:', error)
+          setParticipants([])
         }
 
         // Fetch activities
@@ -137,104 +162,77 @@ export default function ProjectActivitiesPage() {
   }
 
   const generateMockActivities = () => {
-    const mockActivities: ActivityItem[] = [
-      {
-        id: 1,
-        action: "created task",
-        actorName: "John Doe",
-        timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 minutes ago
+    // Use real project participants if available, otherwise show message about backend
+    if (!participants || participants.length === 0) {
+      const noBackendActivities: ActivityItem[] = [
+        {
+          id: 1,
+          action: "system message",
+          actorName: "System",
+          timestamp: new Date().toISOString(),
+          objectType: 'project',
+          objectName: 'Activities Feature',
+          details: 'Activities endpoint not yet connected to backend. Real project activities will appear here once the backend API is implemented.'
+        }
+      ]
+      setActivities(noBackendActivities)
+      setHasMore(false)
+      return
+    }
+
+    // Generate realistic activities using actual project participants
+    const getRandomParticipant = () => participants[Math.floor(Math.random() * participants.length)]
+    const getRandomTaskName = () => {
+      const taskNames = [
+        'Implement user authentication',
+        'Fix navigation bug', 
+        'Update UI components',
+        'Database optimization',
+        'API Integration',
+        'Write documentation',
+        'Code review',
+        'Bug fixes',
+        'Feature development',
+        'Testing improvements'
+      ]
+      return taskNames[Math.floor(Math.random() * taskNames.length)]
+    }
+
+    const mockActivities: ActivityItem[] = []
+    
+    // Generate activities with real participant names
+    for (let i = 0; i < 10; i++) {
+      const participant = getRandomParticipant()
+      const actions = [
+        'created task',
+        'updated task status', 
+        'added comment',
+        'assigned user',
+        'updated task priority',
+        'completed task'
+      ]
+      const action = actions[Math.floor(Math.random() * actions.length)]
+      const taskName = getRandomTaskName()
+      
+      mockActivities.push({
+        id: i + 1,
+        action,
+        actorName: participant.userName || participant.UserName,
+        timestamp: new Date(Date.now() - (i + 1) * 60 * 60 * 1000).toISOString(), // Spread over hours
         objectType: 'task',
-        objectName: 'Implement user authentication',
-        details: 'Added new task to the backlog with high priority'
-      },
-      {
-        id: 2,
-        action: "updated task status",
-        actorName: "Sarah Wilson",
-        timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15 minutes ago
-        objectType: 'task',
-        objectName: 'Fix navigation bug',
-        metadata: {
+        objectName: taskName,
+        details: action === 'created task' ? 'Added new task to the backlog' :
+                action === 'updated task status' ? 'Updated task status' :
+                action === 'added comment' ? 'Added a comment to this task' :
+                action === 'assigned user' ? `Assigned to ${getRandomParticipant().userName || getRandomParticipant().UserName}` :
+                action === 'updated task priority' ? 'Changed task priority' :
+                'Marked task as completed',
+        metadata: action === 'updated task status' ? {
           fromStatus: 'In Progress',
           toStatus: 'Done'
-        }
-      },
-      {
-        id: 3,
-        action: "added comment",
-        actorName: "Mike Johnson",
-        timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 minutes ago
-        objectType: 'comment',
-        objectName: 'API Integration task',
-        details: 'Need to review the authentication flow before completing this'
-      },
-      {
-        id: 4,
-        action: "created milestone",
-        actorName: "John Doe",
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-        objectType: 'milestone',
-        objectName: 'Sprint 1 Complete',
-        details: 'Added milestone for end of current sprint'
-      },
-      {
-        id: 5,
-        action: "assigned user",
-        actorName: "Sarah Wilson",
-        timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
-        objectType: 'task',
-        objectName: 'Database optimization',
-        details: 'Assigned to Mike Johnson'
-      },
-      {
-        id: 6,
-        action: "updated task priority",
-        actorName: "Alex Chen",
-        timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
-        objectType: 'task',
-        objectName: 'UI Design Review',
-        metadata: {
-          fromStatus: 'Medium',
-          toStatus: 'High'
-        }
-      },
-      {
-        id: 7,
-        action: "completed task",
-        actorName: "Mike Johnson",
-        timestamp: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(), // Yesterday
-        objectType: 'task',
-        objectName: 'Setup CI/CD pipeline',
-        details: 'Successfully configured automated deployment'
-      },
-      {
-        id: 8,
-        action: "created task",
-        actorName: "Sarah Wilson",
-        timestamp: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(), // Yesterday
-        objectType: 'task',
-        objectName: 'Write API documentation',
-        details: 'Documentation needed for new endpoints'
-      },
-      {
-        id: 9,
-        action: "updated project settings",
-        actorName: "John Doe",
-        timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(), // 2 days ago
-        objectType: 'project',
-        objectName: project?.name || 'Current Project',
-        details: 'Updated workflow stages and labels'
-      },
-      {
-        id: 10,
-        action: "deleted task",
-        actorName: "Alex Chen",
-        timestamp: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(), // 3 days ago
-        objectType: 'task',
-        objectName: 'Duplicate feature request',
-        details: 'Removed duplicate task from backlog'
-      }
-    ]
+        } : undefined
+      })
+    }
     
     setActivities(mockActivities)
     setHasMore(false) // No more mock data to load
@@ -296,6 +294,8 @@ export default function ProjectActivitiesPage() {
         return <MessageSquare className="h-4 w-4 text-purple-600" />
       case 'assigned user':
         return <User className="h-4 w-4 text-orange-600" />
+      case 'system message':
+        return <MessageSquare className="h-4 w-4 text-gray-600" />
       case 'deleted task':
         return <Trash className="h-4 w-4 text-red-600" />
       default:

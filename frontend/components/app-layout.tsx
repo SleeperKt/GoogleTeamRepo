@@ -120,6 +120,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Generate navigation items based on current project
   const navItems: NavItem[] = currentProject ? [
+    // Global Navigation - moved to top
+    {
+      name: "All Projects",
+      href: "/projects",
+      icon: Folder,
+    },
     // Current Project Section
     {
       name: currentProject.name,
@@ -147,23 +153,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           href: `/projects/${currentProject.publicId}/activities`,
           icon: Activity,
         },
+        {
+          name: "Timeline",
+          href: "/timeline",
+          icon: Calendar,
+        },
+        {
+          name: "Settings",
+          href: `/projects/${currentProject.publicId}/settings`,
+          icon: Cog,
+        },
       ],
-    },
-    // Global Navigation
-    {
-      name: "All Projects",
-      href: "/projects",
-      icon: Folder,
-    },
-    {
-      name: "Timeline",
-      href: "/timeline",
-      icon: Calendar,
-    },
-    {
-      name: "Settings",
-      href: `/projects/${currentProject.publicId}/settings`,
-      icon: Cog,
     },
   ] : [
     // Fallback when no project is selected
@@ -172,7 +172,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       href: "/projects",
       icon: Folder,
     },
-    // Settings tab is removed when no project is selected since settings are project-specific
+    // Timeline and Settings are removed when no project is selected since they are project-specific
   ]
 
   const toggleExpanded = (name: string) => {

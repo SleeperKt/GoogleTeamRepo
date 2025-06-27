@@ -25,5 +25,9 @@ namespace ProjectHub.Core.Interfaces
         // Activity methods
         Task<IEnumerable<TaskActivityResponse>> GetTaskActivitiesAsync(int taskId, string requestingUserId);
         Task LogTaskActivityAsync(int taskId, string activityType, string userId, string? description = null, string? oldValue = null, string? newValue = null);
+        
+        // Project activity methods
+        Task<IEnumerable<ProjectActivityResponse>> GetProjectActivitiesAsync(int projectId, string requestingUserId, int page = 1, int pageSize = 20);
+        Task<int> GetProjectActivityCountAsync(int projectId, string requestingUserId);
     }
 }

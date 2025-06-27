@@ -51,5 +51,24 @@ namespace ProjectHub.Infrastructure.Repositories
             return await _context.TaskActivities
                 .CountAsync(a => a.TaskId == taskId);
         }
+
+        // Project-level activity methods
+        public async Task<IEnumerable<TaskActivity>> GetByProjectIdAsync(int projectId, int page = 1, int pageSize = 20)
+        {
+            return await _context.TaskActivities
+                .Include(a => a.Task)
+                .Where(a => a.Task.ProjectId == projectId)
+                .OrderByDescending(a => a.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+        }
+
+        public async Task<int> GetActivityCountByProjectIdAsync(int projectId)
+        {
+            return await _context.TaskActivities
+                .Include(a => a.Task)
+                .CountAsync(a => a.Task.ProjectId == projectId);
+        }
     }
 } 

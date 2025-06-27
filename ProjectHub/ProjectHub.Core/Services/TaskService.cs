@@ -710,5 +710,53 @@ namespace ProjectHub.Core.Services
 
             await _activityRepository.AddAsync(activity);
         }
+
+        // Project activity methods
+        public async Task<IEnumerable<ProjectActivityResponse>> GetProjectActivitiesAsync(int projectId, string requestingUserId, int page = 1, int pageSize = 20)
+        {
+            // Check if user is participant in the project
+            if (!await IsUserProjectParticipantAsync(projectId, requestingUserId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            var activities = await _activityRepository.GetByProjectIdAsync(projectId, page, pageSize);
+            var activityResponses = new List<ProjectActivityResponse>();
+
+            foreach (var activity in activities)
+            {
+                var user = await _userRepository.GetByIdAsync(activity.UserId);
+                var task = await _taskRepository.GetByIdAsync(activity.TaskId);
+                
+                activityResponses.Add(new ProjectActivityResponse
+                {
+                    Id = activity.Id,
+                    TaskId = activity.TaskId,
+                    TaskTitle = task?.Title ?? "Unknown Task",
+                    UserId = activity.UserId,
+                    UserName = user?.UserName ?? "Unknown",
+                    ActivityType = activity.ActivityType,
+                    Description = activity.Description,
+                    OldValue = activity.OldValue,
+                    NewValue = activity.NewValue,
+                    CreatedAt = activity.CreatedAt
+                });
+            }
+
+            return activityResponses;
+        }
+
+        public async Task<int> GetProjectActivityCountAsync(int projectId, string requestingUserId)
+        {
+            // Check if user is participant in the project
+            if (!await IsUserProjectParticipantAsync(projectId, requestingUserId))
+            {
+                throw new UnauthorizedAccessException("User is not a participant in this project.");
+            }
+
+            return await _activityRepository.GetActivityCountByProjectIdAsync(projectId);
+        }
+
+        // Helper methods
     }
 }

@@ -53,22 +53,40 @@ namespace ProjectHub.Infrastructure.Repositories
         }
 
         // Project-level activity methods
-        public async Task<IEnumerable<TaskActivity>> GetByProjectIdAsync(int projectId, int page = 1, int pageSize = 20)
+        public async Task<IEnumerable<TaskActivity>> GetByProjectIdAsync(int projectId, int page = 1, int pageSize = 20, string? filter = null)
         {
-            return await _context.TaskActivities
+            var query = _context.TaskActivities
                 .Include(a => a.Task)
-                .Where(a => a.Task.ProjectId == projectId)
+                .Where(a => a.Task.ProjectId == projectId);
+
+            // Apply filter if provided and not "all"
+            if (!string.IsNullOrEmpty(filter) && filter != "all")
+            {
+                // Use exact string comparison instead of ToLower()
+                query = query.Where(a => a.ActivityType == filter);
+            }
+
+            return await query
                 .OrderByDescending(a => a.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
         }
 
-        public async Task<int> GetActivityCountByProjectIdAsync(int projectId)
+        public async Task<int> GetActivityCountByProjectIdAsync(int projectId, string? filter = null)
         {
-            return await _context.TaskActivities
+            var query = _context.TaskActivities
                 .Include(a => a.Task)
-                .CountAsync(a => a.Task.ProjectId == projectId);
+                .Where(a => a.Task.ProjectId == projectId);
+
+            // Apply filter if provided and not "all"
+            if (!string.IsNullOrEmpty(filter) && filter != "all")
+            {
+                // Use exact string comparison instead of ToLower()
+                query = query.Where(a => a.ActivityType == filter);
+            }
+
+            return await query.CountAsync();
         }
     }
 } 

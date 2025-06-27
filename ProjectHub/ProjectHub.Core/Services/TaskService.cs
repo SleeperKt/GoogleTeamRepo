@@ -712,7 +712,8 @@ namespace ProjectHub.Core.Services
         }
 
         // Project activity methods
-        public async Task<IEnumerable<ProjectActivityResponse>> GetProjectActivitiesAsync(int projectId, string requestingUserId, int page = 1, int pageSize = 20)
+
+        public async Task<IEnumerable<ProjectActivityResponse>> GetProjectActivitiesAsync(int projectId, string requestingUserId, int page = 1, int pageSize = 20, string? filter = null)
         {
             // Check if user is participant in the project
             if (!await IsUserProjectParticipantAsync(projectId, requestingUserId))
@@ -720,7 +721,7 @@ namespace ProjectHub.Core.Services
                 throw new UnauthorizedAccessException("User is not a participant in this project.");
             }
 
-            var activities = await _activityRepository.GetByProjectIdAsync(projectId, page, pageSize);
+            var activities = await _activityRepository.GetByProjectIdAsync(projectId, page, pageSize, filter);
             var activityResponses = new List<ProjectActivityResponse>();
 
             foreach (var activity in activities)
@@ -746,7 +747,7 @@ namespace ProjectHub.Core.Services
             return activityResponses;
         }
 
-        public async Task<int> GetProjectActivityCountAsync(int projectId, string requestingUserId)
+        public async Task<int> GetProjectActivityCountAsync(int projectId, string requestingUserId, string? filter = null)
         {
             // Check if user is participant in the project
             if (!await IsUserProjectParticipantAsync(projectId, requestingUserId))
@@ -754,7 +755,7 @@ namespace ProjectHub.Core.Services
                 throw new UnauthorizedAccessException("User is not a participant in this project.");
             }
 
-            return await _activityRepository.GetActivityCountByProjectIdAsync(projectId);
+            return await _activityRepository.GetActivityCountByProjectIdAsync(projectId, filter);
         }
 
         // Helper methods

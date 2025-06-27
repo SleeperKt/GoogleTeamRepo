@@ -32,7 +32,7 @@ namespace ProjectHub.API.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetProjectActivities(Guid publicId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> GetProjectActivities(Guid publicId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? filter = null)
         {
             try
             {
@@ -51,8 +51,8 @@ namespace ProjectHub.API.Controllers
                 if (page < 1) page = 1;
                 if (pageSize < 1 || pageSize > 100) pageSize = 20;
                 
-                var activities = await _taskService.GetProjectActivitiesAsync(internalId.Value, userId, page, pageSize);
-                var totalCount = await _taskService.GetProjectActivityCountAsync(internalId.Value, userId);
+                var activities = await _taskService.GetProjectActivitiesAsync(internalId.Value, userId, page, pageSize, filter);
+                var totalCount = await _taskService.GetProjectActivityCountAsync(internalId.Value, userId, filter);
                 
                 return Ok(new 
                 { 

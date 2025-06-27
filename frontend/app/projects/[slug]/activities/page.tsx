@@ -2,34 +2,39 @@
 
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
-import { useAuth } from "@/contexts/auth-context"
-import { API_BASE_URL } from "@/lib/api"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Separator } from "@/components/ui/separator"
-import {
-  Activity,
-  Clock,
-  User,
+import { 
+  Calendar, 
+  Clock, 
+  User, 
+  FileText, 
+  AlertCircle, 
+  MoreHorizontal,
+  ArrowUp,
+  ArrowDown,
   MessageSquare,
-  CheckCircle,
-  Plus,
-  Edit,
-  Trash,
-  Flag,
-  Calendar,
-  FileText,
-  ArrowRight,
-  RefreshCw,
-  UserPlus,
-  GitBranch,
-  Target,
+  Trash2,
+  X,
+  Activity
 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { apiRequest } from "@/lib/api"
 
-// Backend API Response Types
-interface ProjectActivityResponse {
+// Activity type filters with labels - matching backend activity types exactly
+const activityFilters = {
+  all: { label: "All Activities", color: "" },
+  created: { label: "Tasks Created", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" },
+  updated: { label: "Tasks Updated", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300" },
+  status_change: { label: "Status Changes", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" },
+  assignee_change: { label: "Assignments", color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300" },
+  priority_change: { label: "Priority Changes", color: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300" },
+  comment: { label: "Comments", color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300" },
+  deleted: { label: "Tasks Deleted", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300" },
+}
+
+interface ActivityItem {
   id: number
   taskId: number
   taskTitle: string
@@ -42,414 +47,367 @@ interface ProjectActivityResponse {
   createdAt: string
 }
 
-interface ActivityApiResponse {
-  activities: ProjectActivityResponse[]
+interface ActivityResponse {
+  activities: ActivityItem[]
   totalCount: number
-  page: number
-  pageSize: number
-  totalPages: number
 }
 
-interface ProjectData {
+interface Project {
   id: number
   name: string
   description: string
   publicId: string
 }
 
-interface GroupedActivities {
-  [date: string]: ProjectActivityResponse[]
-}
-
 export default function ProjectActivitiesPage() {
   const params = useParams()
   const publicId = params.slug as string
-  const { token } = useAuth()
   
-  const [project, setProject] = useState<ProjectData | null>(null)
-  const [activities, setActivities] = useState<ProjectActivityResponse[]>([])
+  const [project, setProject] = useState<Project | null>(null)
+  const [activities, setActivities] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [page, setPage] = useState(1)
+  const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
+  const [filter, setFilter] = useState("all")
+  const pageSize = 20
 
-  // Fetch project data and initial activities
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!token || !publicId) return
+  // Fetch project details
+  const fetchProject = async () => {
+    if (!publicId) return
 
-      try {
-        setLoading(true)
-
-        // Fetch project data
-        const projectRes = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}`, {
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-        })
-
-        if (projectRes.ok) {
-          const projectData = await projectRes.json()
-          setProject(projectData)
-        }
-
-        // Fetch activities
-        await fetchActivities(1)
-
-      } catch (error) {
-        console.error('Error fetching activities data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [token, publicId])
-
-  const fetchActivities = async (pageNum: number = 1) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/activities?page=${pageNum}&pageSize=20`, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-      })
+      const projectData = await apiRequest<Project>(`/api/projects/public/${publicId}`)
+      setProject(projectData)
+    } catch (err) {
+      console.error('Error fetching project:', err)
+    }
+  }
 
-      if (response.ok) {
-        const data: ActivityApiResponse = await response.json()
-        const newActivities = data.activities || []
-        
-        if (pageNum === 1) {
-          setActivities(newActivities)
-        } else {
-          setActivities(prev => [...prev, ...newActivities])
-        }
-        
-        setTotalCount(data.totalCount || 0)
-        setHasMore(pageNum < (data.totalPages || 1))
-        setPage(pageNum)
+  // Fetch activities
+  const fetchActivities = async (pageNum = 1, append = false, filterType = filter) => {
+    if (!publicId) return
+
+    try {
+      if (!append) {
+        setLoading(true)
       } else {
-        console.error('Failed to fetch activities:', response.status)
-        if (pageNum === 1) {
-          setActivities([])
-          setTotalCount(0)
-          setHasMore(false)
-        }
+        setLoadingMore(true)
       }
-    } catch (error) {
-      console.error('Error fetching activities:', error)
-      if (pageNum === 1) {
-        setActivities([])
-        setTotalCount(0)
-        setHasMore(false)
-      }
-    }
-  }
-
-  const loadMore = () => {
-    if (!loadingMore && hasMore) {
-      setLoadingMore(true)
-      fetchActivities(page + 1).finally(() => setLoadingMore(false))
-    }
-  }
-
-  const refreshActivities = () => {
-    setPage(1)
-    setHasMore(true)
-    fetchActivities(1)
-  }
-
-  // Group activities by day
-  const groupedActivities: GroupedActivities = activities.reduce((groups, activity) => {
-    const date = new Date(activity.createdAt)
-    const dateString = date.toDateString()
-    
-    if (!groups[dateString]) {
-      groups[dateString] = []
-    }
-    groups[dateString].push(activity)
-    return groups
-  }, {} as GroupedActivities)
-
-  // Helper functions
-  const formatTimeAgo = (timestamp: string) => {
-    const activityTime = new Date(timestamp)
-    const now = new Date()
-    const diffInMinutes = Math.floor((now.getTime() - activityTime.getTime()) / (1000 * 60))
-    
-    if (diffInMinutes < 1) return 'Just now'
-    if (diffInMinutes < 60) return `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`
-    
-    const diffInHours = Math.floor(diffInMinutes / 60)
-    if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`
-    
-    const diffInDays = Math.floor(diffInHours / 24)
-    if (diffInDays < 7) return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`
-    
-    return activityTime.toLocaleDateString()
-  }
-
-  const getActivityIcon = (activity: ProjectActivityResponse) => {
-    switch (activity.activityType.toLowerCase()) {
-      case 'created':
-        return <Plus className="h-4 w-4 text-green-600" />
-      case 'updated':
-      case 'status_change':
-        return <Edit className="h-4 w-4 text-blue-600" />
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-600" />
-      case 'comment':
-        return <MessageSquare className="h-4 w-4 text-purple-600" />
-      case 'assigned':
-      case 'assignee_change':
-        return <UserPlus className="h-4 w-4 text-orange-600" />
-      case 'priority_change':
-        return <Flag className="h-4 w-4 text-red-600" />
-      case 'stage_change':
-        return <GitBranch className="h-4 w-4 text-indigo-600" />
-      default:
-        return <Activity className="h-4 w-4 text-gray-600" />
-    }
-  }
-
-  const getActivityDescription = (activity: ProjectActivityResponse) => {
-    const { activityType, description, oldValue, newValue, taskTitle } = activity
-    
-    if (description) {
-      return description
-    }
-
-    // Generate descriptions based on activity type
-    switch (activityType.toLowerCase()) {
-      case 'created':
-        return `created task "${taskTitle}"`
-      case 'updated':
-        return `updated task "${taskTitle}"`
-      case 'status_change':
-        if (oldValue && newValue) {
-          return `changed status of "${taskTitle}" from ${oldValue} to ${newValue}`
-        }
-        return `updated status of "${taskTitle}"`
-      case 'assignee_change':
-        if (newValue) {
-          return `assigned "${taskTitle}" to ${newValue}`
-        }
-        return `updated assignee for "${taskTitle}"`
-      case 'priority_change':
-        if (oldValue && newValue) {
-          return `changed priority of "${taskTitle}" from ${oldValue} to ${newValue}`
-        }
-        return `updated priority of "${taskTitle}"`
-      case 'comment':
-        return `added a comment to "${taskTitle}"`
-      case 'completed':
-        return `completed task "${taskTitle}"`
-      default:
-        return `performed ${activityType} on "${taskTitle}"`
-    }
-  }
-
-  const formatDateHeader = (dateString: string) => {
-    const date = new Date(dateString)
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today'
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday'
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+      
+      // Build query parameters
+      const queryParams = new URLSearchParams({
+        page: pageNum.toString(),
+        pageSize: pageSize.toString()
       })
+      
+      if (filterType !== 'all') {
+        queryParams.append('filter', filterType)
+      }
+      
+      const endpoint = `/api/projects/public/${publicId}/activities?${queryParams.toString()}`
+      const data = await apiRequest<ActivityResponse>(endpoint)
+      
+      if (append && pageNum > 1) {
+        setActivities(prev => [...prev, ...data.activities])
+      } else {
+        setActivities(data.activities)
+      }
+      
+      setTotalCount(data.totalCount)
+      setHasMore(data.activities.length === pageSize)
+      setError(null)
+    } catch (err) {
+      console.error('Error fetching activities:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch activities')
+    } finally {
+      setLoading(false)
+      setLoadingMore(false)
     }
   }
 
-  const getUserInitials = (userName: string) => {
-    return userName
+  // Initial data fetch
+  useEffect(() => {
+    if (publicId) {
+      fetchProject()
+      fetchActivities(1, false)
+      setPage(1)
+    }
+  }, [publicId])
+
+  // Handle filter changes
+  useEffect(() => {
+    if (publicId) {
+      fetchActivities(1, false, filter)
+      setPage(1)
+    }
+  }, [filter, publicId])
+
+  // Load more activities
+  const loadMore = async () => {
+    if (!hasMore || loadingMore) return
+    
+    const nextPage = page + 1
+    await fetchActivities(nextPage, true, filter)
+    setPage(nextPage)
+  }
+
+  // Clear filters
+  const clearFilters = () => {
+    setFilter("all")
+  }
+
+  // Get user initials
+  const getUserInitials = (name: string) => {
+    return name
       .split(' ')
-      .map(name => name.charAt(0))
+      .map(part => part.charAt(0))
       .join('')
       .toUpperCase()
       .slice(0, 2)
   }
 
+  // Format timestamp
+  const formatTimeAgo = (timestamp: string) => {
+    try {
+      const date = new Date(timestamp)
+      if (isNaN(date.getTime())) {
+        return 'Invalid date'
+      }
+      
+      const now = new Date()
+      const diffInMs = now.getTime() - date.getTime()
+      const diffInMinutes = Math.floor(diffInMs / (1000 * 60))
+      const diffInHours = Math.floor(diffInMinutes / 60)
+      const diffInDays = Math.floor(diffInHours / 24)
+      
+      if (diffInMinutes < 60) {
+        return `${diffInMinutes}m ago`
+      } else if (diffInHours < 24) {
+        return `${diffInHours}h ago`
+      } else if (diffInDays < 7) {
+        return `${diffInDays}d ago`
+      } else {
+        return date.toLocaleDateString()
+      }
+    } catch (error) {
+      return 'Invalid date'
+    }
+  }
+
+  // Group activities by date
+  const groupActivitiesByDate = (activities: ActivityItem[]) => {
+    const groups: { [key: string]: ActivityItem[] } = {}
+    
+    activities.forEach(activity => {
+      const date = new Date(activity.createdAt)
+      if (isNaN(date.getTime())) return
+      
+      const dateKey = date.toDateString()
+      if (!groups[dateKey]) {
+        groups[dateKey] = []
+      }
+      groups[dateKey].push(activity)
+    })
+    
+    return groups
+  }
+
+  // Get activity icon
+  const getActivityIcon = (type: string) => {
+    switch (type.toLowerCase()) {
+      case 'created':
+        return <FileText className="h-4 w-4" />
+      case 'updated':
+        return <FileText className="h-4 w-4" />
+      case 'status_change':
+        return <MoreHorizontal className="h-4 w-4" />
+      case 'assignee_change':
+        return <User className="h-4 w-4" />
+      case 'priority_change':
+        return <ArrowUp className="h-4 w-4" />
+      case 'comment':
+        return <MessageSquare className="h-4 w-4" />
+      case 'deleted':
+        return <Trash2 className="h-4 w-4" />
+      default:
+        return <Clock className="h-4 w-4" />
+    }
+  }
+
   if (loading) {
     return (
-      <div className="p-4 md:p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2 mb-6"></div>
-          <div className="space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
-            ))}
+      <div className="p-4 md:p-6 w-full">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin h-8 w-8 border-2 border-violet-500 border-t-transparent rounded-full"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 md:p-6 w-full">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">Error loading activities</h3>
+            <p className="text-gray-500 mb-4">{error}</p>
+            <Button onClick={() => fetchActivities(1, false)}>Try Again</Button>
           </div>
         </div>
       </div>
     )
   }
 
-  if (!project) {
-    return (
-      <div className="p-4 md:p-6">
-        <div className="text-center mt-10">
-          <h1 className="text-2xl font-bold mb-2">Project Not Found</h1>
-          <p className="text-muted-foreground">The project you're looking for doesn't exist.</p>
-        </div>
-      </div>
-    )
-  }
+  const groupedActivities = groupActivitiesByDate(activities)
 
   return (
-    <div className="p-4 md:p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold mb-2">Activities</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>{project.name}</span>
-            <span>•</span>
-            <span>{totalCount} total activities</span>
+    <div className="p-4 md:p-6 w-full">
+      {/* Header Section */}
+      <div className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold mb-2">Activities</h1>
+        {project && (
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{project.name}</span>
+            <span className="text-sm text-muted-foreground">
+              {filter !== 'all' ? (
+                <>
+                  {totalCount} filtered {totalCount === 1 ? 'activity' : 'activities'}
+                  <Badge variant="secondary" className="ml-2">
+                    {activityFilters[filter as keyof typeof activityFilters]?.label}
+                  </Badge>
+                </>
+              ) : (
+                `${totalCount} total ${totalCount === 1 ? 'activity' : 'activities'}`
+              )}
+            </span>
           </div>
-        </div>
-        <Button onClick={refreshActivities} variant="outline" size="sm">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        )}
       </div>
 
-      {/* Activities Feed */}
+      {/* Filters */}
+      <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4">
+        <div className="flex flex-wrap gap-2">
+          <Select value={filter} onValueChange={(value) => setFilter(value)}>
+            <SelectTrigger className="w-[140px] h-9">
+              <SelectValue placeholder="Activity Type" />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(activityFilters).map(([key, { label }]) => (
+                <SelectItem key={key} value={key}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" size="sm" className="h-9 px-3 flex items-center gap-1" onClick={clearFilters}>
+            <X className="h-3.5 w-3.5" />
+            <span>Clear</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Activities Timeline */}
       {activities.length === 0 ? (
-        <Card className="bg-white dark:bg-gray-800">
-          <CardContent className="p-6">
-            <div className="text-center py-8">
-              <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">No activities yet</h3>
-              <p className="text-muted-foreground">
-                Project activities will appear here as team members work on tasks and make changes.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+          <div className="bg-gray-100 dark:bg-gray-700 rounded-full p-6 mb-4">
+            <Activity className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+          </div>
+          <h3 className="text-xl font-medium mb-2">No activities yet</h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
+            Activities will appear here as team members work on tasks.
+          </p>
+        </div>
       ) : (
         <div className="space-y-6">
           {Object.entries(groupedActivities)
             .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-            .map(([date, dayActivities]) => (
-              <div key={date}>
-                {/* Date Header */}
-                <div className="flex items-center gap-4 mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    {formatDateHeader(date)}
-                  </h2>
-                  <Separator className="flex-1" />
-                  <Badge variant="secondary" className="text-xs">
-                    {dayActivities.length} activities
-                  </Badge>
+            .map(([dateString, dayActivities]) => (
+              <div key={dateString} className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+                <div className="p-4 border-b bg-gray-50 dark:bg-gray-700/50">
+                  <h3 className="font-medium text-gray-900 dark:text-gray-100">
+                    {new Date(dateString).toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {dayActivities.length} {dayActivities.length === 1 ? 'activity' : 'activities'}
+                  </p>
                 </div>
-
-                {/* Activities for this day */}
-                <Card className="bg-white dark:bg-gray-800">
-                  <CardContent className="p-0">
-                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                      {dayActivities
-                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                        .map((activity) => (
-                          <div key={activity.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                            <div className="flex items-start gap-3">
-                              {/* Activity Icon */}
-                              <div className="flex-shrink-0 mt-1">
-                                {getActivityIcon(activity)}
-                              </div>
-
-                              {/* Activity Content */}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  {/* Actor */}
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="h-6 w-6">
-                                      <AvatarFallback className="text-xs">
-                                        {getUserInitials(activity.userName)}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                      {activity.userName}
-                                    </span>
-                                  </div>
-
-                                  {/* Action Description */}
-                                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    {getActivityDescription(activity)}
-                                  </span>
-                                </div>
-
-                                {/* Status Change Details */}
-                                {(activity.oldValue && activity.newValue) && (
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <Badge variant="outline" className="text-xs">
-                                      {activity.oldValue}
-                                    </Badge>
-                                    <ArrowRight className="h-3 w-3 text-gray-400" />
-                                    <Badge variant="outline" className="text-xs">
-                                      {activity.newValue}
-                                    </Badge>
-                                  </div>
-                                )}
-
-                                {/* Task Reference */}
-                                <div className="flex items-center gap-1 mt-1">
-                                  <FileText className="h-3 w-3 text-gray-400" />
-                                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    {activity.taskTitle}
-                                  </span>
-                                </div>
-
-                                {/* Timestamp */}
-                                <div className="flex items-center gap-1 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                  <Clock className="h-3 w-3" />
-                                  <span>{formatTimeAgo(activity.createdAt)}</span>
-                                  <span>•</span>
-                                  <span>
-                                    {new Date(activity.createdAt).toLocaleTimeString('en-US', { 
-                                      hour: 'numeric', 
-                                      minute: '2-digit',
-                                      hour12: true 
-                                    })}
-                                  </span>
-                                </div>
-                              </div>
+                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {dayActivities.map((activity, index) => (
+                    <div 
+                      key={`${activity.id}-${index}`}
+                      className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-8 w-8 flex-shrink-0">
+                          <AvatarFallback className="text-xs">
+                            {getUserInitials(activity.userName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-900 dark:text-gray-100">
+                              {activity.userName}
+                            </span>
+                            <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                              {getActivityIcon(activity.activityType)}
                             </div>
+                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                              {formatTimeAgo(activity.createdAt)}
+                            </span>
                           </div>
-                        ))}
+                          
+                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                            {activity.description}
+                          </p>
+                          
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">
+                              {activity.taskTitle}
+                            </Badge>
+                            {activityFilters[activity.activityType as keyof typeof activityFilters]?.color && (
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs ${activityFilters[activity.activityType as keyof typeof activityFilters]?.color}`}
+                              >
+                                {activityFilters[activity.activityType as keyof typeof activityFilters]?.label}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  ))}
+                </div>
               </div>
             ))}
-
+          
           {/* Load More Button */}
           {hasMore && (
-            <div className="text-center pt-6">
+            <div className="flex justify-center pt-6">
               <Button 
                 onClick={loadMore} 
-                variant="outline"
                 disabled={loadingMore}
-                className="w-full sm:w-auto"
+                variant="outline"
+                className="min-w-[120px]"
               >
                 {loadingMore ? (
                   <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    <div className="animate-spin h-4 w-4 border-2 border-violet-500 border-t-transparent rounded-full mr-2"></div>
                     Loading...
                   </>
                 ) : (
-                  'Load More Activities'
+                  'Load More'
                 )}
               </Button>
             </div>

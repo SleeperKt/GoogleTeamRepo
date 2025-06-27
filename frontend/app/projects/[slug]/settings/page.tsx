@@ -1485,6 +1485,215 @@ function EditStageForm({ stage, colorOptions, onSave, onCancel }: EditStageFormP
   )
 }
 
+// Danger Zone Tab Component
+interface DangerZoneTabProps {
+  projectId: number
+  projectPublicId: string
+  projectName: string
+  permissions: any
+}
+
+function DangerZoneTab({ projectId, projectPublicId, projectName, permissions }: DangerZoneTabProps) {
+  const router = useRouter()
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Only show if user is owner
+  if (!permissions.canDeleteProject) {
+    return null
+  }
+
+  const handleDeleteProject = async () => {
+    if (deleteConfirmation !== projectName) {
+      toast({
+        title: "Error",
+        description: `Please type "${projectName}" to confirm deletion`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      // TODO: Implement actual deletion API call
+      console.log('Deleting project:', projectPublicId)
+      
+      toast({
+        title: "Success",
+        description: "Project deleted successfully",
+      })
+      
+      // Redirect to dashboard after deletion
+      router.push('/projects')
+    } catch (error) {
+      console.error('Error deleting project:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete project",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteDialog(false)
+      setDeleteConfirmation("")
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Warning Banner */}
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="flex items-start space-x-3">
+          <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-medium text-red-800">Danger Zone</h3>
+            <p className="text-sm text-red-700 mt-1">
+              The actions in this section are destructive and irreversible. Please proceed with caution.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Delete Project Section */}
+      <Card className="border-red-200">
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="text-red-600">Delete Project</CardTitle>
+              <CardDescription>
+                Permanently delete this project and all of its data. This action cannot be undone.
+              </CardDescription>
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => setShowDeleteDialog(true)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Project
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              When you delete a project, the following will be permanently removed:
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside ml-4">
+              <li>All tasks and their comments</li>
+              <li>All project files and attachments</li>
+              <li>All team member access and permissions</li>
+              <li>All project settings and configurations</li>
+              <li>All project history and activity logs</li>
+            </ul>
+            <div className="bg-red-50 border border-red-200 rounded p-3 mt-4">
+              <p className="text-sm text-red-800 font-medium">
+                ⚠️ This action is irreversible. Make sure you have backed up any important data before proceeding.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle className="text-red-600 flex items-center">
+                <AlertTriangle className="h-5 w-5 mr-2" />
+                Delete Project
+              </CardTitle>
+              <CardDescription>
+                This action cannot be undone. This will permanently delete the project and all of its data.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Please type <span className="font-mono font-bold text-red-600">{projectName}</span> to confirm:
+                </p>
+                <Input
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  placeholder={`Type "${projectName}" here`}
+                  className="font-mono"
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowDeleteDialog(false)
+                    setDeleteConfirmation("")
+                  }}
+                  disabled={isDeleting}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteProject}
+                  disabled={deleteConfirmation !== projectName || isDeleting}
+                  className="flex-1 bg-red-600 hover:bg-red-700"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete Project
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Future Features Section */}
+      <Card className="border-orange-200">
+        <CardHeader>
+          <CardTitle className="text-orange-600">Additional Actions</CardTitle>
+          <CardDescription>
+            Other destructive actions that may be added in the future
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 border rounded-lg opacity-50">
+              <div>
+                <h4 className="font-medium text-gray-500">Transfer Ownership</h4>
+                <p className="text-sm text-gray-400">Transfer project ownership to another team member</p>
+              </div>
+              <Button variant="outline" disabled className="text-gray-400">
+                Coming Soon
+              </Button>
+            </div>
+            
+            <div className="flex items-center justify-between p-3 border rounded-lg opacity-50">
+              <div>
+                <h4 className="font-medium text-gray-500">Reset Project Data</h4>
+                <p className="text-sm text-gray-400">Remove all tasks and data while keeping the project</p>
+              </div>
+              <Button variant="outline" disabled className="text-gray-400">
+                Coming Soon
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 // Edit Label Form Component
 interface EditLabelFormProps {
   label: ProjectLabel
@@ -2365,15 +2574,12 @@ export default function ProjectGeneralSettingsPage() {
 
             {permissions.canDeleteProject && (
               <TabsContent value="danger" className="mt-0">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Danger Zone</CardTitle>
-                    <CardDescription>Irreversible and destructive actions</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">Danger zone actions coming soon...</p>
-                  </CardContent>
-                </Card>
+                <DangerZoneTab 
+                  projectId={project.id}
+                  projectPublicId={projectId}
+                  projectName={project.name}
+                  permissions={permissions}
+                />
               </TabsContent>
             )}
           </Tabs>

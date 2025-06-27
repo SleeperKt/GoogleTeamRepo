@@ -80,6 +80,14 @@ export default function ProjectGeneralSettingsPage() {
   
   const { refreshPermissions, ...permissions } = useUserPermissions(projectId)
   
+  // Debug logging
+  console.log('🔧 Settings Page Debug:', {
+    projectId,
+    permissions,
+    user: user?.email,
+    token: !!token
+  })
+  
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -227,8 +235,12 @@ export default function ProjectGeneralSettingsPage() {
       // Update project properties
       if (!project || !projectId || !token) return
       
+      // Store the current project state and new value for the API call
+      const currentProject = project
+      const updatedProject = { ...project, [field]: value }
+      
       // Optimistic update - immediately update the UI
-      setProject(prev => prev ? { ...prev, [field]: value } : null)
+      setProject(updatedProject)
       
       // Clear existing timeout
       if (updateProjectTimeoutRef.current) {
@@ -239,6 +251,8 @@ export default function ProjectGeneralSettingsPage() {
       updateProjectTimeoutRef.current = setTimeout(async () => {
         try {
           setIsSaving(true)
+          console.log('Updating project:', updatedProject) // Debug log
+          
           const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
             method: 'PUT',
             headers: {
@@ -246,17 +260,21 @@ export default function ProjectGeneralSettingsPage() {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              name: field === 'name' ? value : project.name,
-              description: field === 'description' ? value : project.description,
-              status: project.status,
-              priority: project.priority,
+              name: updatedProject.name,
+              description: updatedProject.description,
+              status: updatedProject.status,
+              priority: updatedProject.priority,
             }),
           })
 
+          console.log('API Response:', response.status, response.statusText) // Debug log
+
           if (!response.ok) {
+            const errorText = await response.text()
+            console.error('API Error:', errorText) // Debug log
             // Revert optimistic update on failure
-            setProject(project)
-            throw new Error('Failed to update project')
+            setProject(currentProject)
+            throw new Error(`Failed to update project: ${response.status} ${response.statusText}`)
           }
 
           // Show success message
@@ -271,7 +289,7 @@ export default function ProjectGeneralSettingsPage() {
           console.error('Project update error:', err)
           setError(err instanceof Error ? err.message : 'Failed to update project')
           // Revert optimistic update on error
-          setProject(project)
+          setProject(currentProject)
           toast({
             title: "Error",
             description: "Failed to update project",
@@ -285,8 +303,11 @@ export default function ProjectGeneralSettingsPage() {
       // Update settings properties
       if (!settings) return
       
-      // Optimistic update for settings
+      // Store current settings and create updated version
+      const currentSettings = settings
       const updatedSettings = { ...settings, [field]: value }
+      
+      // Optimistic update for settings
       setSettings(updatedSettings)
       
       // Clear existing timeout
@@ -298,6 +319,8 @@ export default function ProjectGeneralSettingsPage() {
       updateSettingsTimeoutRef.current = setTimeout(async () => {
         try {
           setIsSaving(true)
+          console.log('Updating settings:', updatedSettings) // Debug log
+          
           const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}/settings`, {
             method: 'PUT',
             headers: {
@@ -307,10 +330,14 @@ export default function ProjectGeneralSettingsPage() {
             body: JSON.stringify(updatedSettings),
           })
 
+          console.log('Settings API Response:', response.status, response.statusText) // Debug log
+
           if (!response.ok) {
+            const errorText = await response.text()
+            console.error('Settings API Error:', errorText) // Debug log
             // Revert optimistic update on failure
-            setSettings(settings)
-            throw new Error('Failed to update settings')
+            setSettings(currentSettings)
+            throw new Error(`Failed to update settings: ${response.status} ${response.statusText}`)
           }
 
           const result = await safeParseResponse(response, updatedSettings)
@@ -327,7 +354,7 @@ export default function ProjectGeneralSettingsPage() {
           console.error('Settings update error:', err)
           setError(err instanceof Error ? err.message : 'Failed to update settings')
           // Revert optimistic update on error
-          setSettings(settings)
+          setSettings(currentSettings)
           toast({
             title: "Error",
             description: "Failed to update settings",
@@ -449,6 +476,10 @@ export default function ProjectGeneralSettingsPage() {
               readOnly={!permissions.canManageProject}
               placeholder="Enter project name"
             />
+            {/* Debug info */}
+            <p className="text-xs text-muted-foreground">
+              Can manage: {permissions.canManageProject.toString()} | Role: {permissions.role} | Loading: {permissions.isLoading.toString()}
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -462,6 +493,25 @@ export default function ProjectGeneralSettingsPage() {
               placeholder="Enter project description"
             />
           </div>
+
+          {/* Test button for manual save */}
+          {permissions.canManageProject && (
+            <div className="space-y-2">
+              <Button 
+                onClick={() => {
+                  console.log('Manual save test - Project:', project)
+                  console.log('Manual save test - Settings:', settings)
+                  console.log('Manual save test - ProjectId:', projectId)
+                  console.log('Manual save test - Token:', !!token)
+                  handleInputChange("name", project?.name || "Test Project")
+                }}
+                variant="outline"
+                size="sm"
+              >
+                Test Save Project Name
+              </Button>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="default-status">Default Task View</Label>

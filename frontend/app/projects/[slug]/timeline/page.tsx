@@ -275,24 +275,39 @@ function GanttView({ tasks }: { tasks: Task[] }) {
 
   // Calculate date range
   const dates = tasksWithDates.map(task => new Date(task.dueDate!))
-  const minDate = new Date(Math.min(...dates.map(d => d.getTime())))
-  const maxDate = new Date(Math.max(...dates.map(d => d.getTime())))
+  const today = new Date()
+  today.setHours(0, 0, 0, 0) // Normalize to midnight for accurate comparison
+  
+  // Include today in the date range calculation
+  const allDates = [...dates, today]
+  const minDate = new Date(Math.min(...allDates.map(d => d.getTime())))
+  const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())))
   
   // Add padding to date range
   const startDate = new Date(minDate)
   startDate.setDate(startDate.getDate() - 7)
+  startDate.setHours(0, 0, 0, 0)
   
   const endDate = new Date(maxDate)
   endDate.setDate(endDate.getDate() + 7)
+  endDate.setHours(0, 0, 0, 0)
   
   const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
   
-  // Generate timeline dates (weekly intervals)
+  // Generate timeline dates - show EVERY SINGLE DAY for proper Gantt chart
   const timelineDates = []
-  const currentDate = new Date(startDate)
-  while (currentDate <= endDate) {
+  // Limit range if too many days to prevent UI issues
+  const maxDisplayDays = 90 // Show max 3 months at once
+  const actualRange = Math.min(totalDays, maxDisplayDays)
+  const displayStartDate = totalDays > maxDisplayDays 
+    ? new Date(today.getTime() - (maxDisplayDays/2 * 24 * 60 * 60 * 1000))
+    : startDate
+  const displayEndDate = new Date(displayStartDate.getTime() + (actualRange * 24 * 60 * 60 * 1000))
+  
+  const currentDate = new Date(displayStartDate)
+  while (currentDate <= displayEndDate) {
     timelineDates.push(new Date(currentDate))
-    currentDate.setDate(currentDate.getDate() + 7)
+    currentDate.setDate(currentDate.getDate() + 1) // Show EVERY day
   }
 
   const getTaskBarStyle = (task: Task) => {
@@ -301,12 +316,13 @@ function GanttView({ tasks }: { tasks: Task[] }) {
     const taskDue = new Date(task.dueDate)
     const taskStart = new Date(task.createdAt)
     
-    // Calculate position and width
-    const daysFromStart = Math.max(0, (taskStart.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+    // Calculate position and width using display range
+    const displayDays = Math.ceil((displayEndDate.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
+    const daysFromStart = Math.max(0, (taskStart.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
     const taskDuration = Math.max(1, (taskDue.getTime() - taskStart.getTime()) / (1000 * 60 * 60 * 24))
     
-    const left = (daysFromStart / totalDays) * 100
-    const width = Math.min((taskDuration / totalDays) * 100, 100 - left)
+    const left = (daysFromStart / displayDays) * 100
+    const width = Math.min((taskDuration / displayDays) * 100, 100 - left)
     
     return {
       left: `${left}%`,
@@ -344,27 +360,43 @@ function GanttView({ tasks }: { tasks: Task[] }) {
             <div className="w-64 flex-shrink-0"></div>
             <div className="flex-1 relative">
               <div className="flex">
-                {timelineDates.map((date, index) => (
-                  <div key={index} className="flex-1 text-center text-sm text-muted-foreground border-r last:border-r-0">
-                    {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </div>
-                ))}
+                {timelineDates.map((date, index) => {
+                  const isWeekend = date.getDay() === 0 || date.getDay() === 6
+                  const isToday = date.toDateString() === new Date().toDateString()
+                  return (
+                    <div 
+                      key={index} 
+                      className={`flex-1 text-center text-xs border-r last:border-r-0 py-1 min-w-[40px] ${
+                        isWeekend ? 'bg-gray-50 text-gray-400' : 'text-muted-foreground'
+                      } ${isToday ? 'bg-red-50 font-medium text-red-700' : ''}`}
+                    >
+                      <div className="font-medium">
+                        {date.toLocaleDateString('en-US', { day: 'numeric' })}
+                      </div>
+                      <div className="text-xs opacity-70">
+                        {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
               {/* Today indicator */}
               {(() => {
-                const today = new Date()
-                const todayPosition = Math.max(0, (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-                const todayPercentage = (todayPosition / totalDays) * 100
+                const todayNormalized = new Date()
+                todayNormalized.setHours(0, 0, 0, 0)
+                const displayDays = Math.ceil((displayEndDate.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
+                const todayPosition = (todayNormalized.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24)
+                const todayPercentage = (todayPosition / displayDays) * 100
                 
                 if (todayPercentage >= 0 && todayPercentage <= 100) {
                   return (
                     <div 
                       className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
                       style={{ left: `${todayPercentage}%` }}
-                      title={`Today: ${today.toLocaleDateString()}`}
+                      title={`Today: ${todayNormalized.toLocaleDateString()}`}
                     >
-                      <div className="absolute -top-6 -left-8 bg-red-500 text-white text-xs px-2 py-1 rounded">
-                        Today
+                      <div className="absolute -top-6 -left-8 bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                        Today ({todayNormalized.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
                       </div>
                     </div>
                   )
@@ -407,14 +439,16 @@ function GanttView({ tasks }: { tasks: Task[] }) {
                       </div>
                       {/* Today indicator line for each row */}
                       {(() => {
-                        const today = new Date()
-                        const todayPosition = Math.max(0, (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-                        const todayPercentage = (todayPosition / totalDays) * 100
+                        const todayNormalized = new Date()
+                        todayNormalized.setHours(0, 0, 0, 0)
+                        const displayDays = Math.ceil((displayEndDate.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
+                        const todayPosition = (todayNormalized.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24)
+                        const todayPercentage = (todayPosition / displayDays) * 100
                         
                         if (todayPercentage >= 0 && todayPercentage <= 100) {
                           return (
                             <div 
-                              className="absolute top-0 bottom-0 w-0.5 bg-red-500 opacity-50"
+                              className="absolute top-0 bottom-0 w-0.5 bg-red-500 opacity-60"
                               style={{ left: `${todayPercentage}%` }}
                             />
                           )

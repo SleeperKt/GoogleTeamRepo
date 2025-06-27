@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   BarChart3,
   Calendar,
@@ -17,17 +17,24 @@ import {
   Users,
   X,
   ArrowLeft,
+  User,
+  Tag,
+  TrendingUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
 import { useParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { API_BASE_URL } from "@/lib/api"
+import { useProjectWorkflowStages, ProjectWorkflowStage } from "@/hooks/use-project-workflow-stages"
+import { useProjectLabels, ProjectLabel } from "@/hooks/use-project-labels"
+import { useProjectParticipants } from "@/hooks/use-project-participants"
 import Link from "next/link"
 
 interface ProjectData {
@@ -36,18 +43,6 @@ interface ProjectData {
   description: string
   createdAt: string
   publicId: string
-}
-
-interface TaskStatistics {
-  projectId: number
-  taskCounts: {
-    todo: number
-    inProgress: number
-    inReview: number
-    done: number
-    cancelled: number
-    total: number
-  }
 }
 
 interface Task {
@@ -61,23 +56,45 @@ interface Task {
   createdAt: string
   updatedAt: string
   dueDate?: string
+  type?: string
+  labels?: string[]
+  estimatedHours?: number
+  position: number
 }
 
-interface Participant {
-  userId: string
-  userName: string
-  role: string
-  joinedAt: string
+interface ReportsTeamMember {
+  id: string
+  name: string
+  role?: string
+  joinedAt?: string
+  avatar?: string
+  initials: string
 }
 
-// Status mapping
-const TaskStatus = {
-  0: "To Do",
-  1: "In Progress", 
-  2: "In Review",
-  3: "Done",
-  4: "Cancelled"
+// Filter state interface
+interface FilterState {
+  assigneeId: string | null
+  dateRange: string
+  labelIds: number[]
+  stageIds: number[]
+  taskTypes: string[]
+  priorities: number[]
 }
+
+const TASK_TYPES = [
+  { value: "task", label: "Task" },
+  { value: "bug", label: "Bug" },
+  { value: "feature", label: "Feature" },
+  { value: "story", label: "Story" },
+  { value: "epic", label: "Epic" }
+]
+
+const PRIORITY_LEVELS = [
+  { value: 1, label: "Low", color: "text-blue-500" },
+  { value: 2, label: "Medium", color: "text-yellow-500" },
+  { value: 3, label: "High", color: "text-red-500" },
+  { value: 4, label: "Critical", color: "text-red-600" }
+]
 
 export default function ProjectReportsPage() {
   const params = useParams()
@@ -85,12 +102,23 @@ export default function ProjectReportsPage() {
   const publicId = params.slug as string
 
   const [project, setProject] = useState<ProjectData | null>(null)
-  const [statistics, setStatistics] = useState<TaskStatistics | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
-  const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
-  const [reportType, setReportType] = useState("overview")
-  const [dateRange, setDateRange] = useState("last30days")
+  
+  // Use hooks for dynamic data
+  const { stages: workflowStages, loading: stagesLoading } = useProjectWorkflowStages(publicId)
+  const { labels, loading: labelsLoading } = useProjectLabels(publicId)
+  const { teamMembers: participants, isLoading: participantsLoading } = useProjectParticipants(publicId)
+
+  // Filter state
+  const [filters, setFilters] = useState<FilterState>({
+    assigneeId: null,
+    dateRange: "last30days",
+    labelIds: [],
+    stageIds: [],
+    taskTypes: [],
+    priorities: []
+  })
 
   const fetchData = async () => {
     if (!token) {
@@ -111,22 +139,9 @@ export default function ProjectReportsPage() {
       const projectData = await projectRes.json()
       setProject(projectData)
 
-      const [statsRes, tasksRes, participantsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/tasks/statistics/${projectData.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_BASE_URL}/api/projects/public/${publicId}/tasks`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_BASE_URL}/api/projects/${projectData.id}/participants`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-      ])
-      
-      if (statsRes.ok) {
-        const statsData = await statsRes.json()
-        setStatistics(statsData)
-      }
+      const tasksRes = await fetch(`${API_BASE_URL}/api/projects/public/${publicId}/tasks`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
 
       if (tasksRes.ok) {
         const tasksData = await tasksRes.json()
@@ -148,30 +163,9 @@ export default function ProjectReportsPage() {
         setTasks(tasksArray)
       }
 
-      if (participantsRes.ok) {
-        const participantsData = await participantsRes.json()
-        console.log('Participants API response:', participantsData)
-        
-        // Handle different response structures for participants
-        let participantsArray: Participant[] = []
-        if (Array.isArray(participantsData)) {
-          participantsArray = participantsData
-        } else if (participantsData && Array.isArray(participantsData.data)) {
-          participantsArray = participantsData.data
-        } else {
-          console.warn('Unexpected participants data structure:', participantsData)
-          participantsArray = []
-        }
-        
-        setParticipants(participantsArray)
-      }
-
     } catch (error) {
       console.error('Error fetching project data:', error)
-      // Set safe defaults on error to prevent crashes
       setTasks([])
-      setParticipants([])
-      setStatistics(null)
     } finally {
       setLoading(false)
     }
@@ -181,32 +175,153 @@ export default function ProjectReportsPage() {
     fetchData()
   }, [token, publicId])
 
-  const getSummaryCards = () => {
-    if (!statistics) return []
+  // Helper function to get date range filter
+  const getDateRangeFilter = (range: string): { from?: Date; to?: Date } => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     
+    switch (range) {
+      case "last7days":
+        return { from: new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000) }
+      case "last30days":
+        return { from: new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000) }
+      case "last90days":
+        return { from: new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000) }
+      case "thisMonth":
+        return { from: new Date(now.getFullYear(), now.getMonth(), 1) }
+      case "lastMonth":
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        const endLastMonth = new Date(now.getFullYear(), now.getMonth(), 0)
+        return { from: lastMonth, to: endLastMonth }
+      default:
+        return {}
+    }
+  }
+
+  // Filter tasks based on current filter state
+  const filteredTasks = useMemo(() => {
+    let filtered = [...tasks]
+
+    // Date range filter
+    const dateFilter = getDateRangeFilter(filters.dateRange)
+    if (dateFilter.from || dateFilter.to) {
+      filtered = filtered.filter(task => {
+        const taskDate = new Date(task.createdAt)
+        if (dateFilter.from && taskDate < dateFilter.from) return false
+        if (dateFilter.to && taskDate > dateFilter.to) return false
+        return true
+      })
+    }
+
+    // Assignee filter
+    if (filters.assigneeId) {
+      if (filters.assigneeId === "unassigned") {
+        filtered = filtered.filter(task => !task.assigneeId)
+      } else {
+        filtered = filtered.filter(task => task.assigneeId === filters.assigneeId)
+      }
+    }
+
+    // Label filter
+    if (filters.labelIds.length > 0) {
+      filtered = filtered.filter(task => {
+        if (!task.labels || task.labels.length === 0) return false
+        return filters.labelIds.some(labelId => {
+          const label = labels.find(l => l.id === labelId)
+          return label && task.labels?.includes(label.name)
+        })
+      })
+    }
+
+    // Stage filter (based on workflow stages)
+    if (filters.stageIds.length > 0) {
+      const stageStatusMap = new Map<number, number>()
+      const sortedStages = [...workflowStages].sort((a, b) => a.order - b.order)
+      sortedStages.forEach((stage, index) => {
+        stageStatusMap.set(stage.id, index)
+      })
+      
+      filtered = filtered.filter(task => {
+        return filters.stageIds.some(stageId => {
+          const statusValue = stageStatusMap.get(stageId)
+          return statusValue !== undefined && task.status === statusValue
+        })
+      })
+    }
+
+    // Task type filter
+    if (filters.taskTypes.length > 0) {
+      filtered = filtered.filter(task => 
+        task.type && filters.taskTypes.includes(task.type)
+      )
+    }
+
+    // Priority filter
+    if (filters.priorities.length > 0) {
+      filtered = filtered.filter(task => 
+        filters.priorities.includes(task.priority)
+      )
+    }
+
+    return filtered
+  }, [tasks, filters, workflowStages, labels])
+
+  // Calculate dynamic statistics based on filtered tasks and workflow stages
+  const dynamicStatistics = useMemo(() => {
+    const stageCounts = new Map<number, number>()
+    const sortedStages = [...workflowStages].sort((a, b) => a.order - b.order)
+    
+    // Initialize counts
+    sortedStages.forEach((stage, index) => {
+      stageCounts.set(index, 0)
+    })
+
+    // Count tasks by stage
+    filteredTasks.forEach(task => {
+      const stageIndex = task.status
+      const currentCount = stageCounts.get(stageIndex) || 0
+      stageCounts.set(stageIndex, currentCount + 1)
+    })
+
+    return {
+      total: filteredTasks.length,
+      completedCount: sortedStages.reduce((count, stage, index) => {
+        return stage.isCompleted ? count + (stageCounts.get(index) || 0) : count
+      }, 0),
+      inProgressCount: stageCounts.get(1) || 0, // Assuming second stage is "In Progress"
+      stageCounts,
+      sortedStages
+    }
+  }, [filteredTasks, workflowStages])
+
+  const getSummaryCards = () => {
+    const completionRate = dynamicStatistics.total > 0 
+      ? Math.round((dynamicStatistics.completedCount / dynamicStatistics.total) * 100) 
+      : 0
+
     return [
       {
         label: "Total Tasks",
-        value: statistics.taskCounts.total,
+        value: dynamicStatistics.total,
         icon: BarChart3,
         color: "bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-300",
       },
       {
         label: "Completed",
-        value: statistics.taskCounts.done,
+        value: dynamicStatistics.completedCount,
         icon: CheckCircle2,
         color: "bg-green-50 text-green-600 dark:bg-green-900 dark:text-green-300",
       },
       {
         label: "In Progress",
-        value: statistics.taskCounts.inProgress,
+        value: dynamicStatistics.inProgressCount,
         icon: PlayCircle,
         color: "bg-violet-50 text-violet-600 dark:bg-violet-900 dark:text-violet-300",
       },
       {
-        label: "In Review",
-        value: statistics.taskCounts.inReview,
-        icon: Clock,
+        label: "Completion Rate",
+        value: `${completionRate}%`,
+        icon: TrendingUp,
         color: "bg-amber-50 text-amber-600 dark:bg-amber-900 dark:text-amber-300",
       },
       {
@@ -219,17 +334,58 @@ export default function ProjectReportsPage() {
   }
 
   const getTaskStatusDistribution = () => {
-    if (!statistics) return []
-    
-    return [
-      { status: "To Do", count: statistics.taskCounts.todo, color: "#e2e8f0" },
-      { status: "In Progress", count: statistics.taskCounts.inProgress, color: "#93c5fd" },
-      { status: "In Review", count: statistics.taskCounts.inReview, color: "#c4b5fd" },
-      { status: "Done", count: statistics.taskCounts.done, color: "#86efac" },
-    ]
+    return dynamicStatistics.sortedStages.map((stage, index) => ({
+      status: stage.name,
+      count: dynamicStatistics.stageCounts.get(index) || 0,
+      color: stage.color || "#6b7280"
+    }))
   }
 
-  if (loading) {
+  // Update filter functions
+  const updateFilter = (key: keyof FilterState, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
+  const toggleFilterArray = (key: keyof FilterState, value: any) => {
+    setFilters(prev => {
+      const currentArray = prev[key] as any[]
+      const newArray = currentArray.includes(value)
+        ? currentArray.filter(item => item !== value)
+        : [...currentArray, value]
+      
+      return {
+        ...prev,
+        [key]: newArray
+      }
+    })
+  }
+
+  const clearAllFilters = () => {
+    setFilters({
+      assigneeId: null,
+      dateRange: "last30days",
+      labelIds: [],
+      stageIds: [],
+      taskTypes: [],
+      priorities: []
+    })
+  }
+
+  const hasActiveFilters = () => {
+    return (
+      filters.assigneeId !== null ||
+      filters.dateRange !== "last30days" ||
+      filters.labelIds.length > 0 ||
+      filters.stageIds.length > 0 ||
+      filters.taskTypes.length > 0 ||
+      filters.priorities.length > 0
+    )
+  }
+
+  if (loading || stagesLoading || labelsLoading || participantsLoading) {
     return (
       <div className="p-4 md:p-6">
         <div className="animate-pulse">
@@ -267,7 +423,7 @@ export default function ProjectReportsPage() {
   const taskStatusDistribution = getTaskStatusDistribution()
   const totalTasks = taskStatusDistribution.reduce((sum, item) => sum + item.count, 0)
 
-  const showEmptyState = !statistics || statistics.taskCounts.total === 0
+  const showEmptyState = dynamicStatistics.total === 0
 
   return (
     <div className="p-4 md:p-6 w-full">
@@ -294,8 +450,6 @@ export default function ProjectReportsPage() {
         </div>
       </div>
 
-
-
       {/* Empty State */}
       {showEmptyState ? (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
@@ -304,20 +458,32 @@ export default function ProjectReportsPage() {
           </div>
           <h3 className="text-xl font-medium mb-2">No report data found</h3>
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
-            Start by creating tasks or assigning team members to generate reports and analytics.
+            {hasActiveFilters() 
+              ? "No tasks match your current filters. Try adjusting your filter criteria."
+              : "Start by creating tasks or assigning team members to generate reports and analytics."
+            }
           </p>
-          <Button asChild className="bg-violet-600 hover:bg-violet-700 text-white">
-            <Link href={`/projects/${publicId}/board`}>
-              <Plus className="mr-2 h-4 w-4" /> Create Task
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            {hasActiveFilters() && (
+              <Button variant="outline" onClick={clearAllFilters}>
+                <X className="mr-2 h-4 w-4" />
+                Clear Filters
+              </Button>
+            )}
+            <Button asChild className="bg-violet-600 hover:bg-violet-700 text-white">
+              <Link href={`/projects/${publicId}/board`}>
+                <Plus className="mr-2 h-4 w-4" /> Create Task
+              </Link>
+            </Button>
+          </div>
         </div>
       ) : (
         <>
           {/* Filters and Controls */}
           <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4">
             <div className="flex flex-wrap gap-3">
-              <Select value={dateRange} onValueChange={setDateRange}>
+              {/* Date Range Filter */}
+              <Select value={filters.dateRange} onValueChange={(value) => updateFilter('dateRange', value)}>
                 <SelectTrigger className="w-[180px] h-9">
                   <Calendar className="mr-2 h-4 w-4" />
                   <SelectValue placeholder="Date Range" />
@@ -328,29 +494,166 @@ export default function ProjectReportsPage() {
                   <SelectItem value="last90days">Last 90 Days</SelectItem>
                   <SelectItem value="thisMonth">This Month</SelectItem>
                   <SelectItem value="lastMonth">Last Month</SelectItem>
-                  <SelectItem value="custom">Custom Range</SelectItem>
                 </SelectContent>
               </Select>
 
+              {/* Assignee Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9">
+                    <User className="mr-2 h-4 w-4" />
+                    Assignee
+                    {filters.assigneeId && (
+                      <Badge variant="secondary" className="ml-2">1</Badge>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[200px]">
+                  <DropdownMenuCheckboxItem
+                    checked={filters.assigneeId === null}
+                    onCheckedChange={() => updateFilter('assigneeId', null)}
+                  >
+                    All Assignees
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={filters.assigneeId === "unassigned"}
+                    onCheckedChange={() => updateFilter('assigneeId', filters.assigneeId === "unassigned" ? null : "unassigned")}
+                  >
+                    Unassigned
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                                     {participants.map((member: any) => (
+                     <DropdownMenuCheckboxItem
+                       key={member.id}
+                       checked={filters.assigneeId === member.id}
+                       onCheckedChange={() => updateFilter('assigneeId', filters.assigneeId === member.id ? null : member.id)}
+                     >
+                       <Avatar className="h-5 w-5 mr-2">
+                         <AvatarFallback className="text-xs">
+                           {member.initials}
+                         </AvatarFallback>
+                       </Avatar>
+                       {member.name}
+                     </DropdownMenuCheckboxItem>
+                   ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Labels Filter */}
+              {labels.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9">
+                      <Tag className="mr-2 h-4 w-4" />
+                      Labels
+                      {filters.labelIds.length > 0 && (
+                        <Badge variant="secondary" className="ml-2">{filters.labelIds.length}</Badge>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[200px]">
+                    {labels.map((label) => (
+                      <DropdownMenuCheckboxItem
+                        key={label.id}
+                        checked={filters.labelIds.includes(label.id)}
+                        onCheckedChange={() => toggleFilterArray('labelIds', label.id)}
+                      >
+                        <div 
+                          className="w-3 h-3 rounded-full mr-2" 
+                          style={{ backgroundColor: label.color }}
+                        ></div>
+                        {label.name}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {/* Workflow Stages Filter */}
+              {workflowStages.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9">
+                      <Filter className="mr-2 h-4 w-4" />
+                      Stages
+                      {filters.stageIds.length > 0 && (
+                        <Badge variant="secondary" className="ml-2">{filters.stageIds.length}</Badge>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[200px]">
+                    {workflowStages.map((stage) => (
+                      <DropdownMenuCheckboxItem
+                        key={stage.id}
+                        checked={filters.stageIds.includes(stage.id)}
+                        onCheckedChange={() => toggleFilterArray('stageIds', stage.id)}
+                      >
+                        <div 
+                          className="w-3 h-3 rounded-full mr-2" 
+                          style={{ backgroundColor: stage.color }}
+                        ></div>
+                        {stage.name}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {/* Task Type Filter */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-9">
                     <Filter className="mr-2 h-4 w-4" />
-                    Filters
+                    Type
+                    {filters.taskTypes.length > 0 && (
+                      <Badge variant="secondary" className="ml-2">{filters.taskTypes.length}</Badge>
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[200px]">
-                  <DropdownMenuItem>All Task Types</DropdownMenuItem>
-                  <DropdownMenuItem>Features Only</DropdownMenuItem>
-                  <DropdownMenuItem>Bugs Only</DropdownMenuItem>
-                  <DropdownMenuItem>By Assignee</DropdownMenuItem>
+                <DropdownMenuContent align="end" className="w-[150px]">
+                  {TASK_TYPES.map((type) => (
+                    <DropdownMenuCheckboxItem
+                      key={type.value}
+                      checked={filters.taskTypes.includes(type.value)}
+                      onCheckedChange={() => toggleFilterArray('taskTypes', type.value)}
+                    >
+                      {type.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <Button variant="outline" size="sm" className="h-9 px-3 flex items-center gap-1">
-                <X className="h-3.5 w-3.5" />
-                <span>Clear Filters</span>
-              </Button>
+              {/* Priority Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9">
+                    <Filter className="mr-2 h-4 w-4" />
+                    Priority
+                    {filters.priorities.length > 0 && (
+                      <Badge variant="secondary" className="ml-2">{filters.priorities.length}</Badge>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[150px]">
+                  {PRIORITY_LEVELS.map((priority) => (
+                    <DropdownMenuCheckboxItem
+                      key={priority.value}
+                      checked={filters.priorities.includes(priority.value)}
+                      onCheckedChange={() => toggleFilterArray('priorities', priority.value)}
+                    >
+                      <span className={priority.color}>{priority.label}</span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Clear Filters */}
+              {hasActiveFilters() && (
+                <Button variant="outline" size="sm" className="h-9 px-3 flex items-center gap-1" onClick={clearAllFilters}>
+                  <X className="h-3.5 w-3.5" />
+                  <span>Clear Filters</span>
+                </Button>
+              )}
             </div>
           </div>
 
@@ -373,7 +676,7 @@ export default function ProjectReportsPage() {
 
           {/* Charts Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Task Status Distribution */}
+            {/* Dynamic Task Status Distribution */}
             <Card className="bg-white dark:bg-gray-800">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -411,32 +714,34 @@ export default function ProjectReportsPage() {
                   <Users className="h-5 w-5 text-muted-foreground" />
                 </div>
 
-                <div className="space-y-3">
-                  {participants.length > 0 ? (
-                    participants.map((participant, index) => (
-                      <div key={index} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback>
-                              {participant.userName.slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <span className="text-sm font-medium">{participant.userName}</span>
-                            <div className="text-xs text-muted-foreground">{participant.role}</div>
+                                  <div className="space-y-3">
+                    {participants.length > 0 ? (
+                      participants.map((participant: any, index: number) => {
+                        const assignedTasksCount = filteredTasks.filter(task => task.assigneeId === participant.id).length
+                        return (
+                          <div key={index} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>
+                                  {participant.initials}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <span className="text-sm font-medium">{participant.name}</span>
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {assignedTasksCount} tasks
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Joined {new Date(participant.joinedAt).toLocaleDateString()}
-                        </div>
+                        )
+                      })
+                    ) : (
+                      <div className="text-sm text-muted-foreground text-center py-4">
+                        No team members found
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-muted-foreground text-center py-4">
-                      No team members found
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
               </CardContent>
             </Card>
           </div>
@@ -452,41 +757,55 @@ export default function ProjectReportsPage() {
               </div>
 
               <div className="space-y-3">
-                {Array.isArray(tasks) && tasks.slice(0, 5).map((task, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">{task.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {task.description && task.description.length > 50 
-                            ? `${task.description.substring(0, 50)}...` 
-                            : task.description}
+                {filteredTasks.slice(0, 5).map((task, index) => {
+                  const stage = workflowStages.find((s, i) => i === task.status)
+                  const priorityLevel = PRIORITY_LEVELS.find(p => p.value === task.priority)
+                  
+                  return (
+                    <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <div className="font-medium text-sm">{task.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {task.description && task.description.length > 50 
+                              ? `${task.description.substring(0, 50)}...` 
+                              : task.description}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        task.status === 3 ? 'bg-green-100 text-green-800' :
-                        task.status === 1 ? 'bg-blue-100 text-blue-800' :
-                        task.status === 2 ? 'bg-purple-100 text-purple-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {TaskStatus[task.status as keyof typeof TaskStatus]}
+                      <div className="flex items-center gap-2">
+                        {stage && (
+                          <Badge 
+                            variant="outline"
+                            style={{ 
+                              backgroundColor: `${stage.color}20`, 
+                              borderColor: stage.color,
+                              color: stage.color 
+                            }}
+                          >
+                            {stage.name}
+                          </Badge>
+                        )}
+                        {priorityLevel && (
+                          <Badge variant="outline" className={priorityLevel.color}>
+                            {priorityLevel.label}
+                          </Badge>
+                        )}
+                        {task.assigneeName && (
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="text-xs">
+                              {task.assigneeName.slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
                       </div>
-                      {task.assigneeName && (
-                        <Avatar className="h-6 w-6">
-                          <AvatarFallback className="text-xs">
-                            {task.assigneeName.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
                     </div>
-                  </div>
-                ))}
-                
-                {(!Array.isArray(tasks) || tasks.length === 0) && (
-                  <div className="text-sm text-muted-foreground text-center py-4">
-                    No tasks found
+                  )
+                })}
+
+                {filteredTasks.length === 0 && (
+                  <div className="text-sm text-muted-foreground text-center py-8">
+                    No tasks found matching your filters
                   </div>
                 )}
               </div>

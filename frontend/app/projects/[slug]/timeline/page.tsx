@@ -371,99 +371,84 @@ function GanttView({ tasks }: { tasks: Task[] }) {
                   )
                 })}
               </div>
-              {/* Today indicator */}
-              {(() => {
-                const todayNormalized = new Date()
-                todayNormalized.setHours(0, 0, 0, 0)
-                const displayDays = Math.ceil((displayEndDate.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
-                const todayPosition = (todayNormalized.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24)
-                const todayPercentage = (todayPosition / displayDays) * 100
-                
-                if (todayPercentage >= 0 && todayPercentage <= 100) {
-                  return (
-                    <div 
-                      className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
-                      style={{ left: `${todayPercentage}%` }}
-                      title={`Today: ${todayNormalized.toLocaleDateString()}`}
-                    >
-                      <div className="absolute -top-6 -left-8 bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                        Today ({todayNormalized.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
-                      </div>
-                    </div>
-                  )
-                }
-                return null
-              })()}
             </div>
           </div>
           
-          {/* Task Bars */}
-          <div className="space-y-3">
-            {tasksWithDates.map((task) => {
-              const barStyle = getTaskBarStyle(task)
-              const statusColor = getStatusColor(task)
-              
-              return (
-                <div key={task.id} className="flex items-center">
-                  {/* Task Info */}
-                  <div className="w-64 flex-shrink-0 pr-4">
-                    <div className="font-medium text-sm truncate">{task.title}</div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-2">
-                      {task.assigneeName ? (
-                        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                          </svg>
-                          {task.assigneeName}
+          {/* Chart Area with Today Line */}
+          <div className="relative">
+            {/* Task Bars */}
+            <div className="space-y-3">
+              {tasksWithDates.map((task) => {
+                const barStyle = getTaskBarStyle(task)
+                const statusColor = getStatusColor(task)
+                
+                return (
+                  <div key={task.id} className="flex items-center">
+                    {/* Task Info */}
+                    <div className="w-64 flex-shrink-0 pr-4">
+                      <div className="font-medium text-sm truncate">{task.title}</div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-2">
+                        {task.assigneeName ? (
+                          <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                            </svg>
+                            {task.assigneeName}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-500 px-2 py-1 rounded text-xs">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                            </svg>
+                            Unassigned
+                          </span>
+                        )}
+                        <span className="text-gray-400">
+                          Due: {new Date(task.dueDate!).toLocaleDateString()}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-500 px-2 py-1 rounded text-xs">
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                          </svg>
-                          Unassigned
-                        </span>
-                      )}
-                      <span className="text-gray-400">
-                        Due: {new Date(task.dueDate!).toLocaleDateString()}
-                      </span>
+                      </div>
                     </div>
-                  </div>
-                  
-                  {/* Timeline */}
-                  <div className="flex-1 relative">
-                    <div className="h-8 bg-gray-100 dark:bg-gray-700 rounded">
-                      <div
-                        className={`h-full ${statusColor} rounded relative`}
-                        style={barStyle}
-                      >
-                        <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-medium">
-                          {task.title.substring(0, 20)}
+                    
+                    {/* Timeline */}
+                    <div className="flex-1 relative">
+                      <div className="h-8 bg-gray-100 dark:bg-gray-700 rounded">
+                        <div
+                          className={`h-full ${statusColor} rounded relative`}
+                          style={barStyle}
+                        >
+                          <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-medium">
+                            {task.title.substring(0, 20)}
+                          </div>
                         </div>
                       </div>
-                      {/* Today indicator line for each row */}
-                      {(() => {
-                        const todayNormalized = new Date()
-                        todayNormalized.setHours(0, 0, 0, 0)
-                        const displayDays = Math.ceil((displayEndDate.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
-                        const todayPosition = (todayNormalized.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24)
-                        const todayPercentage = (todayPosition / displayDays) * 100
-                        
-                        if (todayPercentage >= 0 && todayPercentage <= 100) {
-                          return (
-                            <div 
-                              className="absolute top-0 bottom-0 w-0.5 bg-red-500 opacity-60"
-                              style={{ left: `${todayPercentage}%` }}
-                            />
-                          )
-                        }
-                        return null
-                      })()}
                     </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
+            
+            {/* Today Line - Positioned Absolutely Across Entire Chart */}
+            {(() => {
+              const todayNormalized = new Date()
+              todayNormalized.setHours(0, 0, 0, 0)
+              const displayDays = Math.ceil((displayEndDate.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24))
+              const todayPosition = (todayNormalized.getTime() - displayStartDate.getTime()) / (1000 * 60 * 60 * 24)
+              const todayPercentage = (todayPosition / displayDays) * 100
+              
+              if (todayPercentage >= 0 && todayPercentage <= 100) {
+                return (
+                  <div 
+                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                    style={{ left: `calc(16rem + ${todayPercentage}%)` }}
+                  >
+                    <div className="absolute -top-6 -left-6 bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap font-medium">
+                      Today
+                    </div>
+                  </div>
+                )
+              }
+              return null
+            })()}
           </div>
           
           {/* Legend */}

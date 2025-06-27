@@ -657,24 +657,7 @@ export default function ProjectGeneralSettingsPage() {
             />
           </div>
 
-          {/* Test button for manual save */}
-          {permissions.canManageProject && (
-            <div className="space-y-2">
-              <Button 
-                onClick={() => {
-                  console.log('Manual save test - Project:', project)
-                  console.log('Manual save test - Settings:', settings)
-                  console.log('Manual save test - ProjectId:', projectId)
-                  console.log('Manual save test - Token:', !!token)
-                  handleInputChange("name", project?.name || "Test Project")
-                }}
-                variant="outline"
-                size="sm"
-              >
-                Test Save Project Name
-              </Button>
-            </div>
-          )}
+
 
           <div className="space-y-2">
             <Label htmlFor="default-status">Default Task View</Label>

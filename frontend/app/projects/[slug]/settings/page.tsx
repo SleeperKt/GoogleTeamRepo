@@ -1516,24 +1516,51 @@ function DangerZoneTab({ projectId, projectPublicId, projectName, permissions }:
 
     setIsDeleting(true)
     try {
-      // TODO: Implement actual deletion API call
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('Authentication token not found')
+      }
+
       console.log('Deleting project:', projectPublicId)
+      
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectPublicId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Delete project API error:', response.status, response.statusText, errorText)
+        
+        if (response.status === 403) {
+          throw new Error('You do not have permission to delete this project. Only the project owner can delete projects.')
+        } else if (response.status === 404) {
+          throw new Error('Project not found.')
+        } else {
+          throw new Error(`Failed to delete project: ${response.status} ${response.statusText}`)
+        }
+      }
       
       toast({
         title: "Success",
         description: "Project deleted successfully",
       })
       
-      // Redirect to dashboard after deletion
-      router.push('/projects')
+      // Small delay to show the success message before redirecting
+      setTimeout(() => {
+        router.push('/projects')
+      }, 1000)
+      
     } catch (error) {
       console.error('Error deleting project:', error)
       toast({
         title: "Error",
-        description: "Failed to delete project",
+        description: error instanceof Error ? error.message : "Failed to delete project",
         variant: "destructive",
       })
-    } finally {
       setIsDeleting(false)
       setShowDeleteDialog(false)
       setDeleteConfirmation("")
@@ -1610,17 +1637,30 @@ function DangerZoneTab({ projectId, projectPublicId, projectName, permissions }:
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">
-                  Please type <span className="font-mono font-bold text-red-600">{projectName}</span> to confirm:
-                </p>
-                <Input
-                  value={deleteConfirmation}
-                  onChange={(e) => setDeleteConfirmation(e.target.value)}
-                  placeholder={`Type "${projectName}" here`}
-                  className="font-mono"
-                />
-              </div>
+                             <div>
+                 <p className="text-sm text-muted-foreground mb-2">
+                   Please type <span className="font-mono font-bold text-red-600">{projectName}</span> to confirm:
+                 </p>
+                 <Input
+                   value={deleteConfirmation}
+                   onChange={(e) => setDeleteConfirmation(e.target.value)}
+                   placeholder={`Type "${projectName}" here`}
+                   className="font-mono"
+                   autoComplete="off"
+                   autoFocus
+                 />
+                 {deleteConfirmation && deleteConfirmation !== projectName && (
+                   <p className="text-sm text-red-600 mt-1">
+                     Project name doesn't match. Please type exactly: <span className="font-mono font-bold">{projectName}</span>
+                   </p>
+                 )}
+                 {deleteConfirmation === projectName && (
+                   <p className="text-sm text-green-600 mt-1 flex items-center">
+                     <CheckCircle className="h-4 w-4 mr-1" />
+                     Confirmed. You can now delete the project.
+                   </p>
+                 )}
+               </div>
               
               <div className="flex gap-3 pt-4">
                 <Button

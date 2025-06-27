@@ -101,12 +101,14 @@ export default function ProjectActivitiesPage() {
 
           if (participantsResponse.ok) {
             const participantsData = await participantsResponse.json()
+            console.log('Raw participants data:', participantsData)
             // Handle ASP.NET response format
             const participantArray = Array.isArray(participantsData) ? participantsData : ((participantsData as any)?.$values || [])
+            console.log('Processed participants array:', participantArray)
             setParticipants(participantArray)
             console.log('Loaded participants for activities:', participantArray)
           } else {
-            console.log('Failed to fetch participants for activities')
+            console.log('Failed to fetch participants for activities, status:', participantsResponse.status)
             setParticipants([])
           }
         } catch (error) {
@@ -119,8 +121,6 @@ export default function ProjectActivitiesPage() {
 
       } catch (error) {
         console.error('Error fetching activities data:', error)
-        // Create mock activities for demo since backend might not have this endpoint yet
-        generateMockActivities()
       } finally {
         setLoading(false)
       }
@@ -128,6 +128,14 @@ export default function ProjectActivitiesPage() {
 
     fetchData()
   }, [token, publicId])
+
+  // Generate mock activities when participants are loaded and no real activities exist
+  useEffect(() => {
+    if (participants.length > 0 && activities.length === 0 && !loading) {
+      console.log('Participants loaded, generating mock activities')
+      generateMockActivities()
+    }
+  }, [participants, activities.length, loading])
 
   const fetchActivities = async (pageNum: number = 1) => {
     try {
@@ -154,16 +162,19 @@ export default function ProjectActivitiesPage() {
         throw new Error('Activities endpoint not available')
       }
     } catch (error) {
-      console.log('Activities endpoint not available, using mock data')
+      console.log('Activities endpoint not available, will generate mock data after participants are loaded')
+      // Don't generate mock activities here - let the effect handle it after participants are loaded
       if (pageNum === 1) {
-        generateMockActivities()
+        setActivities([]) // Clear activities, will be set by useEffect below
       }
     }
   }
 
   const generateMockActivities = () => {
+    console.log('generateMockActivities called with participants:', participants)
     // Use real project participants if available, otherwise show message about backend
     if (!participants || participants.length === 0) {
+      console.log('No participants found, showing system message')
       const noBackendActivities: ActivityItem[] = [
         {
           id: 1,
@@ -179,6 +190,8 @@ export default function ProjectActivitiesPage() {
       setHasMore(false)
       return
     }
+
+    console.log('Using participants for mock activities:', participants)
 
     // Generate realistic activities using actual project participants
     const getRandomParticipant = () => participants[Math.floor(Math.random() * participants.length)]

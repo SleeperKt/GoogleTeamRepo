@@ -171,7 +171,7 @@ export default function ProjectActivitiesPage() {
   }
 
   const generateMockActivities = () => {
-    console.log('Showing demo message for Activities page')
+    console.log('Activities endpoint not available, showing demo message')
     // Show clear demo message instead of confusing fake data
     const demoMessage: ActivityItem[] = [
       {
@@ -387,11 +387,11 @@ export default function ProjectActivitiesPage() {
                                   <div className="flex items-center gap-2">
                                     <Avatar className="h-6 w-6">
                                       <AvatarFallback className="text-xs">
-                                        {activity.actorName.split(' ').map(n => n[0]).join('')}
+                                        {activity.actorName ? activity.actorName.split(' ').map(n => n[0]).join('') : 'U'}
                                       </AvatarFallback>
                                     </Avatar>
                                     <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                      {activity.actorName}
+                                      {activity.actorName || 'Unknown User'}
                                     </span>
                                   </div>
 

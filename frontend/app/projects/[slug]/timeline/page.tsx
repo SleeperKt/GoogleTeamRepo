@@ -584,22 +584,221 @@ function MilestonesView({
   )
 }
 
-// Calendar View Component - Placeholder for now
+// Calendar View Component
 function CalendarView({ tasks }: { tasks: Task[] }) {
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const tasksWithDates = tasks.filter(task => task.dueDate)
+
+  if (tasksWithDates.length === 0) {
+    return (
+      <Card className="bg-white dark:bg-gray-800">
+        <CardContent className="p-6">
+          <h3 className="text-lg font-medium mb-4">Calendar View</h3>
+          <div className="text-center py-8">
+            <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">No tasks with dates</h3>
+            <p className="text-muted-foreground">Tasks need due dates to appear in the calendar.</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Get current month and year
+  const year = currentDate.getFullYear()
+  const month = currentDate.getMonth()
+  
+  // Get first day of the month and how many days
+  const firstDay = new Date(year, month, 1)
+  const lastDay = new Date(year, month + 1, 0)
+  const daysInMonth = lastDay.getDate()
+  const startingDayOfWeek = firstDay.getDay()
+
+  // Generate calendar grid
+  const calendarDays = []
+  
+  // Add empty cells for days before the first day of the month
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    calendarDays.push(null)
+  }
+  
+  // Add days of the month
+  for (let day = 1; day <= daysInMonth; day++) {
+    calendarDays.push(day)
+  }
+
+  // Group tasks by date
+  const tasksByDate = tasksWithDates.reduce((acc, task) => {
+    const date = new Date(task.dueDate!)
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+    if (!acc[key]) acc[key] = []
+    acc[key].push(task)
+    return acc
+  }, {} as Record<string, Task[]>)
+
+  const getTasksForDay = (day: number) => {
+    const key = `${year}-${month}-${day}`
+    return tasksByDate[key] || []
+  }
+
+  const getTaskColor = (task: Task) => {
+    const now = new Date()
+    const dueDate = new Date(task.dueDate!)
+    
+    if (task.status === 4) return 'bg-green-100 text-green-800 border-green-200'
+    if (dueDate < now) return 'bg-red-100 text-red-800 border-red-200'
+    if (task.status === 2) return 'bg-blue-100 text-blue-800 border-blue-200'
+    return 'bg-gray-100 text-gray-800 border-gray-200'
+  }
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const newDate = new Date(currentDate)
+    if (direction === 'prev') {
+      newDate.setMonth(newDate.getMonth() - 1)
+    } else {
+      newDate.setMonth(newDate.getMonth() + 1)
+    }
+    setCurrentDate(newDate)
+  }
+
+  const isToday = (day: number) => {
+    const today = new Date()
+    return today.getFullYear() === year && 
+           today.getMonth() === month && 
+           today.getDate() === day
+  }
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ]
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
   return (
     <Card className="bg-white dark:bg-gray-800">
       <CardContent className="p-6">
-        <h3 className="text-lg font-medium mb-4">Calendar View</h3>
-        <p className="text-muted-foreground">Calendar view implementation coming soon...</p>
-        <div className="mt-4 space-y-2">
-          {tasks.filter(task => task.dueDate).map(task => (
-            <div key={task.id} className="p-3 border rounded">
-              <div className="font-medium">{task.title}</div>
-              <div className="text-sm text-muted-foreground">
-                Due: {new Date(task.dueDate!).toLocaleDateString()}
-              </div>
+        {/* Calendar Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-medium">Calendar View</h3>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigateMonth('prev')}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="font-medium min-w-[140px] text-center">
+                {monthNames[month]} {year}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => navigateMonth('next')}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
-          ))}
+            <Button variant="outline" size="sm" onClick={() => setCurrentDate(new Date())}>
+              Today
+            </Button>
+          </div>
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="border rounded-lg overflow-hidden">
+          {/* Day Headers */}
+          <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-700">
+            {dayNames.map(day => (
+              <div key={day} className="p-3 text-center text-sm font-medium text-muted-foreground border-r last:border-r-0">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar Days */}
+          <div className="grid grid-cols-7">
+            {calendarDays.map((day, index) => {
+              if (day === null) {
+                return <div key={index} className="h-32 border-r border-b last:border-r-0"></div>
+              }
+
+              const dayTasks = getTasksForDay(day)
+              const isCurrentDay = isToday(day)
+
+              return (
+                <div key={day} className="h-32 border-r border-b last:border-r-0 p-2 overflow-hidden">
+                  <div className={`text-sm font-medium mb-2 ${
+                    isCurrentDay 
+                      ? 'bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center' 
+                      : ''
+                  }`}>
+                    {day}
+                  </div>
+                  
+                  <div className="space-y-1">
+                    {dayTasks.slice(0, 3).map(task => (
+                      <div 
+                        key={task.id} 
+                        className={`text-xs p-1 rounded border truncate ${getTaskColor(task)}`}
+                        title={task.title}
+                      >
+                        {task.title.substring(0, 12)}
+                        {task.title.length > 12 && '...'}
+                      </div>
+                    ))}
+                    {dayTasks.length > 3 && (
+                      <div className="text-xs text-muted-foreground">
+                        +{dayTasks.length - 3} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-6 mt-6 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
+            <span>Completed</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded"></div>
+            <span>In Progress</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
+            <span>Overdue</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
+            <span>Not Started</span>
+          </div>
+        </div>
+
+        {/* Tasks Summary for Current Month */}
+        <div className="mt-6 pt-6 border-t">
+          <h4 className="text-sm font-medium mb-3">Tasks This Month</h4>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {tasksWithDates
+              .filter(task => {
+                const taskDate = new Date(task.dueDate!)
+                return taskDate.getFullYear() === year && taskDate.getMonth() === month
+              })
+              .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+              .map(task => (
+                <div key={task.id} className="flex items-center gap-3 p-2 rounded border">
+                  <div className={`w-3 h-3 rounded-full ${
+                    task.status === 4 ? 'bg-green-500' : 
+                    task.status === 2 ? 'bg-blue-500' : 'bg-gray-400'
+                  }`}></div>
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{task.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Due: {new Date(task.dueDate!).toLocaleDateString()}
+                      {task.assigneeName && ` • ${task.assigneeName}`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </div>
         </div>
       </CardContent>
     </Card>

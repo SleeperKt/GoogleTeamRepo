@@ -9,6 +9,11 @@ import {
   Info,
   Loader2,
   Save,
+  Users,
+  Tags,
+  Workflow,
+  Zap,
+  AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,6 +22,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 import { API_BASE_URL } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
@@ -101,6 +107,9 @@ export default function ProjectGeneralSettingsPage() {
   
   // Track if there are unsaved changes
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  
+  // Active tab state
+  const [activeTab, setActiveTab] = useState("general")
 
   // Safe response parser
   const safeParseResponse = async (response: Response, fallbackData?: any) => {
@@ -538,13 +547,75 @@ export default function ProjectGeneralSettingsPage() {
         )}
       </div>
 
-      {/* General Settings Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>General Settings</CardTitle>
-          <CardDescription>Configure basic project information and preferences</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      {/* Settings Tabs */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Sidebar Navigation */}
+        <div className="lg:col-span-1">
+          <Card>
+            <CardContent className="p-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} orientation="vertical">
+                <TabsList className="flex flex-col h-auto w-full bg-transparent p-1 space-y-1">
+                  <TabsTrigger
+                    value="general"
+                    className="w-full justify-start rounded-md border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                  >
+                    <Info className="mr-2 h-4 w-4" />
+                    General
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="members"
+                    className="w-full justify-start rounded-md border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    Members & Access
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="labels"
+                    className="w-full justify-start rounded-md border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                  >
+                    <Tags className="mr-2 h-4 w-4" />
+                    Tags & Labels
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="workflow"
+                    className="w-full justify-start rounded-md border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                  >
+                    <Workflow className="mr-2 h-4 w-4" />
+                    Workflow
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="integrations"
+                    className="w-full justify-start rounded-md border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
+                  >
+                    <Zap className="mr-2 h-4 w-4" />
+                    Integrations
+                  </TabsTrigger>
+                  {permissions.canDeleteProject && (
+                    <TabsTrigger
+                      value="danger"
+                      className="w-full justify-start rounded-md border-l-2 border-transparent px-4 py-3 text-red-600 data-[state=active]:border-red-600 data-[state=active]:bg-red-50 data-[state=active]:text-red-600 dark:text-red-400 dark:data-[state=active]:bg-red-950 dark:data-[state=active]:text-red-400"
+                    >
+                      <AlertTriangle className="mr-2 h-4 w-4" />
+                      Danger Zone
+                    </TabsTrigger>
+                  )}
+                </TabsList>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Content */}
+        <div className="lg:col-span-3">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            {/* General Settings Tab */}
+            <TabsContent value="general" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle>General Settings</CardTitle>
+                  <CardDescription>Configure basic project information and preferences</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
           {!permissions.canManageProject && (
             <div className="bg-amber-50 border border-amber-200 rounded-md p-4 mb-4">
               <div className="flex items-start gap-3">
@@ -792,8 +863,75 @@ export default function ProjectGeneralSettingsPage() {
               </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Placeholder for other tabs */}
+            <TabsContent value="members" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Members & Access</CardTitle>
+                  <CardDescription>Manage team members and their access levels</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">Members management coming soon...</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="labels" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Tags & Labels</CardTitle>
+                  <CardDescription>Organize your tasks with custom labels</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">Labels management coming soon...</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="workflow" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Workflow</CardTitle>
+                  <CardDescription>Customize your project workflow stages</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">Workflow management coming soon...</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="integrations" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Integrations</CardTitle>
+                  <CardDescription>Connect external tools and services</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">Integrations coming soon...</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {permissions.canDeleteProject && (
+              <TabsContent value="danger" className="mt-0">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Danger Zone</CardTitle>
+                    <CardDescription>Irreversible and destructive actions</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground">Danger zone actions coming soon...</p>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+          </Tabs>
+        </div>
+      </div>
     </div>
   )
 } 

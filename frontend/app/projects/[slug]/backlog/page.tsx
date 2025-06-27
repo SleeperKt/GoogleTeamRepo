@@ -15,6 +15,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  User,
   X,
 } from "lucide-react"
 import Link from "next/link"
@@ -27,6 +28,8 @@ import { cn } from "@/lib/utils"
 import { CreateTaskSidebar } from "@/components/create-task-sidebar"
 import { TaskDetailView } from "@/components/task-detail-view"
 import { apiRequest } from "@/lib/api"
+import { useProjectParticipants } from "@/hooks/use-project-participants"
+import { TeamMember } from "@/lib/types"
 
 // Task types with colors
 const taskTypes = {
@@ -99,17 +102,14 @@ export default function ProjectBacklogPage() {
     assignee: "all",
     priority: "all",
   })
-  const [expandedGroups, setExpandedGroups] = useState({
-    upcoming: true,
-    inProgress: true,
-    done: true,
-    unassigned: true,
-  })
+  const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({})
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
-  const [selectedColumn, setSelectedColumn] = useState("upcoming")
-  const [participants, setParticipants] = useState<Array<{userName?: string, UserName?: string}>>([])
+  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
+
+  // Use project participants hook
+  const { teamMembers, isLoading: participantsLoading } = useProjectParticipants(projectId, true)
 
   // Fetch project details
   const fetchProject = async () => {
@@ -152,24 +152,11 @@ export default function ProjectBacklogPage() {
     }
   }
 
-  // Fetch participants for filter dropdown
-  const fetchParticipants = async () => {
-    if (!projectId) return
-
-    try {
-      const data = await apiRequest<Array<{userName?: string, UserName?: string}>>(`/api/projects/public/${projectId}/participants`)
-      setParticipants(data || [])
-    } catch (err) {
-      console.error('Error fetching participants:', err)
-    }
-  }
-
   // Initial data fetch
   useEffect(() => {
     if (projectId) {
       fetchProject()
       fetchBacklogData()
-      fetchParticipants()
     }
   }, [projectId])
 
@@ -184,27 +171,85 @@ export default function ProjectBacklogPage() {
     return () => clearTimeout(timeoutId)
   }, [searchQuery, filters, projectId])
 
-  // Group tasks by status
-  const getGroupedTasks = () => {
-    const grouped = {
-      upcoming: backlogData.filter(task => task.status === 'Todo'),
-      inProgress: backlogData.filter(task => task.status === 'InProgress'),
-      done: backlogData.filter(task => task.status === 'Done'),
-      unassigned: backlogData.filter(task => !task.assigneeName),
+  // Initialize expanded groups when team members load
+  useEffect(() => {
+    if (teamMembers.length > 0) {
+      const initialExpanded: { [key: string]: boolean } = {
+        unassigned: true, // Always show unassigned expanded
+      }
+      
+      // Add all team members as expanded by default
+      teamMembers.forEach(member => {
+        initialExpanded[member.id] = true
+      })
+      
+      setExpandedGroups(initialExpanded)
     }
+  }, [teamMembers])
+
+  // Group tasks by assignee
+  const getGroupedTasksByAssignee = () => {
+    const grouped: { [key: string]: Task[] } = {}
+    
+    // Initialize all team members with empty arrays
+    teamMembers.forEach(member => {
+      grouped[member.id] = []
+    })
+    
+    // Initialize unassigned group
+    grouped['unassigned'] = []
+    
+    // Group tasks by assignee
+    backlogData.forEach(task => {
+      if (!task.assigneeId || !task.assigneeName) {
+        grouped['unassigned'].push(task)
+      } else {
+        // Find the team member by ID or create a new group
+        const assigneeExists = teamMembers.find(member => member.id === task.assigneeId)
+        if (assigneeExists) {
+          grouped[task.assigneeId].push(task)
+        } else {
+          // Handle case where assignee is not in current team members list
+          if (!grouped[task.assigneeId]) {
+            grouped[task.assigneeId] = []
+          }
+          grouped[task.assigneeId].push(task)
+        }
+      }
+    })
+    
     return grouped
   }
 
-  // Get all assignees
+  // Get assignee info (team member or create fallback)
+  const getAssigneeInfo = (assigneeId: string): { name: string; initials: string } => {
+    if (assigneeId === 'unassigned') {
+      return { name: 'Unassigned', initials: 'UN' }
+    }
+    
+    const member = teamMembers.find(m => m.id === assigneeId)
+    if (member) {
+      return { name: member.name, initials: member.initials }
+    }
+    
+    // Fallback for assignees not in current team members
+    const task = backlogData.find(t => t.assigneeId === assigneeId)
+    const name = task?.assigneeName || 'Unknown'
+    const initials = name.split(' ').map(n => n[0]).join('').toUpperCase()
+    
+    return { name, initials }
+  }
+
+  // Get all assignees including team members
   const getAllAssignees = (): string[] => {
-    return participants.map(p => p.userName || p.UserName).filter(Boolean) as string[]
+    return teamMembers.map(m => m.name)
   }
 
   // Toggle group expansion
   const toggleGroup = (groupId: string) => {
-    setExpandedGroups((prev) => ({
+    setExpandedGroups(prev => ({
       ...prev,
-      [groupId]: !prev[groupId],
+      [groupId]: !prev[groupId]
     }))
   }
 
@@ -291,7 +336,7 @@ export default function ProjectBacklogPage() {
     )
   }
 
-  const groupedTasks = getGroupedTasks()
+  const groupedTasks = getGroupedTasksByAssignee()
 
   return (
     <div className="p-4 md:p-6 w-full">
@@ -410,35 +455,44 @@ export default function ProjectBacklogPage() {
             </div>
           </div>
 
-          {/* Backlog Groups */}
+          {/* Task Groups by Assignee */}
           <div className="space-y-6">
-            {Object.entries(groupedTasks).map(([groupId, tasks]) => {
-              const filteredTasks = filterTasks(tasks)
-              const isExpanded = expandedGroups[groupId as keyof typeof expandedGroups]
-              const groupLabels = {
-                upcoming: "To Do",
-                inProgress: "In Progress", 
-                done: "Done",
-                unassigned: "Unassigned"
-              }
-
-              if (filteredTasks.length === 0) return null
-
+            {/* Unassigned group first */}
+            {(() => {
+              const unassignedTasks = groupedTasks['unassigned'] || []
+              const filteredUnassignedTasks = filterTasks(unassignedTasks)
+              const isExpanded = expandedGroups['unassigned']
+              
               return (
-                <div key={groupId} className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+                <div className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
                   <div
                     className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
-                    onClick={() => toggleGroup(groupId)}
+                    onClick={() => toggleGroup('unassigned')}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       {isExpanded ? (
                         <ChevronDown className="h-4 w-4" />
                       ) : (
                         <ChevronRight className="h-4 w-4" />
                       )}
-                      <h3 className="font-medium">{groupLabels[groupId as keyof typeof groupLabels]}</h3>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="bg-gray-200 text-gray-600">
+                            <User className="h-4 w-4" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="font-medium">Unassigned</h3>
+                          <p className="text-sm text-gray-500">
+                            {filteredUnassignedTasks.length === 0 
+                              ? "No tasks assigned yet"
+                              : `${filteredUnassignedTasks.length} task${filteredUnassignedTasks.length !== 1 ? 's' : ''}`
+                            }
+                          </p>
+                        </div>
+                      </div>
                       <Badge variant="outline" className="ml-2">
-                        {filteredTasks.length}
+                        {filteredUnassignedTasks.length}
                       </Badge>
                     </div>
                     <Button
@@ -446,7 +500,7 @@ export default function ProjectBacklogPage() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
-                        setSelectedColumn(groupId)
+                        setSelectedAssignee('unassigned')
                         setCreateTaskOpen(true)
                       }}
                     >
@@ -456,90 +510,237 @@ export default function ProjectBacklogPage() {
 
                   {isExpanded && (
                     <div className="border-t">
-                      {filteredTasks.map((task) => {
-                        const PriorityIcon = priorityLevels[task.priority as keyof typeof priorityLevels]?.icon || MoreHorizontal
-
-                        return (
-                          <div
-                            key={task.id}
-                            className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                            onClick={() => handleTaskClick(task)}
+                      {filteredUnassignedTasks.length === 0 ? (
+                        <div className="p-8 text-center text-gray-500">
+                          <User className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                          <p className="text-sm">No tasks assigned yet</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => {
+                              setSelectedAssignee('unassigned')
+                              setCreateTaskOpen(true)
+                            }}
                           >
-                            <div className="flex items-start gap-3">
-                              <GripVertical className="h-4 w-4 text-gray-400 mt-1 cursor-grab" />
-                              
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-medium truncate">{task.title}</h4>
-                                  {task.type && (
-                                    <Badge variant="outline" className={taskTypes[task.type as keyof typeof taskTypes]?.color}>
-                                      {taskTypes[task.type as keyof typeof taskTypes]?.label}
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Task
+                          </Button>
+                        </div>
+                      ) : (
+                        filteredUnassignedTasks.map((task) => {
+                          const PriorityIcon = priorityLevels[task.priority as keyof typeof priorityLevels]?.icon || MoreHorizontal
+
+                          return (
+                            <div
+                              key={task.id}
+                              className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                              onClick={() => handleTaskClick(task)}
+                            >
+                              <div className="flex items-start gap-3">
+                                <GripVertical className="h-4 w-4 text-gray-400 mt-1 cursor-grab" />
+                                
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="font-medium truncate">{task.title}</h4>
+                                    {task.type && (
+                                      <Badge variant="outline" className={taskTypes[task.type as keyof typeof taskTypes]?.color}>
+                                        {taskTypes[task.type as keyof typeof taskTypes]?.label}
+                                      </Badge>
+                                    )}
+                                    <Badge variant="outline" className={statusTypes[task.status as keyof typeof statusTypes]?.color}>
+                                      {statusTypes[task.status as keyof typeof statusTypes]?.label}
                                     </Badge>
-                                  )}
-                                </div>
-                                
-                                {task.description && (
-                                  <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
-                                    {task.description}
-                                  </p>
-                                )}
-                                
-                                <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                                  <div className="flex items-center gap-1">
-                                    <PriorityIcon className={cn("h-3 w-3", priorityLevels[task.priority as keyof typeof priorityLevels]?.color)} />
-                                    <span>{priorityLevels[task.priority as keyof typeof priorityLevels]?.label}</span>
                                   </div>
                                   
-                                  {task.assigneeName && (
-                                    <div className="flex items-center gap-1">
-                                      <Avatar className="h-4 w-4">
-                                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${task.assigneeName}`} />
-                                        <AvatarFallback className="text-xs">
-                                          {task.assigneeName.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <span>{task.assigneeName}</span>
-                                    </div>
+                                  {task.description && (
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
+                                      {task.description}
+                                    </p>
                                   )}
                                   
-                                  {task.estimatedHours && (
+                                  <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                                     <div className="flex items-center gap-1">
-                                      <Clock className="h-3 w-3" />
-                                      <span>{task.estimatedHours}h</span>
+                                      <PriorityIcon className={cn("h-3 w-3", priorityLevels[task.priority as keyof typeof priorityLevels]?.color)} />
+                                      <span>{priorityLevels[task.priority as keyof typeof priorityLevels]?.label}</span>
                                     </div>
-                                  )}
-                                  
-                                  {task.dueDate && (
-                                    <div className="flex items-center gap-1">
-                                      <span>Due {new Date(task.dueDate).toLocaleDateString()}</span>
-                                    </div>
-                                  )}
+                                    
+                                    {task.estimatedHours && (
+                                      <div className="flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        <span>{task.estimatedHours}h</span>
+                                      </div>
+                                    )}
+                                    
+                                    {task.dueDate && (
+                                      <div className="flex items-center gap-1">
+                                        <span>Due {new Date(task.dueDate).toLocaleDateString()}</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        )
-                      })}
+                          )
+                        })
+                      )}
                     </div>
                   )}
                 </div>
               )
-            })}
+            })()}
+
+            {/* Team members in alphabetical order */}
+            {teamMembers
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map(member => {
+                const memberTasks = groupedTasks[member.id] || []
+                const filteredMemberTasks = filterTasks(memberTasks)
+                const isExpanded = expandedGroups[member.id]
+                
+                return (
+                  <div key={member.id} className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+                    <div
+                      className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                      onClick={() => toggleGroup(member.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${member.name}`} />
+                            <AvatarFallback>{member.initials}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h3 className="font-medium">{member.name}</h3>
+                            <p className="text-sm text-gray-500">
+                              {filteredMemberTasks.length === 0 
+                                ? "No tasks assigned yet"
+                                : `${filteredMemberTasks.length} task${filteredMemberTasks.length !== 1 ? 's' : ''}`
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="ml-2">
+                          {filteredMemberTasks.length}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedAssignee(member.id)
+                          setCreateTaskOpen(true)
+                        }}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="border-t">
+                        {filteredMemberTasks.length === 0 ? (
+                          <div className="p-8 text-center text-gray-500">
+                            <Avatar className="h-12 w-12 mx-auto mb-3 opacity-20">
+                              <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${member.name}`} />
+                              <AvatarFallback>{member.initials}</AvatarFallback>
+                            </Avatar>
+                            <p className="text-sm">No tasks assigned yet</p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-2"
+                              onClick={() => {
+                                setSelectedAssignee(member.id)
+                                setCreateTaskOpen(true)
+                              }}
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Assign Task
+                            </Button>
+                          </div>
+                        ) : (
+                          filteredMemberTasks.map((task) => {
+                            const PriorityIcon = priorityLevels[task.priority as keyof typeof priorityLevels]?.icon || MoreHorizontal
+
+                            return (
+                              <div
+                                key={task.id}
+                                className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                                onClick={() => handleTaskClick(task)}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <GripVertical className="h-4 w-4 text-gray-400 mt-1 cursor-grab" />
+                                  
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h4 className="font-medium truncate">{task.title}</h4>
+                                      {task.type && (
+                                        <Badge variant="outline" className={taskTypes[task.type as keyof typeof taskTypes]?.color}>
+                                          {taskTypes[task.type as keyof typeof taskTypes]?.label}
+                                        </Badge>
+                                      )}
+                                      <Badge variant="outline" className={statusTypes[task.status as keyof typeof statusTypes]?.color}>
+                                        {statusTypes[task.status as keyof typeof statusTypes]?.label}
+                                      </Badge>
+                                    </div>
+                                    
+                                    {task.description && (
+                                      <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
+                                        {task.description}
+                                      </p>
+                                    )}
+                                    
+                                    <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                                      <div className="flex items-center gap-1">
+                                        <PriorityIcon className={cn("h-3 w-3", priorityLevels[task.priority as keyof typeof priorityLevels]?.color)} />
+                                        <span>{priorityLevels[task.priority as keyof typeof priorityLevels]?.label}</span>
+                                      </div>
+                                      
+                                      {task.estimatedHours && (
+                                        <div className="flex items-center gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          <span>{task.estimatedHours}h</span>
+                                        </div>
+                                      )}
+                                      
+                                      {task.dueDate && (
+                                        <div className="flex items-center gap-1">
+                                          <span>Due {new Date(task.dueDate).toLocaleDateString()}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            }
           </div>
         </>
       )}
 
       {/* Create Task Sidebar */}
-      <CreateTaskSidebar
-        open={createTaskOpen}
-        onOpenChange={setCreateTaskOpen}
-        initialStage="To Do"
-        projectPublicId={projectId}
-        onTaskCreated={(newTask) => {
-          fetchBacklogData()
-          setCreateTaskOpen(false)
-        }}
-      />
+      {createTaskOpen && (
+        <CreateTaskSidebar
+          open={createTaskOpen}
+          onOpenChange={setCreateTaskOpen}
+          onTaskCreated={handleTaskUpdated}
+          projectPublicId={projectId}
+          selectedColumnId={selectedAssignee || undefined}
+        />
+      )}
 
       {/* Task Detail View */}
       {selectedTask && (

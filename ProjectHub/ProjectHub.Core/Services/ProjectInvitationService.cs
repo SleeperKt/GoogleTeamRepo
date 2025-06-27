@@ -261,6 +261,7 @@ namespace ProjectHub.Core.Services
                     {
                         Id = invitation.Id,
                         ProjectId = invitation.ProjectId,
+                        ProjectPublicId = project.PublicId,
                         ProjectName = project.Name,
                         ProjectDescription = project.Description,
                         InviterId = invitation.InviterId,

@@ -47,6 +47,7 @@ export enum ParticipantRole {
 export interface ProjectInvitation {
   id: number
   projectId: number
+  projectPublicId: string
   projectName: string
   projectDescription: string
   inviterId: string

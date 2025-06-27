@@ -7,6 +7,7 @@ namespace ProjectHub.Core.DataTransferObjects
     {
         public int Id { get; set; }
         public int ProjectId { get; set; }
+        public Guid ProjectPublicId { get; set; }
         public string ProjectName { get; set; } = string.Empty;
         public string ProjectDescription { get; set; } = string.Empty;
         public Guid InviterId { get; set; }

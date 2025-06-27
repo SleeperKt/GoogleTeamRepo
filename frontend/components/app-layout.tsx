@@ -316,6 +316,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => router.push("/profile")}>Profile</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/billing")}>Billing</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/invitations")}>Invitations</DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => {

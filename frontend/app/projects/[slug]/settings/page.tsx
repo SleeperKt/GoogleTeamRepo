@@ -2617,56 +2617,6 @@ export default function ProjectGeneralSettingsPage() {
             </p>
           </div>
 
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Notifications</h3>
-            
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="enable-notifications">Enable Notifications</Label>
-                <Switch 
-                  id="enable-notifications" 
-                  checked={projectSettings.enableNotifications}
-                  onCheckedChange={(checked) => handleInputChange("enableNotifications", checked)}
-                  disabled={!permissions.canManageProject}
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Receive general project notifications
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="enable-comments">Comment Notifications</Label>
-                <Switch 
-                  id="enable-comments" 
-                  checked={projectSettings.enableCommentsNotifications}
-                  onCheckedChange={(checked) => handleInputChange("enableCommentsNotifications", checked)}
-                  disabled={!permissions.canManageProject}
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Get notified when someone comments on tasks
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="enable-assignments">Task Assignment Notifications</Label>
-                <Switch 
-                  id="enable-assignments" 
-                  checked={projectSettings.enableTaskAssignmentNotifications}
-                  onCheckedChange={(checked) => handleInputChange("enableTaskAssignmentNotifications", checked)}
-                  disabled={!permissions.canManageProject}
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Get notified when tasks are assigned to you
-              </p>
-            </div>
-
-          </div>
-
           {/* Save Changes Button */}
           {permissions.canManageProject && (
             <div className="flex items-center justify-between pt-6 border-t">

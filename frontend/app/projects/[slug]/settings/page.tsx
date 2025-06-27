@@ -28,6 +28,7 @@ import {
   Plus,
   Palette,
   GripVertical,
+  UserCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1498,10 +1499,96 @@ function DangerZoneTab({ projectId, projectPublicId, projectName, permissions }:
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showTransferDialog, setShowTransferDialog] = useState(false)
+  const [transferEmail, setTransferEmail] = useState("")
+  const [isTransferring, setIsTransferring] = useState(false)
+  const [participants, setParticipants] = useState<Participant[]>([])
+  const { token } = useAuth()
 
   // Only show if user is owner
   if (!permissions.canDeleteProject) {
     return null
+  }
+
+  // Fetch participants for transfer ownership
+  const fetchParticipants = async () => {
+    if (!token || !projectPublicId) return
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectPublicId}/participants`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch participants: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const participantArray = Array.isArray(data) ? data : ((data as any)?.$values || [])
+      setParticipants(participantArray.filter((p: Participant) => p.role !== ParticipantRole.Owner))
+    } catch (err) {
+      console.error('Error fetching participants:', err)
+    }
+  }
+
+  const handleTransferOwnership = async () => {
+    if (!transferEmail.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an email address",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsTransferring(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectPublicId}/transfer-ownership`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ newOwnerEmail: transferEmail }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Transfer ownership API error:', response.status, response.statusText, errorText)
+        
+        if (response.status === 403) {
+          throw new Error('You do not have permission to transfer ownership.')
+        } else if (response.status === 400) {
+          throw new Error(errorText || 'The specified user is not a member of this project.')
+        } else {
+          throw new Error(`Failed to transfer ownership: ${response.status} ${response.statusText}`)
+        }
+      }
+      
+      toast({
+        title: "Success",
+        description: "Project ownership transferred successfully",
+      })
+      
+      // Redirect to projects page since user is no longer owner
+      setTimeout(() => {
+        router.push('/projects')
+      }, 1500)
+      
+    } catch (error) {
+      console.error('Error transferring ownership:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to transfer ownership",
+        variant: "destructive",
+      })
+    } finally {
+      setIsTransferring(false)
+      setShowTransferDialog(false)
+      setTransferEmail("")
+    }
   }
 
   const handleDeleteProject = async () => {
@@ -1698,27 +1785,55 @@ function DangerZoneTab({ projectId, projectPublicId, projectName, permissions }:
         </div>
       )}
 
-      {/* Future Features Section */}
+      {/* Transfer Ownership Section */}
       <Card className="border-orange-200">
         <CardHeader>
-          <CardTitle className="text-orange-600">Additional Actions</CardTitle>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="text-orange-600">Transfer Ownership</CardTitle>
+              <CardDescription>
+                Transfer project ownership to another team member. You will become an admin.
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowTransferDialog(true)
+                fetchParticipants()
+              }}
+              className="border-orange-300 text-orange-600 hover:bg-orange-50"
+            >
+              <UserCheck className="h-4 w-4 mr-2" />
+              Transfer Ownership
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              When you transfer ownership:
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside ml-4">
+              <li>The new owner will have full control over the project</li>
+              <li>You will automatically become an admin</li>
+              <li>Only existing project members can become owners</li>
+              <li>This action cannot be undone (only the new owner can transfer back)</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Future Features Section */}
+      <Card className="border-gray-200 opacity-50">
+        <CardHeader>
+          <CardTitle className="text-gray-500">Future Features</CardTitle>
           <CardDescription>
-            Other destructive actions that may be added in the future
+            Additional actions that may be added in the future
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 border rounded-lg opacity-50">
-              <div>
-                <h4 className="font-medium text-gray-500">Transfer Ownership</h4>
-                <p className="text-sm text-gray-400">Transfer project ownership to another team member</p>
-              </div>
-              <Button variant="outline" disabled className="text-gray-400">
-                Coming Soon
-              </Button>
-            </div>
-            
-            <div className="flex items-center justify-between p-3 border rounded-lg opacity-50">
+            <div className="flex items-center justify-between p-3 border rounded-lg">
               <div>
                 <h4 className="font-medium text-gray-500">Reset Project Data</h4>
                 <p className="text-sm text-gray-400">Remove all tasks and data while keeping the project</p>
@@ -1730,6 +1845,101 @@ function DangerZoneTab({ projectId, projectPublicId, projectName, permissions }:
           </div>
         </CardContent>
       </Card>
+
+      {/* Transfer Ownership Dialog */}
+      {showTransferDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle className="text-orange-600 flex items-center">
+                <UserCheck className="h-5 w-5 mr-2" />
+                Transfer Ownership
+              </CardTitle>
+              <CardDescription>
+                Transfer project ownership to another team member. You will become an admin.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="transfer-email">New Owner Email</Label>
+                <Input
+                  id="transfer-email"
+                  type="email"
+                  value={transferEmail}
+                  onChange={(e) => setTransferEmail(e.target.value)}
+                  placeholder="Enter team member's email"
+                  autoComplete="off"
+                  autoFocus
+                />
+                <p className="text-sm text-muted-foreground mt-1">
+                  Only existing project members can become owners
+                </p>
+              </div>
+
+              {participants.length > 0 && (
+                <div>
+                  <Label className="text-sm font-medium">Current Team Members:</Label>
+                  <div className="mt-2 space-y-2 max-h-32 overflow-y-auto">
+                    {participants.map((participant) => (
+                      <div
+                        key={participant.userId}
+                        className="flex items-center justify-between p-2 border rounded cursor-pointer hover:bg-gray-50"
+                        onClick={() => setTransferEmail(participant.email)}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="text-xs">
+                              {participant.userName.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-medium">{participant.userName}</p>
+                            <p className="text-xs text-muted-foreground">{participant.email}</p>
+                          </div>
+                        </div>
+                        <Badge variant={getRoleBadgeVariant(participant.role)}>
+                          {getRoleLabel(participant.role)}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowTransferDialog(false)
+                    setTransferEmail("")
+                  }}
+                  disabled={isTransferring}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleTransferOwnership}
+                  disabled={!transferEmail.trim() || isTransferring}
+                  className="flex-1 bg-orange-600 hover:bg-orange-700"
+                >
+                  {isTransferring ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Transferring...
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="mr-2 h-4 w-4" />
+                      Transfer Ownership
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

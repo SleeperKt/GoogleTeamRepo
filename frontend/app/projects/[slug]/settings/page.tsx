@@ -69,11 +69,8 @@ interface ProjectSettings {
   startDate?: string
   endDate?: string
   enableNotifications: boolean
-  enableTimeTracking: boolean
   enableCommentsNotifications: boolean
   enableTaskAssignmentNotifications: boolean
-  defaultTaskView: string
-  allowGuestAccess: boolean
   createdAt: string
   updatedAt: string
 }
@@ -2104,11 +2101,8 @@ export default function ProjectGeneralSettingsPage() {
             startDate: "",
             endDate: "",
             enableNotifications: true,
-            enableTimeTracking: false,
             enableCommentsNotifications: true,
             enableTaskAssignmentNotifications: true,
-            defaultTaskView: "board",
-            allowGuestAccess: false,
           }
         }
         throw new Error(`Failed to fetch settings: ${response.status}`)
@@ -2425,15 +2419,12 @@ export default function ProjectGeneralSettingsPage() {
   const projectSettings = {
     name: project?.name || '',
     description: project?.description || '',
-    defaultStatus: settings?.defaultTaskView || '',
     startDate: settings?.startDate || '',
     endDate: settings?.endDate || '',
     timezone: settings?.timezone || '',
     enableNotifications: settings?.enableNotifications ?? true,
-    enableTimeTracking: settings?.enableTimeTracking ?? false,
     enableCommentsNotifications: settings?.enableCommentsNotifications ?? true,
     enableTaskAssignmentNotifications: settings?.enableTaskAssignmentNotifications ?? true,
-    allowGuestAccess: settings?.allowGuestAccess ?? false,
   }
 
   return (
@@ -2574,10 +2565,6 @@ export default function ProjectGeneralSettingsPage() {
               readOnly={!permissions.canManageProject}
               placeholder="Enter project name"
             />
-            {/* Debug info */}
-            <p className="text-xs text-muted-foreground">
-              Can manage: {permissions.canManageProject.toString()} | Role: {permissions.role} | Loading: {permissions.isLoading.toString()}
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -2590,27 +2577,6 @@ export default function ProjectGeneralSettingsPage() {
               readOnly={!permissions.canManageProject}
               placeholder="Enter project description"
             />
-          </div>
-
-
-
-          <div className="space-y-2">
-            <Label htmlFor="default-status">Default Task View</Label>
-            <Select
-              value={projectSettings.defaultStatus}
-              onValueChange={(value) => handleInputChange("defaultTaskView", value)}
-              disabled={!permissions.canManageProject}
-            >
-              <SelectTrigger id="default-status">
-                <SelectValue placeholder="Select a default view" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="board">Board View</SelectItem>
-                <SelectItem value="list">List View</SelectItem>
-                <SelectItem value="calendar">Calendar View</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">Default view for project tasks</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2714,35 +2680,6 @@ export default function ProjectGeneralSettingsPage() {
               </p>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="enable-time-tracking">Enable Time Tracking</Label>
-                <Switch 
-                  id="enable-time-tracking" 
-                  checked={projectSettings.enableTimeTracking}
-                  onCheckedChange={(checked) => handleInputChange("enableTimeTracking", checked)}
-                  disabled={!permissions.canManageProject}
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Allow team members to track time on tasks
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="allow-guest-access">Allow Guest Access</Label>
-                <Switch 
-                  id="allow-guest-access" 
-                  checked={projectSettings.allowGuestAccess}
-                  onCheckedChange={(checked) => handleInputChange("allowGuestAccess", checked)}
-                  disabled={!permissions.canManageProject}
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Allow external collaborators to view project tasks
-              </p>
-            </div>
           </div>
 
           {/* Save Changes Button */}

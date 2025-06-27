@@ -13,6 +13,7 @@ namespace ProjectHub.Core.Interfaces
         Task<User?> GetByUsernameAsync(string username);
         Task<User?> GetByEmailAsync(string email);
         Task AddUserAsync(User user);
+        Task UpdateUserAsync(User user);
         Task SaveChangesAsync();
     }
 }

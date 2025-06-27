@@ -119,6 +119,36 @@ export async function apiRequest<T = unknown>(
   }
 }
 
+// User Profile API functions
+export const profileApi = {
+  // Get current user profile
+  getCurrentUser: async () => {
+    return apiRequest<{
+      userId: string;
+      userName: string;
+      email: string;
+      bio?: string;
+    }>('/api/user/me');
+  },
+
+  // Update current user profile
+  updateProfile: async (profileData: {
+    userName: string;
+    email: string;
+    bio?: string;
+  }) => {
+    return apiRequest<{
+      userId: string;
+      userName: string;
+      email: string;
+      bio?: string;
+    }>('/api/user/me', {
+      method: 'PUT',
+      body: JSON.stringify(profileData)
+    });
+  }
+};
+
 // Invitation API functions
 export const invitationApi = {
   // Get received invitations

@@ -5,7 +5,6 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import {
   BarChart3,
-  Bell,
   ChevronDown,
   ChevronRight,
   Cog,
@@ -107,14 +106,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({})
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
-  const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const [notifications, setNotifications] = useState<Array<{
-    id: number
-    title: string
-    message: string
-    time: string
-    read: boolean
-  }>>([])
   const { user, logout, token } = useAuth()
   const { currentProject, projects, refreshProjects } = useProject()
 
@@ -190,28 +181,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     router.push("/projects")
   }
 
-  const markAsRead = (id: number) => {
-    setNotifications(
-      notifications.map((notification) => (notification.id === id ? { ...notification, read: true } : notification)),
-    )
-  }
-
-  const markAllAsRead = () => {
-    setNotifications(notifications.map((notification) => ({ ...notification, read: true })))
-  }
-
-  const clearAllNotifications = () => {
-    setNotifications([])
+  // Helper function to check if a nav item should be highlighted
+  const isNavItemActive = (item: NavItem) => {
+    if (item.href === "/projects") {
+      // Only highlight "All Projects" if we're exactly on /projects, not on project sub-pages
+      return pathname === "/projects"
+    }
+    // For project-specific items, check if pathname starts with the href
+    return pathname.startsWith(item.href)
   }
 
   return (
     <SidebarProvider>
       <div className="flex h-screen w-screen overflow-hidden">
         <Sidebar className="border-r">
-          <SidebarHeader className="border-b p-4">
-            <div className="flex items-center justify-between">
+          <SidebarHeader className="border-b h-14 px-4 py-3">
+            <div className="flex items-center justify-between h-full">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-violet-600 text-white">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-600 text-white">
                   <FolderKanban className="h-4 w-4" />
                 </div>
                 <span className="text-lg font-semibold">ProjectHub</span>
@@ -235,7 +222,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           href={item.href}
                           className={cn(
                             "flex flex-1 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
-                            pathname.startsWith(item.href)
+                            isNavItemActive(item)
                               ? "bg-muted text-foreground"
                               : "text-muted-foreground hover:bg-muted hover:text-foreground",
                           )}
@@ -286,7 +273,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       href={item.href}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
-                        pathname === item.href || pathname.startsWith(item.href)
+                        isNavItemActive(item)
                           ? "bg-muted text-foreground"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
@@ -308,76 +295,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {/* Left side of header - empty now that search is removed */}
             <div></div>
 
-            {/* Profile and notifications */}
+            {/* Profile menu */}
             <div className="flex items-center gap-3">
-              <DropdownMenu open={notificationsOpen} onOpenChange={setNotificationsOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="h-5 w-5" />
-                    {notifications.some((notification) => !notification.read) && (
-                      <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
-                    )}
-                    <span className="sr-only">Notifications</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80">
-                  <div className="flex items-center justify-between p-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 text-xs"
-                      onClick={markAllAsRead}
-                      disabled={!notifications.some((notification) => !notification.read)}
-                    >
-                      Mark all as read
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 text-xs"
-                      onClick={clearAllNotifications}
-                      disabled={notifications.length === 0}
-                    >
-                      Clear all
-                    </Button>
-                  </div>
-                  <DropdownMenuSeparator />
-                  {notifications.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">No notifications</div>
-                  ) : (
-                    <div className="max-h-[300px] overflow-auto">
-                      {notifications.map((notification) => (
-                        <div
-                          key={notification.id}
-                          className={cn("p-3 cursor-pointer hover:bg-muted", !notification.read && "bg-muted/50")}
-                          onClick={() => markAsRead(notification.id)}
-                        >
-                          <div className="flex items-start gap-2">
-                            <div
-                              className={cn(
-                                "mt-1 h-2 w-2 flex-shrink-0 rounded-full",
-                                notification.read ? "bg-transparent" : "bg-red-500",
-                              )}
-                            />
-                            <div>
-                              <p className="text-sm font-medium">{notification.title}</p>
-                              <p className="text-xs text-muted-foreground">{notification.message}</p>
-                              <p className="text-xs text-muted-foreground mt-1">{notification.time}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <DropdownMenuSeparator />
-                </DropdownMenuContent>
-              </DropdownMenu>
-
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="h-8 gap-2 pl-1">
-                    <Avatar className="h-7 w-7">
-                      <AvatarFallback className="bg-violet-100 text-violet-600 font-semibold">
+                    <Avatar className="h-6 w-6">
+                      <AvatarFallback className="bg-violet-100 text-violet-600 font-semibold text-sm">
                         {user?.username ? user.username[0].toUpperCase() : "U"}
                       </AvatarFallback>
                     </Avatar>
@@ -389,7 +313,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => router.push("/profile")}>Profile</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/invitations")}>Invitations</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/billing")}>Billing</DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

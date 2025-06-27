@@ -5,7 +5,7 @@ import { API_BASE_URL } from "@/lib/api"
 
 interface AuthContextType {
   token: string | null
-  user: { id: string; username: string; email: string } | null
+  user: { id: string; username: string; email: string; bio?: string } | null
   isLoading: boolean
   isHydrated: boolean
   login: (token: string) => void
@@ -16,7 +16,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null)
-  const [user, setUser] = useState<{ id: string; username: string; email: string } | null>(null)
+  const [user, setUser] = useState<{ id: string; username: string; email: string; bio?: string } | null>(null)
   const [isLoading, setIsLoading] = useState(false) // Start as false to prevent hydration mismatch
   const [isHydrated, setIsHydrated] = useState(false) // Track if we've hydrated
 
@@ -83,7 +83,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userData = { 
         id: data.userId || data.UserId || '', 
         username: data.userName || data.UserName || '', 
-        email: data.email || data.Email || '' 
+        email: data.email || data.Email || '',
+        bio: data.bio || data.Bio || ''
       }
       console.log("👤 Processed user data:", userData)
       setUser(userData)

@@ -32,8 +32,6 @@ const getRoleLabel = (role: ParticipantRole): string => {
       return "Owner"
     case ParticipantRole.Admin:
       return "Admin"
-    case ParticipantRole.Editor:
-      return "Editor"
     case ParticipantRole.Viewer:
       return "Viewer"
     default:
@@ -50,7 +48,7 @@ export function SendInvitationDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState<CreateInvitationRequest>({
     inviteeEmail: "",
-    role: ParticipantRole.Editor,
+    role: ParticipantRole.Viewer,
     message: ""
   })
 
@@ -89,7 +87,7 @@ export function SendInvitationDialog({
       // Reset form
       setFormData({
         inviteeEmail: "",
-        role: ParticipantRole.Editor,
+        role: ParticipantRole.Viewer,
         message: ""
       })
       
@@ -174,9 +172,6 @@ export function SendInvitationDialog({
               <SelectContent>
                 <SelectItem value={ParticipantRole.Viewer.toString()}>
                   {getRoleLabel(ParticipantRole.Viewer)} - Can view project
-                </SelectItem>
-                <SelectItem value={ParticipantRole.Editor.toString()}>
-                  {getRoleLabel(ParticipantRole.Editor)} - Can edit tasks and content
                 </SelectItem>
                 <SelectItem value={ParticipantRole.Admin.toString()}>
                   {getRoleLabel(ParticipantRole.Admin)} - Can manage project and members

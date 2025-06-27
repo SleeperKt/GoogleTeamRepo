@@ -14,6 +14,17 @@ import {
   Workflow,
   Zap,
   AlertTriangle,
+  UserPlus,
+  Mail,
+  Shield,
+  Crown,
+  Edit,
+  Eye,
+  MoreHorizontal,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,10 +34,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Separator } from "@/components/ui/separator"
 import { toast } from "@/hooks/use-toast"
-import { API_BASE_URL } from "@/lib/api"
+import { API_BASE_URL, invitationApi } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { useUserPermissions } from "@/hooks/use-user-permissions"
+import { SendInvitationDialog } from "@/components/send-invitation-dialog"
+import { ParticipantRole, InvitationStatus, ProjectInvitation } from "@/lib/types"
 
 // Types
 interface Project {
@@ -77,6 +94,376 @@ const timezoneOptions = [
   { value: "Asia/Tokyo", label: "Japan Standard Time (JST)" },
   { value: "Australia/Sydney", label: "Australian Eastern Time (AET)" },
 ]
+
+// Participant interface
+interface Participant {
+  userId: string
+  userName: string
+  email: string
+  role: ParticipantRole
+  joinedAt: string
+}
+
+// Helper functions
+const getRoleLabel = (role: ParticipantRole): string => {
+  switch (role) {
+    case ParticipantRole.Owner:
+      return "Owner"
+    case ParticipantRole.Admin:
+      return "Admin"
+    case ParticipantRole.Viewer:
+      return "Viewer"
+    default:
+      return "Unknown"
+  }
+}
+
+const getRoleIcon = (role: ParticipantRole) => {
+  switch (role) {
+    case ParticipantRole.Owner:
+      return <Crown className="h-4 w-4 text-yellow-600" />
+    case ParticipantRole.Admin:
+      return <Shield className="h-4 w-4 text-red-600" />
+    case ParticipantRole.Viewer:
+      return <Eye className="h-4 w-4 text-gray-600" />
+    default:
+      return null
+  }
+}
+
+const getRoleBadgeVariant = (role: ParticipantRole) => {
+  switch (role) {
+    case ParticipantRole.Owner:
+      return "default" // Gold-like
+    case ParticipantRole.Admin:
+      return "destructive" // Red
+    case ParticipantRole.Viewer:
+      return "outline" // Gray
+    default:
+      return "outline"
+  }
+}
+
+const getInvitationStatusBadge = (status: InvitationStatus) => {
+  switch (status) {
+    case InvitationStatus.Pending:
+      return <Badge variant="outline"><Clock className="h-3 w-3 mr-1" />Pending</Badge>
+    case InvitationStatus.Accepted:
+      return <Badge variant="default" className="bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Accepted</Badge>
+    case InvitationStatus.Declined:
+      return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Declined</Badge>
+    case InvitationStatus.Cancelled:
+      return <Badge variant="outline" className="text-gray-500"><XCircle className="h-3 w-3 mr-1" />Cancelled</Badge>
+    default:
+      return <Badge variant="outline">Unknown</Badge>
+  }
+}
+
+// Members & Access Tab Component
+interface MembersAndAccessTabProps {
+  projectId: number
+  projectPublicId: string
+  permissions: any
+}
+
+function MembersAndAccessTab({ projectId, projectPublicId, permissions }: MembersAndAccessTabProps) {
+  const { token } = useAuth()
+  const [participants, setParticipants] = useState<Participant[]>([])
+  const [invitations, setInvitations] = useState<ProjectInvitation[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch participants
+  const fetchParticipants = async () => {
+    if (!token || !projectPublicId) return
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectPublicId}/participants`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch participants: ${response.status}`)
+      }
+
+      const data = await response.json()
+      // Handle ASP.NET response format
+      const participantArray = Array.isArray(data) ? data : ((data as any)?.$values || [])
+      setParticipants(participantArray)
+    } catch (err) {
+      console.error('Error fetching participants:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load participants')
+    }
+  }
+
+  // Fetch invitations
+  const fetchInvitations = async () => {
+    if (!projectId || !permissions.canInviteUsers) return
+
+    try {
+      const data = await invitationApi.getProjectInvitations(projectId)
+      const invitationArray = Array.isArray(data) ? data : ((data as any)?.$values || [])
+      setInvitations(invitationArray)
+    } catch (err) {
+      console.error('Error fetching invitations:', err)
+      // Don't set error for invitations as it's not critical
+    }
+  }
+
+  // Load data
+  const loadData = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      await Promise.all([
+        fetchParticipants(),
+        fetchInvitations()
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [projectId, projectPublicId, token, permissions.canInviteUsers])
+
+  // Handle invitation sent
+  const handleInvitationSent = () => {
+    loadData() // Refresh data
+    toast({
+      title: "Success",
+      description: "Invitation sent successfully",
+    })
+  }
+
+  // Handle cancel invitation
+  const handleCancelInvitation = async (invitationId: number) => {
+    try {
+      await invitationApi.cancelInvitation(invitationId)
+      await loadData() // Refresh data
+      toast({
+        title: "Success",
+        description: "Invitation cancelled successfully",
+      })
+    } catch (error) {
+      console.error('Error cancelling invitation:', error)
+      toast({
+        title: "Error",
+        description: "Failed to cancel invitation",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Handle remove participant (placeholder - would need backend implementation)
+  const handleRemoveParticipant = async (participantId: string) => {
+    // This would require backend implementation
+    toast({
+      title: "Info",
+      description: "Remove participant functionality coming soon",
+    })
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Members & Access</CardTitle>
+          <CardDescription>Manage team members and their access levels</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-32">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Current Members */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Team Members</CardTitle>
+              <CardDescription>
+                {participants.length} member{participants.length !== 1 ? 's' : ''} in this project
+              </CardDescription>
+            </div>
+            {permissions.canInviteUsers && (
+              <SendInvitationDialog 
+                projectId={projectId}
+                onInvitationSent={handleInvitationSent}
+                trigger={
+                  <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white">
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Invite Member
+                  </Button>
+                }
+              />
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+          
+          <div className="space-y-3">
+            {participants.map((participant) => (
+              <div key={participant.userId} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${participant.userName}`} />
+                    <AvatarFallback>
+                      {participant.userName?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <p className="font-medium">{participant.userName}</p>
+                      {getRoleIcon(participant.role)}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{participant.email}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Joined {new Date(participant.joinedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Badge variant={getRoleBadgeVariant(participant.role)}>
+                    {getRoleLabel(participant.role)}
+                  </Badge>
+                  {permissions.canManageProject && participant.role !== ParticipantRole.Owner && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleRemoveParticipant(participant.userId)}>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Remove from project
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </div>
+            ))}
+            
+            {participants.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No team members found</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pending Invitations */}
+      {permissions.canInviteUsers && invitations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pending Invitations</CardTitle>
+            <CardDescription>
+              {invitations.filter(inv => inv.status === InvitationStatus.Pending).length} pending invitation{invitations.filter(inv => inv.status === InvitationStatus.Pending).length !== 1 ? 's' : ''}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {invitations.map((invitation) => (
+                <div key={invitation.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center">
+                      <Mail className="h-5 w-5 text-gray-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-medium">{invitation.inviteeName}</p>
+                        {getRoleIcon(invitation.role)}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{invitation.inviteeEmail}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Invited {new Date(invitation.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {getInvitationStatusBadge(invitation.status)}
+                    <Badge variant="outline">
+                      {getRoleLabel(invitation.role)}
+                    </Badge>
+                    {invitation.status === InvitationStatus.Pending && permissions.canInviteUsers && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleCancelInvitation(invitation.id)}
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Access Control Information */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Access Levels</CardTitle>
+          <CardDescription>Understanding project roles and permissions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3">
+              <Crown className="h-5 w-5 text-yellow-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Owner</p>
+                <p className="text-sm text-muted-foreground">
+                  Full access to all project features including deletion and ownership transfer
+                </p>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-start space-x-3">
+              <Shield className="h-5 w-5 text-red-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Admin</p>
+                <p className="text-sm text-muted-foreground">
+                  Can manage project settings, invite members, and perform administrative tasks
+                </p>
+              </div>
+            </div>
+                         <Separator />
+            <div className="flex items-start space-x-3">
+              <Eye className="h-5 w-5 text-gray-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Viewer</p>
+                <p className="text-sm text-muted-foreground">
+                  Can view project content but cannot make changes
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
 
 export default function ProjectGeneralSettingsPage() {
   const params = useParams()
@@ -850,17 +1237,13 @@ export default function ProjectGeneralSettingsPage() {
               </Card>
             </TabsContent>
 
-            {/* Placeholder for other tabs */}
+            {/* Members & Access Tab */}
             <TabsContent value="members" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Members & Access</CardTitle>
-                  <CardDescription>Manage team members and their access levels</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">Members management coming soon...</p>
-                </CardContent>
-              </Card>
+              <MembersAndAccessTab 
+                projectId={project.id}
+                projectPublicId={projectId}
+                permissions={permissions}
+              />
             </TabsContent>
 
             <TabsContent value="labels" className="mt-0">

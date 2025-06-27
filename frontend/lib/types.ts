@@ -41,8 +41,7 @@ export enum InvitationStatus {
 export enum ParticipantRole {
   Owner = 1,
   Admin = 2,
-  Editor = 3,
-  Viewer = 4
+  Viewer = 3
 }
 
 export interface ProjectInvitation {

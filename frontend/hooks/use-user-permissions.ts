@@ -59,7 +59,7 @@ export function useUserPermissions(projectId: string | undefined) {
         setPermissions({
           role,
           canView: true, // All participants can view
-          canEdit: role <= ParticipantRole.Editor, // Editor and above
+          canEdit: role <= ParticipantRole.Admin, // Admin and above
           canManageProject: role <= ParticipantRole.Admin, // Admin and above
           canInviteUsers: role <= ParticipantRole.Admin, // Admin and above
           canDeleteProject: role === ParticipantRole.Owner, // Only owner
@@ -105,8 +105,6 @@ export function getRoleName(role: ParticipantRole): string {
       return 'Owner'
     case ParticipantRole.Admin:
       return 'Admin'
-    case ParticipantRole.Editor:
-      return 'Editor'
     case ParticipantRole.Viewer:
       return 'Viewer'
     default:

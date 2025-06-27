@@ -25,6 +25,9 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
+  Plus,
+  Palette,
+  GripVertical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -44,6 +47,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { useUserPermissions } from "@/hooks/use-user-permissions"
 import { SendInvitationDialog } from "@/components/send-invitation-dialog"
 import { ParticipantRole, InvitationStatus, ProjectInvitation } from "@/lib/types"
+import { useProjectLabels, ProjectLabel } from "@/hooks/use-project-labels"
 
 // Types
 interface Project {
@@ -461,6 +465,443 @@ function MembersAndAccessTab({ projectId, projectPublicId, permissions }: Member
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+// Tags & Labels Tab Component
+interface TagsAndLabelsTabProps {
+  projectId: number
+  projectPublicId: string
+  permissions: any
+}
+
+function TagsAndLabelsTab({ projectId, projectPublicId, permissions }: TagsAndLabelsTabProps) {
+  const { labels, loading, error, createLabel, updateLabel, deleteLabel, refreshLabels } = useProjectLabels(projectPublicId)
+  const [editingLabel, setEditingLabel] = useState<ProjectLabel | null>(null)
+  const [newLabelName, setNewLabelName] = useState("")
+  const [newLabelColor, setNewLabelColor] = useState("#3b82f6")
+  const [isCreating, setIsCreating] = useState(false)
+  const [showCreateForm, setShowCreateForm] = useState(false)
+
+  // Predefined color options
+  const colorOptions = [
+    "#3b82f6", // Blue
+    "#10b981", // Green  
+    "#f59e0b", // Yellow
+    "#ef4444", // Red
+    "#8b5cf6", // Purple
+    "#06b6d4", // Cyan
+    "#f97316", // Orange
+    "#84cc16", // Lime
+    "#ec4899", // Pink
+    "#6b7280", // Gray
+  ]
+
+  // Handle create new label
+  const handleCreateLabel = async () => {
+    if (!newLabelName.trim()) {
+      toast({
+        title: "Error",
+        description: "Label name is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsCreating(true)
+    try {
+      const result = await createLabel(newLabelName.trim(), newLabelColor)
+      if (result) {
+        toast({
+          title: "Success",
+          description: "Label created successfully",
+        })
+        setNewLabelName("")
+        setNewLabelColor("#3b82f6")
+        setShowCreateForm(false)
+      }
+    } catch (error) {
+      console.error('Error creating label:', error)
+      toast({
+        title: "Error",
+        description: "Failed to create label",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  // Handle edit label
+  const handleEditLabel = async (label: ProjectLabel, newName: string, newColor: string) => {
+    if (!newName.trim()) {
+      toast({
+        title: "Error",
+        description: "Label name is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const result = await updateLabel(label.id, newName.trim(), newColor)
+      if (result) {
+        toast({
+          title: "Success",
+          description: "Label updated successfully",
+        })
+        setEditingLabel(null)
+      }
+    } catch (error) {
+      console.error('Error updating label:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update label",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Handle delete label
+  const handleDeleteLabel = async (label: ProjectLabel) => {
+    if (!confirm(`Are you sure you want to delete the "${label.name}" label? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const result = await deleteLabel(label.id)
+      if (result) {
+        toast({
+          title: "Success",
+          description: "Label deleted successfully",
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting label:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete label",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Tags & Labels</CardTitle>
+          <CardDescription>Organize your tasks with custom labels</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-32">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Labels Management */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Project Labels</CardTitle>
+              <CardDescription>
+                Create and manage labels to organize your tasks and content
+              </CardDescription>
+            </div>
+            {permissions.canManageProject && (
+              <Button 
+                onClick={() => setShowCreateForm(true)}
+                size="sm" 
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Label
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Create Label Form */}
+          {showCreateForm && permissions.canManageProject && (
+            <Card className="mb-6 border-violet-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Create New Label</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-label-name">Label Name</Label>
+                  <Input
+                    id="new-label-name"
+                    value={newLabelName}
+                    onChange={(e) => setNewLabelName(e.target.value)}
+                    placeholder="Enter label name"
+                    maxLength={50}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Color</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {colorOptions.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setNewLabelColor(color)}
+                        className={`w-8 h-8 rounded-full border-2 hover:scale-110 transition-transform ${
+                          newLabelColor === color ? 'border-gray-800' : 'border-gray-300'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={newLabelColor}
+                      onChange={(e) => setNewLabelColor(e.target.value)}
+                      className="w-8 h-8 rounded border"
+                    />
+                    <span className="text-sm text-muted-foreground">Custom color</span>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                <div className="space-y-2">
+                  <Label>Preview</Label>
+                  <Badge 
+                    variant="outline" 
+                    style={{ 
+                      backgroundColor: newLabelColor, 
+                      color: '#000',
+                      borderColor: newLabelColor 
+                    }}
+                  >
+                    {newLabelName || 'Label Name'}
+                  </Badge>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleCreateLabel}
+                    disabled={isCreating || !newLabelName.trim()}
+                    className="bg-violet-600 hover:bg-violet-700 text-white"
+                  >
+                    {isCreating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create Label
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowCreateForm(false)
+                      setNewLabelName("")
+                      setNewLabelColor("#3b82f6")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Labels List */}
+          <div className="space-y-3">
+            {labels.length > 0 ? (
+              labels.map((label) => (
+                <div key={label.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  {editingLabel?.id === label.id ? (
+                    <EditLabelForm
+                      label={label}
+                      colorOptions={colorOptions}
+                      onSave={handleEditLabel}
+                      onCancel={() => setEditingLabel(null)}
+                    />
+                  ) : (
+                    <>
+                      <div className="flex items-center space-x-3">
+                        <GripVertical className="h-4 w-4 text-muted-foreground" />
+                        <Badge 
+                          variant="outline" 
+                          style={{ 
+                            backgroundColor: label.color, 
+                            color: '#000',
+                            borderColor: label.color 
+                          }}
+                        >
+                          {label.name}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">
+                          Created {new Date(label.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {permissions.canManageProject && (
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingLabel(label)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteLabel(label)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Tags className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No labels created yet</p>
+                {permissions.canManageProject && (
+                  <p className="text-sm">Click "Add Label" to create your first label</p>
+                )}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Label Usage Information */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Label Usage</CardTitle>
+          <CardDescription>How to use labels in your project</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3">
+              <Tags className="h-5 w-5 text-violet-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Task Organization</p>
+                <p className="text-sm text-muted-foreground">
+                  Assign labels to tasks to categorize and filter them by type, priority, or feature area
+                </p>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-start space-x-3">
+              <Palette className="h-5 w-5 text-violet-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Visual Organization</p>
+                <p className="text-sm text-muted-foreground">
+                  Use different colors to create visual distinction between label categories
+                </p>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-start space-x-3">
+              <Eye className="h-5 w-5 text-violet-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Filtering & Search</p>
+                <p className="text-sm text-muted-foreground">
+                  Filter tasks by labels in the backlog and board views for better project visibility
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// Edit Label Form Component
+interface EditLabelFormProps {
+  label: ProjectLabel
+  colorOptions: string[]
+  onSave: (label: ProjectLabel, newName: string, newColor: string) => void
+  onCancel: () => void
+}
+
+function EditLabelForm({ label, colorOptions, onSave, onCancel }: EditLabelFormProps) {
+  const [name, setName] = useState(label.name)
+  const [color, setColor] = useState(label.color)
+
+  return (
+    <div className="flex-1 space-y-3">
+      <div className="flex items-center space-x-3">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Label name"
+          maxLength={50}
+          className="max-w-xs"
+        />
+        <div className="flex gap-1">
+          {colorOptions.slice(0, 6).map((colorOption) => (
+            <button
+              key={colorOption}
+              type="button"
+              onClick={() => setColor(colorOption)}
+              className={`w-6 h-6 rounded-full border hover:scale-110 transition-transform ${
+                color === colorOption ? 'border-gray-800 border-2' : 'border-gray-300'
+              }`}
+              style={{ backgroundColor: colorOption }}
+            />
+          ))}
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            className="w-6 h-6 rounded border"
+          />
+        </div>
+        <Badge 
+          variant="outline" 
+          style={{ 
+            backgroundColor: color, 
+            color: '#000',
+            borderColor: color 
+          }}
+        >
+          {name || 'Label Name'}
+        </Badge>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          onClick={() => onSave(label, name, color)}
+          disabled={!name.trim()}
+          className="bg-violet-600 hover:bg-violet-700 text-white"
+        >
+          Save
+        </Button>
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
     </div>
   )
 }
@@ -1247,15 +1688,11 @@ export default function ProjectGeneralSettingsPage() {
             </TabsContent>
 
             <TabsContent value="labels" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Tags & Labels</CardTitle>
-                  <CardDescription>Organize your tasks with custom labels</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">Labels management coming soon...</p>
-                </CardContent>
-              </Card>
+              <TagsAndLabelsTab 
+                projectId={project.id}
+                projectPublicId={projectId}
+                permissions={permissions}
+              />
             </TabsContent>
 
             <TabsContent value="workflow" className="mt-0">

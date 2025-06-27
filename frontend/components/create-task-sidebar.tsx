@@ -92,11 +92,13 @@ export function CreateTaskSidebar({
         }
         setWorkflowStages(stagesArray.sort((a: WorkflowStage, b: WorkflowStage) => a.order - b.order))
       } else {
+        console.warn(`Workflow stages API returned ${response.status}: ${response.statusText}`)
         // Fallback to default stages if API fails
         setWorkflowStages([])
       }
     } catch (error) {
-      console.error('Error fetching workflow stages:', error)
+      console.warn('Error fetching workflow stages, using fallback:', error)
+      // Silently fallback to default stages - don't throw the error
       setWorkflowStages([])
     } finally {
       setLoadingStages(false)

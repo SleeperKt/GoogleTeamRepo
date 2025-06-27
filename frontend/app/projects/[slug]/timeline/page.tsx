@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MilestoneManagementDialog } from "@/components/milestone-management-dialog"
 import { useParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
+import { useProject } from "@/contexts/project-context"
 import { API_BASE_URL } from "@/lib/api"
 
 interface ProjectData {
@@ -69,6 +70,7 @@ type ViewType = "gantt" | "calendar"
 export default function ProjectTimelinePage() {
   const params = useParams()
   const { token } = useAuth()
+  const { currentProject } = useProject()
   const publicId = params.slug as string
 
   const [project, setProject] = useState<ProjectData | null>(null)
@@ -169,7 +171,7 @@ export default function ProjectTimelinePage() {
     }
 
     fetchData()
-  }, [token, publicId])
+  }, [token, publicId, currentProject])
 
   // Milestone management handlers
   const handleCreateMilestone = async (milestoneData: Omit<Milestone, 'id'>) => {
@@ -344,6 +346,7 @@ export default function ProjectTimelinePage() {
 // Gantt View Component
 function GanttView({ tasks }: { tasks: Task[] }) {
   const tasksWithDates = tasks.filter(task => task.dueDate)
+  const tasksWithoutDates = tasks.filter(task => !task.dueDate)
   
   if (tasksWithDates.length === 0) {
     return (
@@ -353,7 +356,26 @@ function GanttView({ tasks }: { tasks: Task[] }) {
           <div className="text-center py-8">
             <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium mb-2">No tasks with dates</h3>
-            <p className="text-muted-foreground">Tasks need due dates to appear in the Gantt chart.</p>
+            <p className="text-muted-foreground mb-4">Tasks need due dates to appear in the Gantt chart.</p>
+            
+            {tasksWithoutDates.length > 0 && (
+              <div className="mt-6 text-left max-w-md mx-auto">
+                <p className="text-sm text-muted-foreground mb-3">
+                  You have {tasksWithoutDates.length} task(s) without due dates:
+                </p>
+                <div className="space-y-2 mb-4">
+                  {tasksWithoutDates.map(task => (
+                    <div key={task.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <span className="font-medium">{task.title}</span>
+                      <Badge variant="outline" className="text-xs">No due date</Badge>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-violet-600">
+                  💡 Add due dates to these tasks to see them in the timeline
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

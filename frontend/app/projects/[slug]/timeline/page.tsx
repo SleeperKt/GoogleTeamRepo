@@ -283,12 +283,35 @@ function GanttView({ tasks }: { tasks: Task[] }) {
           {/* Timeline Header */}
           <div className="flex items-center mb-4">
             <div className="w-64 flex-shrink-0"></div>
-            <div className="flex-1 flex">
-              {timelineDates.map((date, index) => (
-                <div key={index} className="flex-1 text-center text-sm text-muted-foreground border-r last:border-r-0">
-                  {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </div>
-              ))}
+            <div className="flex-1 relative">
+              <div className="flex">
+                {timelineDates.map((date, index) => (
+                  <div key={index} className="flex-1 text-center text-sm text-muted-foreground border-r last:border-r-0">
+                    {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </div>
+                ))}
+              </div>
+              {/* Today indicator */}
+              {(() => {
+                const today = new Date()
+                const todayPosition = Math.max(0, (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+                const todayPercentage = (todayPosition / totalDays) * 100
+                
+                if (todayPercentage >= 0 && todayPercentage <= 100) {
+                  return (
+                    <div 
+                      className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
+                      style={{ left: `${todayPercentage}%` }}
+                      title={`Today: ${today.toLocaleDateString()}`}
+                    >
+                      <div className="absolute -top-6 -left-8 bg-red-500 text-white text-xs px-2 py-1 rounded">
+                        Today
+                      </div>
+                    </div>
+                  )
+                }
+                return null
+              })()}
             </div>
           </div>
           
@@ -323,6 +346,22 @@ function GanttView({ tasks }: { tasks: Task[] }) {
                           {task.title.substring(0, 20)}
                         </div>
                       </div>
+                      {/* Today indicator line for each row */}
+                      {(() => {
+                        const today = new Date()
+                        const todayPosition = Math.max(0, (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+                        const todayPercentage = (todayPosition / totalDays) * 100
+                        
+                        if (todayPercentage >= 0 && todayPercentage <= 100) {
+                          return (
+                            <div 
+                              className="absolute top-0 bottom-0 w-0.5 bg-red-500 opacity-50"
+                              style={{ left: `${todayPercentage}%` }}
+                            />
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
                   </div>
                 </div>

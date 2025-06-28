@@ -292,7 +292,7 @@ export default function BacklogPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 w-full">
+    <div className="p-4 md:p-6 w-full animate-fade-in anti-flicker">
       {/* Header Section */}
       <PageHeader title="Backlog" />
 

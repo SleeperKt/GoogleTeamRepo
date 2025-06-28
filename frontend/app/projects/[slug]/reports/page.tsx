@@ -111,6 +111,7 @@ export default function ProjectReportsPage() {
   const [project, setProject] = useState<ProjectData | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
+  const [pageLoaded, setPageLoaded] = useState(false)
   
   // Use hooks for dynamic data
   const { stages: workflowStages, loading: stagesLoading } = useProjectWorkflowStages(publicId)
@@ -198,6 +199,8 @@ export default function ProjectReportsPage() {
 
   useEffect(() => {
     fetchData()
+    // Trigger page loaded animation
+    setTimeout(() => setPageLoaded(true), 100)
   }, [token, publicId])
 
   // Helper function to get date range filter
@@ -543,7 +546,7 @@ export default function ProjectReportsPage() {
   return (
     <div className="p-4 md:p-6 w-full">
       {/* Header Section */}
-      <div className="mb-6">
+      <div className={`mb-6 transition-all duration-500 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
         <h1 className="text-2xl md:text-3xl font-bold mb-2">Reports</h1>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -553,11 +556,11 @@ export default function ProjectReportsPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9" onClick={() => { setLoading(true); fetchData(); }}>
+            <Button variant="outline" size="sm" className="h-9 transition-all duration-200 hover:scale-105 active:scale-95" onClick={() => { setLoading(true); fetchData(); }}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
-            <Button variant="outline" size="sm" className="h-9" onClick={exportReportAsCSV}>
+            <Button variant="outline" size="sm" className="h-9 transition-all duration-200 hover:scale-105 active:scale-95" onClick={exportReportAsCSV}>
               <Download className="mr-2 h-4 w-4" />
               Export CSV
             </Button>
@@ -567,7 +570,7 @@ export default function ProjectReportsPage() {
 
       {/* Empty State */}
       {showEmptyState ? (
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+        <div className={`flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm transition-all duration-500 delay-100 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           <div className="bg-gray-100 dark:bg-gray-700 rounded-full p-6 mb-4">
             <BarChart3 className="h-12 w-12 text-gray-400 dark:text-gray-500" />
           </div>
@@ -580,12 +583,12 @@ export default function ProjectReportsPage() {
           </p>
           <div className="flex gap-2">
             {hasActiveFilters() && (
-              <Button variant="outline" onClick={clearAllFilters}>
+              <Button variant="outline" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={clearAllFilters}>
                 <X className="mr-2 h-4 w-4" />
                 Clear Filters
               </Button>
             )}
-            <Button asChild className="bg-violet-600 hover:bg-violet-700 text-white">
+            <Button asChild className="bg-violet-600 hover:bg-violet-700 text-white transition-all duration-200 hover:scale-105 active:scale-95">
               <Link href={`/projects/${publicId}/board`}>
                 <Plus className="mr-2 h-4 w-4" /> Create Task
               </Link>
@@ -595,7 +598,7 @@ export default function ProjectReportsPage() {
       ) : (
         <>
           {/* Filters and Controls */}
-          <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4">
+          <div className={`mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4 transition-all duration-500 delay-100 hover:shadow-md ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             <div className="flex flex-wrap gap-3">
               {/* Date Range Filter */}
               <Select value={filters.dateRange} onValueChange={(value) => updateFilter('dateRange', value)}>
@@ -773,10 +776,10 @@ export default function ProjectReportsPage() {
           </div>
 
           {/* Summary Cards */}
-          <div className="mb-8">
+          <div className={`mb-8 transition-all duration-500 delay-200 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {summaryCards.map((card, index) => (
-                <Card key={index} className="bg-white dark:bg-gray-800 hover:shadow-md transition-shadow">
+                <Card key={index} className="bg-white dark:bg-gray-800 hover:shadow-md transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]">
                   <CardContent className="p-4 flex flex-col items-center text-center">
                     <div className={`rounded-full p-2 mb-2 ${card.color}`}>
                       <card.icon className="h-5 w-5" />
@@ -790,9 +793,9 @@ export default function ProjectReportsPage() {
           </div>
 
           {/* Charts Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 transition-all duration-500 delay-300 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             {/* Dynamic Task Status Distribution */}
-            <Card className="bg-white dark:bg-gray-800">
+            <Card className="bg-white dark:bg-gray-800 transition-all duration-200 hover:shadow-md hover:scale-[1.01]">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-medium">Task Status Distribution</h3>
@@ -822,7 +825,7 @@ export default function ProjectReportsPage() {
             </Card>
 
             {/* Team Members */}
-            <Card className="bg-white dark:bg-gray-800">
+            <Card className="bg-white dark:bg-gray-800 transition-all duration-200 hover:shadow-md hover:scale-[1.01]">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-medium">Team Members</h3>

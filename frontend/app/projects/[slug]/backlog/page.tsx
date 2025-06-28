@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
 import {
   AlertCircle,
@@ -87,14 +87,17 @@ interface Project {
   publicId: string
 }
 
+// Simple in-memory cache to store backlog tasks per project during the session
+const backlogCache: Map<string, Task[]> = new Map()
+
 export default function ProjectBacklogPage() {
   const params = useParams()
   const projectId = params.slug as string
+  const isInitialMount = useRef(true)
   
   const [project, setProject] = useState<Project | null>(null)
-  const [backlogData, setBacklogData] = useState<Task[]>([])
-  const [initialLoading, setInitialLoading] = useState(true)
-  const [loading, setLoading] = useState(false)
+  const [backlogData, setBacklogData] = useState<Task[]>(() => backlogCache.get(projectId) ?? [])
+  const [loading, setLoading] = useState(backlogCache.has(projectId) ? false : true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState({
@@ -108,6 +111,7 @@ export default function ProjectBacklogPage() {
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
+  const [pageLoaded, setPageLoaded] = useState(false)
 
   // Use project participants hook
   const { teamMembers, isLoading: participantsLoading } = useProjectParticipants(projectId, true)
@@ -139,10 +143,8 @@ export default function ProjectBacklogPage() {
         isInitial ? apiRequest<Project>(`/api/projects/public/${projectId}`) : Promise.resolve(project)
       ])
       
-      setBacklogData(taskData.tasks || [])
-      if (isInitial && projectData) {
-        setProject(projectData)
-      }
+      setBacklogData(data.tasks || [])
+      backlogCache.set(projectId, data.tasks || [])
       setError(null)
     } catch (err) {
       console.error('Error fetching backlog data:', err)
@@ -156,23 +158,29 @@ export default function ProjectBacklogPage() {
     }
   }, [projectId, searchQuery, filters, project])
 
-  // Initial data fetch - only runs once when project changes
+  // Initial data fetch and subsequent project changes
   useEffect(() => {
     if (projectId) {
-      fetchAllData(true)
+      fetchProject()
+      if (!backlogCache.has(projectId)) {
+        fetchBacklogData()
+      }
     }
   }, [projectId])
 
-  // Debounced search and filter changes
+  // Refetch when filters change, but skip the initial mount
   useEffect(() => {
-    if (!projectId) return
-    
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+
     const timeoutId = setTimeout(() => {
       fetchAllData(false)
     }, 300) // Debounce search
 
     return () => clearTimeout(timeoutId)
-  }, [searchQuery, filters, fetchAllData])
+  }, [searchQuery, filters])
 
   // Initialize expanded groups when team members load
   useEffect(() => {
@@ -187,8 +195,13 @@ export default function ProjectBacklogPage() {
       })
       
       setExpandedGroups(initialExpanded)
+      
+      // Trigger page loaded animation after data is ready
+      if (!pageLoaded) {
+        setTimeout(() => setPageLoaded(true), 100)
+      }
     }
-  }, [teamMembers, expandedGroups])
+  }, [teamMembers, pageLoaded])
 
   // Group tasks by assignee
   const getGroupedTasksByAssignee = () => {
@@ -314,7 +327,7 @@ export default function ProjectBacklogPage() {
     await fetchAllData(false) // Refresh the list
   }
 
-  if (initialLoading) {
+  if ((loading && backlogData.length === 0) || participantsLoading) {
     return (
       <div className="p-4 md:p-6 w-full animate-fade-in">
         {/* Header skeleton */}
@@ -372,7 +385,7 @@ export default function ProjectBacklogPage() {
   return (
     <div className="p-4 md:p-6 w-full animate-fade-in anti-flicker">
       {/* Header Section */}
-      <div className="mb-6">
+      <div className={`mb-6 transition-all duration-500 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
         <h1 className="text-2xl md:text-3xl font-bold mb-2">Backlog</h1>
         {project && (
           <div className="flex items-center gap-2">
@@ -386,7 +399,7 @@ export default function ProjectBacklogPage() {
 
       {/* Empty State */}
       {backlogData.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+        <div className={`flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm transition-all duration-500 delay-100 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           <div className="bg-gray-100 dark:bg-gray-700 rounded-full p-6 mb-4">
             <Sparkles className="h-12 w-12 text-gray-400 dark:text-gray-500" />
           </div>
@@ -394,14 +407,14 @@ export default function ProjectBacklogPage() {
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">
             Start by adding tasks to your backlog to plan your upcoming work.
           </p>
-          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => setCreateTaskOpen(true)}>
+          <Button className="bg-violet-600 hover:bg-violet-700 text-white transition-all duration-200 hover:scale-105 active:scale-95" onClick={() => setCreateTaskOpen(true)}>
             <Plus className="mr-2 h-4 w-4" /> Create Task
           </Button>
         </div>
       ) : (
         <>
           {/* Search and Filters */}
-          <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4">
+          <div className={`mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4 transition-all duration-500 delay-100 hover:shadow-md ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             <div className="flex flex-col md:flex-row gap-4">
               <div className="relative flex-grow">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -485,7 +498,7 @@ export default function ProjectBacklogPage() {
           </div>
 
           {/* Task Groups by Assignee */}
-          <div className="space-y-6">
+          <div className={`space-y-6 transition-all duration-500 delay-200 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             {/* Unassigned group first */}
             {(() => {
               const unassignedTasks = groupedTasks['unassigned'] || []
@@ -493,9 +506,9 @@ export default function ProjectBacklogPage() {
               const isExpanded = expandedGroups['unassigned']
               
               return (
-                <div className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+                <div className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md">
                   <div
-                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
                     onClick={() => toggleGroup('unassigned')}
                   >
                     <div className="flex items-center gap-3">
@@ -546,7 +559,7 @@ export default function ProjectBacklogPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="mt-2"
+                            className="mt-2 transition-all duration-200 hover:scale-105 active:scale-95"
                             onClick={() => {
                               setSelectedAssignee('unassigned')
                               setCreateTaskOpen(true)
@@ -563,7 +576,7 @@ export default function ProjectBacklogPage() {
                           return (
                             <div
                               key={task.id}
-                              className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                              className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] hover:shadow-sm"
                               onClick={() => handleTaskClick(task)}
                             >
                               <div className="flex items-start gap-3">
@@ -628,9 +641,9 @@ export default function ProjectBacklogPage() {
                 const isExpanded = expandedGroups[member.id]
                 
                 return (
-                  <div key={member.id} className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+                  <div key={member.id} className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md">
                     <div
-                      className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                      className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
                       onClick={() => toggleGroup(member.id)}
                     >
                       <div className="flex items-center gap-3">
@@ -683,7 +696,7 @@ export default function ProjectBacklogPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="mt-2"
+                              className="mt-2 transition-all duration-200 hover:scale-105 active:scale-95"
                               onClick={() => {
                                 setSelectedAssignee(member.id)
                                 setCreateTaskOpen(true)
@@ -700,7 +713,7 @@ export default function ProjectBacklogPage() {
                             return (
                               <div
                                 key={task.id}
-                                className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                                className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] hover:shadow-sm"
                                 onClick={() => handleTaskClick(task)}
                               >
                                 <div className="flex items-start gap-3">

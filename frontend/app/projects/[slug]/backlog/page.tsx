@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
 import {
   AlertCircle,
@@ -87,13 +87,17 @@ interface Project {
   publicId: string
 }
 
+// Simple in-memory cache to store backlog tasks per project during the session
+const backlogCache: Map<string, Task[]> = new Map()
+
 export default function ProjectBacklogPage() {
   const params = useParams()
   const projectId = params.slug as string
+  const isInitialMount = useRef(true)
   
   const [project, setProject] = useState<Project | null>(null)
-  const [backlogData, setBacklogData] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
+  const [backlogData, setBacklogData] = useState<Task[]>(() => backlogCache.get(projectId) ?? [])
+  const [loading, setLoading] = useState(backlogCache.has(projectId) ? false : true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState({
@@ -143,6 +147,7 @@ export default function ProjectBacklogPage() {
       const data = await apiRequest<BacklogData>(endpoint)
       
       setBacklogData(data.tasks || [])
+      backlogCache.set(projectId, data.tasks || [])
       setError(null)
     } catch (err) {
       console.error('Error fetching backlog data:', err)
@@ -152,16 +157,23 @@ export default function ProjectBacklogPage() {
     }
   }
 
-  // Initial data fetch
+  // Initial data fetch and subsequent project changes
   useEffect(() => {
     if (projectId) {
       fetchProject()
-      fetchBacklogData()
+      if (!backlogCache.has(projectId)) {
+        fetchBacklogData()
+      }
     }
   }, [projectId])
 
-  // Refetch when filters change
+  // Refetch when filters change, but skip the initial mount
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+
     const timeoutId = setTimeout(() => {
       if (projectId) {
         fetchBacklogData()
@@ -169,7 +181,7 @@ export default function ProjectBacklogPage() {
     }, 300) // Debounce search
 
     return () => clearTimeout(timeoutId)
-  }, [searchQuery, filters, projectId])
+  }, [searchQuery, filters])
 
   // Initialize expanded groups when team members load
   useEffect(() => {
@@ -311,7 +323,7 @@ export default function ProjectBacklogPage() {
     await fetchBacklogData() // Refresh the list
   }
 
-  if (loading) {
+  if ((loading && backlogData.length === 0) || participantsLoading) {
     return (
       <div className="p-4 md:p-6 w-full">
         <div className="flex items-center justify-center py-12">

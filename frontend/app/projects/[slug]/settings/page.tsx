@@ -50,6 +50,7 @@ import { SendInvitationDialog } from "@/components/send-invitation-dialog"
 import { ParticipantRole, InvitationStatus, ProjectInvitation } from "@/lib/types"
 import { useProjectLabels, ProjectLabel } from "@/hooks/use-project-labels"
 import { useProjectWorkflowStages, ProjectWorkflowStage } from "@/hooks/use-project-workflow-stages"
+import { useProject } from "@/contexts/project-context"
 
 // Types
 interface Project {
@@ -2014,6 +2015,7 @@ export default function ProjectGeneralSettingsPage() {
   const params = useParams()
   const router = useRouter()
   const { user, token } = useAuth()
+  const { setCurrentProject, refreshProjects } = useProject()
   const projectId = params.slug as string
   
   const { refreshPermissions, ...permissions } = useUserPermissions(projectId)
@@ -2065,6 +2067,7 @@ export default function ProjectGeneralSettingsPage() {
     if (!token || !projectId) return null
 
     try {
+      console.log('Fetching project with publicId:', projectId) // Debug log
       const response = await fetch(`${API_BASE_URL}/api/projects/public/${projectId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -2072,10 +2075,20 @@ export default function ProjectGeneralSettingsPage() {
       })
 
       if (!response.ok) {
+        console.error('Failed to fetch project:', response.status, response.statusText)
         throw new Error(`Failed to fetch project: ${response.status}`)
       }
 
-      return await safeParseResponse(response)
+      const projectData = await safeParseResponse(response)
+      console.log('Fetched project data:', projectData) // Debug log
+      
+      // Verify we got the correct project
+      if (projectData && projectData.publicId !== projectId) {
+        console.error('Project mismatch! Expected:', projectId, 'Got:', projectData.publicId)
+        throw new Error('Project ID mismatch - got wrong project from API')
+      }
+      
+      return projectData
     } catch (err) {
       console.error('Error fetching project:', err)
       throw err
@@ -2165,10 +2178,28 @@ export default function ProjectGeneralSettingsPage() {
     }
   }
 
-  // Load data on mount
+  // Load data on mount and when dependencies change
   useEffect(() => {
-    fetchData()
+    // Only fetch if we have both token and projectId
+    if (token && projectId) {
+      console.log('⚡ Settings: Loading data for project:', projectId)
+      fetchData()
+    } else {
+      console.log('⚠️ Settings: Missing dependencies - token:', !!token, 'projectId:', projectId)
+    }
   }, [token, projectId])
+
+  // Add cleanup for timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (updateProjectTimeoutRef.current) {
+        clearTimeout(updateProjectTimeoutRef.current)
+      }
+      if (updateSettingsTimeoutRef.current) {
+        clearTimeout(updateSettingsTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // Manual save function
   const handleManualSave = async () => {
@@ -2216,6 +2247,26 @@ export default function ProjectGeneralSettingsPage() {
       // Update settings with response
       const updatedSettings = await safeParseResponse(settingsResponse, settings)
       setSettings(updatedSettings)
+
+      // Also update the project context if project name/description changed
+      if (project) {
+        const transformedProject = {
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          status: "Active",
+          statusValue: project.status || 1,
+          priority: "Medium",
+          priorityValue: project.priority || 2,
+          lastUpdated: new Date().toLocaleDateString(),
+          currentSprint: null,
+          avatar: project.name.substring(0, 2).toUpperCase(),
+          color: "bg-violet-100 text-violet-600",
+          publicId: project.publicId ?? project.id.toString(),
+        }
+        setCurrentProject(transformedProject)
+        refreshProjects()
+      }
 
       // Clear unsaved changes flag
       setHasUnsavedChanges(false)
@@ -2289,6 +2340,30 @@ export default function ProjectGeneralSettingsPage() {
             setProject(currentProject)
             throw new Error(`Failed to update project: ${response.status} ${response.statusText}`)
           }
+
+          // Get the updated project from the API response
+          const updatedProjectFromApi = await safeParseResponse(response, updatedProject)
+          setProject(updatedProjectFromApi)
+
+          // Update the project context as well (for ProjectSelector)
+          const transformedProject = {
+            id: updatedProjectFromApi.id,
+            name: updatedProjectFromApi.name,
+            description: updatedProjectFromApi.description,
+            status: "Active", // Keep existing status
+            statusValue: updatedProjectFromApi.status || 1,
+            priority: "Medium", // Keep existing priority  
+            priorityValue: updatedProjectFromApi.priority || 2,
+            lastUpdated: new Date().toLocaleDateString(),
+            currentSprint: null,
+            avatar: updatedProjectFromApi.name.substring(0, 2).toUpperCase(),
+            color: "bg-violet-100 text-violet-600",
+            publicId: updatedProjectFromApi.publicId ?? updatedProjectFromApi.id.toString(),
+          }
+          setCurrentProject(transformedProject)
+          
+          // Refresh the projects list to ensure everything is in sync
+          refreshProjects()
 
           // Show success message
           toast({
@@ -2431,9 +2506,9 @@ export default function ProjectGeneralSettingsPage() {
           {project.name} Settings
         </h1>
         <div className="flex items-center gap-2">
-          {project.description && (
-            <span className="text-muted-foreground">{project.description}</span>
-          )}
+          <span className="text-muted-foreground">
+            {project.description || "No description"}
+          </span>
           {isSaving ? (
             <span className="text-sm text-muted-foreground flex items-center">
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />

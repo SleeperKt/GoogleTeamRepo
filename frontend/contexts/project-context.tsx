@@ -4,6 +4,7 @@ import type React from "react"
 
 import { createContext, useContext, useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
+import { usePathname } from "next/navigation"
 import { API_BASE_URL } from "@/lib/api"
 import { PROJECT_STATUSES, PROJECT_PRIORITIES } from "@/lib/task-constants"
 
@@ -45,8 +46,15 @@ const getPriorityLabel = (priorityValue: number): string => {
 
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const { token, isHydrated } = useAuth()
+  const pathname = usePathname()
   const [currentProject, setCurrentProjectState] = useState<Project | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
+
+  // Extract project ID from pathname
+  const getProjectIdFromUrl = (): string | null => {
+    const projectMatch = pathname.match(/^\/projects\/([^\/]+)/)
+    return projectMatch ? projectMatch[1] : null
+  }
 
   // Fetch projects from API
   const fetchProjects = async () => {
@@ -108,24 +116,44 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isHydrated, token])
 
-  // Load saved project from localStorage on mount or set first project as default
+  // Load project based on URL, localStorage, or default to first project
   useEffect(() => {
     if (!isHydrated || projects.length === 0) return
     
+    const urlProjectId = getProjectIdFromUrl()
+    
+    // 1. First priority: URL parameter (for specific project pages)
+    if (urlProjectId) {
+      const urlProject = projects.find((p) => p.publicId === urlProjectId || p.id.toString() === urlProjectId)
+      if (urlProject) {
+        console.log('🎯 Setting project from URL:', urlProject.name, urlProject.publicId)
+        setCurrentProjectState(urlProject)
+        // Also save to localStorage for future sessions
+        localStorage.setItem("currentProjectId", urlProject.id.toString())
+        return
+      } else {
+        console.warn('⚠️ Project from URL not found:', urlProjectId)
+      }
+    }
+    
+    // 2. Second priority: Saved project from localStorage (for general pages)
     const savedProjectId = localStorage.getItem("currentProjectId")
     if (savedProjectId) {
-      const project = projects.find((p) => p.id.toString() === savedProjectId)
-      if (project) {
-        setCurrentProjectState(project)
+      const savedProject = projects.find((p) => p.id.toString() === savedProjectId)
+      if (savedProject) {
+        console.log('💾 Setting project from localStorage:', savedProject.name)
+        setCurrentProjectState(savedProject)
+        return
       } else {
-        // Fallback to first project if saved project not found
-        setCurrentProjectState(projects[0])
+        console.warn('⚠️ Saved project not found:', savedProjectId)
       }
-    } else {
-      // Default to first project
-      setCurrentProjectState(projects[0])
     }
-  }, [isHydrated, projects])
+    
+    // 3. Final fallback: First project in list
+    console.log('🔄 Defaulting to first project:', projects[0]?.name)
+    setCurrentProjectState(projects[0])
+    localStorage.setItem("currentProjectId", projects[0].id.toString())
+  }, [isHydrated, projects, pathname])
 
   const setCurrentProject = (project: Project) => {
     setCurrentProjectState(project)

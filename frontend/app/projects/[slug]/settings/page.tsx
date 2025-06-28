@@ -12,7 +12,7 @@ import {
   Users,
   Tags,
   Workflow,
-  Zap,
+
   AlertTriangle,
   UserPlus,
   Mail,
@@ -2494,13 +2494,7 @@ export default function ProjectGeneralSettingsPage() {
                     <Workflow className="mr-2 h-4 w-4" />
                     Workflow
                   </TabsTrigger>
-                  <TabsTrigger
-                    value="integrations"
-                    className="w-full justify-start rounded-md border-l-2 border-transparent px-4 py-3 data-[state=active]:border-violet-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-600 dark:data-[state=active]:bg-violet-950 dark:data-[state=active]:text-violet-300"
-                  >
-                    <Zap className="mr-2 h-4 w-4" />
-                    Integrations
-                  </TabsTrigger>
+
                   {permissions.canDeleteProject && (
                     <TabsTrigger
                       value="danger"
@@ -2682,17 +2676,7 @@ export default function ProjectGeneralSettingsPage() {
               />
             </TabsContent>
 
-            <TabsContent value="integrations" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Integrations</CardTitle>
-                  <CardDescription>Connect external tools and services</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">Integrations coming soon...</p>
-                </CardContent>
-              </Card>
-            </TabsContent>
+
 
             {permissions.canDeleteProject && (
               <TabsContent value="danger" className="mt-0">

@@ -72,6 +72,7 @@ export default function ProjectActivitiesPage() {
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
   const [filter, setFilter] = useState("all")
+  const [pageLoaded, setPageLoaded] = useState(false)
   const pageSize = 20
 
   // Fetch project details
@@ -134,6 +135,8 @@ export default function ProjectActivitiesPage() {
       fetchProject()
       fetchActivities(1, false)
       setPage(1)
+      // Trigger page loaded animation
+      setTimeout(() => setPageLoaded(true), 100)
     }
   }, [publicId])
 
@@ -267,7 +270,7 @@ export default function ProjectActivitiesPage() {
   return (
     <div className="p-4 md:p-6 w-full">
       {/* Header Section */}
-      <div className="mb-6">
+      <div className={`mb-6 transition-all duration-500 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
         <h1 className="text-2xl md:text-3xl font-bold mb-2">Activities</h1>
         {project && (
           <div className="flex items-center gap-2">
@@ -289,7 +292,7 @@ export default function ProjectActivitiesPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4">
+      <div className={`mb-6 bg-white dark:bg-gray-800 rounded-lg border shadow-sm p-4 transition-all duration-500 delay-100 hover:shadow-md ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
         <div className="flex flex-wrap gap-2">
           <Select value={filter} onValueChange={(value) => setFilter(value)}>
             <SelectTrigger className="w-[140px] h-9">
@@ -313,7 +316,7 @@ export default function ProjectActivitiesPage() {
 
       {/* Activities Timeline */}
       {activities.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+        <div className={`flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-gray-800 rounded-lg border shadow-sm transition-all duration-500 delay-200 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           <div className="bg-gray-100 dark:bg-gray-700 rounded-full p-6 mb-4">
             <Activity className="h-12 w-12 text-gray-400 dark:text-gray-500" />
           </div>
@@ -323,11 +326,11 @@ export default function ProjectActivitiesPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className={`space-y-6 transition-all duration-500 delay-200 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           {Object.entries(groupedActivities)
             .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
             .map(([dateString, dayActivities]) => (
-              <div key={dateString} className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+              <div key={dateString} className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md">
                 <div className="p-4 border-b bg-gray-50 dark:bg-gray-700/50">
                   <h3 className="font-medium text-gray-900 dark:text-gray-100">
                     {new Date(dateString).toLocaleDateString('en-US', { 
@@ -345,7 +348,7 @@ export default function ProjectActivitiesPage() {
                   {dayActivities.map((activity, index) => (
                     <div 
                       key={`${activity.id}-${index}`}
-                      className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
                     >
                       <div className="flex items-start gap-3">
                         <Avatar className="h-8 w-8 flex-shrink-0">
@@ -399,7 +402,7 @@ export default function ProjectActivitiesPage() {
                 onClick={loadMore} 
                 disabled={loadingMore}
                 variant="outline"
-                className="min-w-[120px]"
+                className="min-w-[120px] transition-all duration-200 hover:scale-105 active:scale-95"
               >
                 {loadingMore ? (
                   <>

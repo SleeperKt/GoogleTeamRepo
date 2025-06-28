@@ -82,6 +82,7 @@ export default function ProjectTimelinePage() {
   const [createMilestoneOpen, setCreateMilestoneOpen] = useState(false)
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null)
   const [projectMilestones, setProjectMilestones] = useState<Milestone[]>([]) // Local state for milestones
+  const [pageLoaded, setPageLoaded] = useState(false)
 
   // Fetch project and tasks data
   useEffect(() => {
@@ -167,6 +168,8 @@ export default function ProjectTimelinePage() {
         console.error('Error fetching timeline data:', error)
       } finally {
         setLoading(false)
+        // Trigger page loaded animation
+        setTimeout(() => setPageLoaded(true), 100)
       }
     }
 
@@ -302,7 +305,7 @@ export default function ProjectTimelinePage() {
   return (
     <div className="p-4 md:p-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 transition-all duration-500 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
         <div>
           <h1 className="text-2xl md:text-3xl font-bold mb-2">Timeline</h1>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -314,7 +317,7 @@ export default function ProjectTimelinePage() {
       </div>
 
       {/* View Tabs */}
-      <div className="mb-6">
+      <div className={`mb-6 transition-all duration-500 delay-100 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
         <Tabs value={viewType} onValueChange={(value) => setViewType(value as ViewType)} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="gantt">Gantt View</TabsTrigger>
@@ -324,8 +327,10 @@ export default function ProjectTimelinePage() {
       </div>
 
       {/* Content based on selected view */}
-      {viewType === "gantt" && <GanttView tasks={tasks} />}
-      {viewType === "calendar" && <CalendarView tasks={tasks} />}
+      <div className={`transition-all duration-500 delay-200 ${pageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        {viewType === "gantt" && <GanttView tasks={tasks} />}
+        {viewType === "calendar" && <CalendarView tasks={tasks} />}
+      </div>
       
       {/* Milestone Management Dialog */}
       <MilestoneManagementDialog
@@ -395,20 +400,20 @@ function GanttView({ tasks }: { tasks: Task[] }) {
 
   if (tasksWithDates.length === 0) {
     return (
-      <Card className="bg-white dark:bg-gray-800">
+      <Card className="bg-white dark:bg-gray-800 transition-all duration-200 hover:shadow-md">
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium">Gantt Chart</h3>
             {/* Navigation controls even when no tasks */}
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={navigatePrevious}>
+              <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={navigatePrevious}>
                 <ChevronLeft className="h-4 w-4" />
                 Previous
               </Button>
-              <Button variant="outline" size="sm" onClick={goToToday}>
+              <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={goToToday}>
                 Today
               </Button>
-              <Button variant="outline" size="sm" onClick={navigateNext}>
+              <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={navigateNext}>
                 Next
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -479,7 +484,7 @@ function GanttView({ tasks }: { tasks: Task[] }) {
   }
 
   return (
-    <Card className="bg-white dark:bg-gray-800">
+    <Card className="bg-white dark:bg-gray-800 transition-all duration-200 hover:shadow-md">
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-medium">Gantt Chart</h3>
@@ -487,14 +492,14 @@ function GanttView({ tasks }: { tasks: Task[] }) {
             <span className="text-sm text-muted-foreground">
               {currentViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </span>
-            <Button variant="outline" size="sm" onClick={navigatePrevious}>
+            <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={navigatePrevious}>
               <ChevronLeft className="h-4 w-4" />
               Previous
             </Button>
-            <Button variant="outline" size="sm" onClick={goToToday}>
+            <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={goToToday}>
               Today
             </Button>
-            <Button variant="outline" size="sm" onClick={navigateNext}>
+            <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={navigateNext}>
               Next
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -564,7 +569,7 @@ function GanttView({ tasks }: { tasks: Task[] }) {
                 const statusColor = getStatusColor(task)
                 
                 return (
-                  <div key={task.id} className="flex items-center">
+                  <div key={task.id} className="flex items-center transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 p-2 -m-2 rounded-md">
                     {/* Task Info */}
                     <div className="w-64 flex-shrink-0 pr-4">
                       <div className="font-medium text-sm break-words">{task.title}</div>
@@ -649,7 +654,7 @@ function CalendarView({ tasks }: { tasks: Task[] }) {
 
   if (tasksWithDates.length === 0) {
     return (
-      <Card className="bg-white dark:bg-gray-800">
+      <Card className="bg-white dark:bg-gray-800 transition-all duration-200 hover:shadow-md">
         <CardContent className="p-6">
           <h3 className="text-lg font-medium mb-4">Calendar View</h3>
           <div className="text-center py-8">
@@ -734,24 +739,24 @@ function CalendarView({ tasks }: { tasks: Task[] }) {
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
   return (
-    <Card className="bg-white dark:bg-gray-800">
+    <Card className="bg-white dark:bg-gray-800 transition-all duration-200 hover:shadow-md">
       <CardContent className="p-6">
         {/* Calendar Header */}
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-medium">Calendar View</h3>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigateMonth('prev')}>
+              <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={() => navigateMonth('prev')}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="font-medium min-w-[140px] text-center">
                 {monthNames[month]} {year}
               </span>
-              <Button variant="outline" size="sm" onClick={() => navigateMonth('next')}>
+              <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={() => navigateMonth('next')}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setCurrentDate(new Date())}>
+            <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105 active:scale-95" onClick={() => setCurrentDate(new Date())}>
               Today
             </Button>
           </div>

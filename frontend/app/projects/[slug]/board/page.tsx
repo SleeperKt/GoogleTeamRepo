@@ -275,6 +275,13 @@ export default function ProjectBoardPage() {
       fetchBoardData()
     }
 
+    const handleLabelsUpdated = (event: CustomEvent) => {
+      if (event.detail.projectPublicId === projectId) {
+        console.log('🔄 Board: Detected labels update, refreshing board data...')
+        fetchBoardData()
+      }
+    }
+
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === 'workflowChanged') {
         console.log('🔄 Board: Detected workflow change from storage, refreshing board data...')
@@ -288,15 +295,17 @@ export default function ProjectBoardPage() {
 
     // Listen for same-tab events
     window.addEventListener('workflowReordered', handleWorkflowReordered as EventListener)
+    window.addEventListener('labelsUpdated', handleLabelsUpdated as EventListener)
     
     // Listen for cross-tab events
     window.addEventListener('storage', handleStorageChange)
 
     return () => {
       window.removeEventListener('workflowReordered', handleWorkflowReordered as EventListener)
+      window.removeEventListener('labelsUpdated', handleLabelsUpdated as EventListener)
       window.removeEventListener('storage', handleStorageChange)
     }
-  }, [fetchBoardData])
+  }, [fetchBoardData, projectId])
 
   // Refetch when filters change (but not on initial mount)
   useEffect(() => {
@@ -312,13 +321,19 @@ export default function ProjectBoardPage() {
     return () => clearTimeout(timeoutId)
   }, [searchQuery, filters, projectId, loading])
 
-  // Get all unique labels from tasks
+  // Get all unique labels from tasks (only those that still exist in project)
   const getAllLabels = (): string[] => {
+    const validLabelNames = new Set(projectLabels.map(label => label.name))
     const labels = new Set<string>()
     Object.values(boardData).forEach((column) => {
       column.tasks.forEach((task: Task) => {
         if (task.labels) {
-          task.labels.forEach((label: string) => labels.add(label))
+          task.labels.forEach((label: string) => {
+            // Only include labels that still exist in the project
+            if (validLabelNames.has(label)) {
+              labels.add(label)
+            }
+          })
         }
       })
     })
@@ -348,7 +363,14 @@ export default function ProjectBoardPage() {
       const matchesType = filters.type === "all" || task.type === filters.type
       const matchesAssignee = filters.assignee === "all" || task.assigneeName === filters.assignee
       const matchesPriority = filters.priority === "all" || task.priority.toString() === filters.priority
-      const matchesLabel = filters.label === "all" || task.labels?.includes(filters.label)
+      
+      // Only match labels that still exist in the project
+      const matchesLabel = filters.label === "all" || (() => {
+        if (!task.labels) return false
+        const validLabelNames = new Set(projectLabels.map(label => label.name))
+        const validLabels = task.labels.filter((label: string) => validLabelNames.has(label))
+        return validLabels.includes(filters.label)
+      })()
       
       return matchesSearch && matchesType && matchesAssignee && matchesPriority && matchesLabel
     })
@@ -1300,19 +1322,25 @@ export default function ProjectBoardPage() {
                                 </div>
                               </div>
 
-                              {viewMode === "detailed" && task.labels && task.labels.length > 0 && (
-                                <div className="mb-2 flex flex-wrap gap-1">
-                                  {task.labels.map((label: string) => (
-                                    <Badge
-                                      key={label}
-                                      variant="outline"
-                                      className="bg-gray-50 text-gray-700 dark:bg-gray-800 dark:text-gray-300 text-xs"
-                                    >
-                                      {label}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
+                              {viewMode === "detailed" && task.labels && task.labels.length > 0 && (() => {
+                                // Filter labels to only show those that still exist in the project
+                                const validLabelNames = new Set(projectLabels.map(label => label.name))
+                                const validLabels = task.labels.filter((label: string) => validLabelNames.has(label))
+                                
+                                return validLabels.length > 0 && (
+                                  <div className="mb-2 flex flex-wrap gap-1">
+                                    {validLabels.map((label: string) => (
+                                      <Badge
+                                        key={label}
+                                        variant="outline"
+                                        className="bg-gray-50 text-gray-700 dark:bg-gray-800 dark:text-gray-300 text-xs"
+                                      >
+                                        {label}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )
+                              })()}
 
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">

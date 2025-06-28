@@ -1316,7 +1316,7 @@ export default function ProjectBoardPage() {
                               <div className="flex items-start justify-between mb-2">
                                 <div className="font-medium truncate mr-2">{task.title}</div>
                                 <div className="flex items-center gap-1 flex-shrink-0">
-                                  <Badge className={task.type ? taskTypes[task.type as keyof typeof taskTypes]?.color || "bg-gray-100" : "bg-gray-100"}>
+                                  <Badge className={`${task.type ? taskTypes[task.type as keyof typeof taskTypes]?.color || "bg-gray-100" : "bg-gray-100"} pointer-events-none`}>
                                     {task.type ? taskTypes[task.type as keyof typeof taskTypes]?.label || "Task" : "Task"}
                                   </Badge>
                                 </div>

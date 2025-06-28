@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import {
   AlertCircle,
@@ -93,7 +93,8 @@ export default function ProjectBacklogPage() {
   
   const [project, setProject] = useState<Project | null>(null)
   const [backlogData, setBacklogData] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState({
@@ -111,24 +112,16 @@ export default function ProjectBacklogPage() {
   // Use project participants hook
   const { teamMembers, isLoading: participantsLoading } = useProjectParticipants(projectId, true)
 
-  // Fetch project details
-  const fetchProject = async () => {
+  // Consolidated fetch function to prevent multiple calls
+  const fetchAllData = useCallback(async (isInitial = false) => {
     if (!projectId) return
 
     try {
-      const projectData = await apiRequest<Project>(`/api/projects/public/${projectId}`)
-      setProject(projectData)
-    } catch (err) {
-      console.error('Error fetching project:', err)
-    }
-  }
-
-  // Fetch backlog data
-  const fetchBacklogData = async () => {
-    if (!projectId) return
-
-    try {
-      setLoading(true)
+      if (isInitial) {
+        setInitialLoading(true)
+      } else {
+        setLoading(true)
+      }
       
       // Build filter parameters
       const queryParams = new URLSearchParams()
@@ -140,40 +133,50 @@ export default function ProjectBacklogPage() {
       
       const endpoint = `/api/projects/public/${projectId}/tasks${queryParams.toString() ? '?' + queryParams.toString() : ''}`
       
-      const data = await apiRequest<BacklogData>(endpoint)
+      // Fetch tasks and project data
+      const [taskData, projectData] = await Promise.all([
+        apiRequest<BacklogData>(endpoint),
+        isInitial ? apiRequest<Project>(`/api/projects/public/${projectId}`) : Promise.resolve(project)
+      ])
       
-      setBacklogData(data.tasks || [])
+      setBacklogData(taskData.tasks || [])
+      if (isInitial && projectData) {
+        setProject(projectData)
+      }
       setError(null)
     } catch (err) {
       console.error('Error fetching backlog data:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch backlog data')
     } finally {
-      setLoading(false)
+      if (isInitial) {
+        setInitialLoading(false)
+      } else {
+        setLoading(false)
+      }
     }
-  }
+  }, [projectId, searchQuery, filters, project])
 
-  // Initial data fetch
+  // Initial data fetch - only runs once when project changes
   useEffect(() => {
     if (projectId) {
-      fetchProject()
-      fetchBacklogData()
+      fetchAllData(true)
     }
   }, [projectId])
 
-  // Refetch when filters change
+  // Debounced search and filter changes
   useEffect(() => {
+    if (!projectId) return
+    
     const timeoutId = setTimeout(() => {
-      if (projectId) {
-        fetchBacklogData()
-      }
+      fetchAllData(false)
     }, 300) // Debounce search
 
     return () => clearTimeout(timeoutId)
-  }, [searchQuery, filters, projectId])
+  }, [searchQuery, filters, fetchAllData])
 
   // Initialize expanded groups when team members load
   useEffect(() => {
-    if (teamMembers.length > 0) {
+    if (teamMembers.length > 0 && Object.keys(expandedGroups).length === 0) {
       const initialExpanded: { [key: string]: boolean } = {
         unassigned: true, // Always show unassigned expanded
       }
@@ -185,7 +188,7 @@ export default function ProjectBacklogPage() {
       
       setExpandedGroups(initialExpanded)
     }
-  }, [teamMembers])
+  }, [teamMembers, expandedGroups])
 
   // Group tasks by assignee
   const getGroupedTasksByAssignee = () => {
@@ -301,17 +304,17 @@ export default function ProjectBacklogPage() {
   // Handle task updated
   const handleTaskUpdated = async (updatedTask: Task) => {
     setSelectedTask(updatedTask)
-    await fetchBacklogData() // Refresh the list
+    await fetchAllData(false) // Refresh the list
   }
 
   // Handle task deleted
   const handleTaskDeleted = async () => {
     setTaskDetailOpen(false)
     setSelectedTask(null)
-    await fetchBacklogData() // Refresh the list
+    await fetchAllData(false) // Refresh the list
   }
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="p-4 md:p-6 w-full animate-fade-in">
         {/* Header skeleton */}
@@ -357,7 +360,7 @@ export default function ProjectBacklogPage() {
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium mb-2">Error loading backlog</h3>
             <p className="text-gray-500 mb-4">{error}</p>
-            <Button onClick={() => fetchBacklogData()}>Try Again</Button>
+            <Button onClick={() => fetchAllData(true)}>Try Again</Button>
           </div>
         </div>
       </div>
@@ -410,6 +413,12 @@ export default function ProjectBacklogPage() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
+                {loading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="animate-spin h-4 w-4 border-2 border-violet-600 border-t-transparent rounded-full"></div>
+                    <span>Loading...</span>
+                  </div>
+                )}
                 <Select value={filters.type} onValueChange={(value) => setFilters({ ...filters, type: value })}>
                   <SelectTrigger className="w-[130px] h-9">
                     <SelectValue placeholder="Type" />

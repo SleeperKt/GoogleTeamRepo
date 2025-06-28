@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import {
   AlertCircle,
   ArrowDown,
@@ -63,6 +63,7 @@ interface Task {
   status: string
   stage: string
   estimatedHours?: number
+  type?: string
 }
 
 interface BacklogData {
@@ -73,7 +74,8 @@ interface BacklogData {
 export default function BacklogPage() {
   const { currentProject } = useProject()
   const [backlogData, setBacklogData] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState({
@@ -82,26 +84,30 @@ export default function BacklogPage() {
     assignee: "all",
     priority: "all",
   })
-  const [expandedGroups, setExpandedGroups] = useState({
+  const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({
     upcoming: true,
     inProgress: true,
     done: true,
     unassigned: true,
   })
   const [showEmptyState, setShowEmptyState] = useState(false)
-  const [draggedTask, setDraggedTask] = useState<Task | null>(null)
+  const [draggedTask, setDraggedTask] = useState<(Task & { groupId?: string }) | null>(null)
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null)
   const [dragOverTaskId, setDragOverTaskId] = useState<number | null>(null)
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [selectedColumn, setSelectedColumn] = useState("upcoming")
   const [participants, setParticipants] = useState<Array<{userName?: string, UserName?: string}>>([])
 
-  // Fetch backlog data
-  const fetchBacklogData = async () => {
+  // Consolidated fetch function to prevent multiple calls
+  const fetchAllData = useCallback(async (isInitial = false) => {
     if (!currentProject?.publicId) return
 
     try {
-      setLoading(true)
+      if (isInitial) {
+        setInitialLoading(true)
+      } else {
+        setLoading(true)
+      }
       
       // Build filter parameters
       const queryParams = new URLSearchParams()
@@ -113,48 +119,51 @@ export default function BacklogPage() {
       
       const endpoint = `/api/projects/public/${currentProject.publicId}/tasks${queryParams.toString() ? '?' + queryParams.toString() : ''}`
       
-      const data = await apiRequest<BacklogData>(endpoint)
+      // Fetch tasks
+      const taskData = await apiRequest<BacklogData>(endpoint)
+      setBacklogData(taskData.tasks || [])
       
-      setBacklogData(data.tasks || [])
+      // Fetch participants only on initial load
+      if (isInitial) {
+        try {
+          const participantsData = await apiRequest<Array<{userName?: string, UserName?: string}>>(`/api/projects/public/${currentProject.publicId}/participants`)
+          setParticipants(participantsData || [])
+        } catch (participantsErr) {
+          console.error('Error fetching participants:', participantsErr)
+          // Don't fail the entire request if participants fail
+        }
+      }
+      
       setError(null)
     } catch (err) {
       console.error('Error fetching backlog data:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch backlog data')
     } finally {
-      setLoading(false)
+      if (isInitial) {
+        setInitialLoading(false)
+      } else {
+        setLoading(false)
+      }
     }
-  }
+  }, [currentProject?.publicId, searchQuery, filters])
 
-  // Fetch participants for filter dropdown
-  const fetchParticipants = async () => {
-    if (!currentProject?.publicId) return
-
-    try {
-      const data = await apiRequest<Array<{userName?: string, UserName?: string}>>(`/api/projects/public/${currentProject.publicId}/participants`)
-      setParticipants(data || [])
-    } catch (err) {
-      console.error('Error fetching participants:', err)
-    }
-  }
-
-  // Initial data fetch
+  // Initial data fetch - only runs once when project changes
   useEffect(() => {
     if (currentProject?.publicId) {
-      fetchBacklogData()
-      fetchParticipants()
+      fetchAllData(true)
     }
   }, [currentProject?.publicId])
 
-  // Refetch when filters change
+  // Debounced search and filter changes
   useEffect(() => {
+    if (!currentProject?.publicId) return
+    
     const timeoutId = setTimeout(() => {
-      if (currentProject?.publicId) {
-        fetchBacklogData()
-      }
+      fetchAllData(false)
     }, 300) // Debounce search
 
     return () => clearTimeout(timeoutId)
-  }, [searchQuery, filters, currentProject?.publicId])
+  }, [searchQuery, filters, fetchAllData])
 
   // Group tasks by status
   const getGroupedTasks = () => {
@@ -173,7 +182,7 @@ export default function BacklogPage() {
   }
 
   // Toggle group expansion
-  const toggleGroup = (groupId) => {
+  const toggleGroup = (groupId: string) => {
     setExpandedGroups((prev) => ({
       ...prev,
       [groupId]: !prev[groupId],
@@ -181,16 +190,16 @@ export default function BacklogPage() {
   }
 
   // Filter tasks based on search and filters
-  const filterTasks = (tasks) => {
-    return tasks.filter((task) => {
+  const filterTasks = (tasks: Task[]) => {
+    return tasks.filter((task: Task) => {
       // Search filter
       const matchesSearch =
         searchQuery === "" ||
         task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        task.description.toLowerCase().includes(searchQuery.toLowerCase())
+        (task.description && task.description.toLowerCase().includes(searchQuery.toLowerCase()))
 
       // Type filter
-      const matchesType = filters.type === "all" || taskTypes[task.type]?.label === filters.type
+      const matchesType = filters.type === "all" || (task.type && taskTypes[task.type as keyof typeof taskTypes]?.label === filters.type)
 
       // Status filter
       const matchesStatus = filters.status === "all" || task.status === filters.status
@@ -202,26 +211,26 @@ export default function BacklogPage() {
         (task.assigneeName && task.assigneeName === filters.assignee)
 
       // Priority filter
-      const matchesPriority = filters.priority === "all" || task.priority === filters.priority
+      const matchesPriority = filters.priority === "all" || task.priority.toString() === filters.priority
 
       return matchesSearch && matchesType && matchesStatus && matchesAssignee && matchesPriority
     })
   }
 
   // Handle drag start
-  const handleDragStart = (e, task, groupId) => {
-    setDraggedTask({ ...task, groupId })
+  const handleDragStart = (e: React.DragEvent, task: Task, groupId: string) => {
+    setDraggedTask({ ...task, groupId } as Task & { groupId: string })
   }
 
   // Handle drag over
-  const handleDragOver = (e, groupId, taskId = null) => {
+  const handleDragOver = (e: React.DragEvent, groupId: string, taskId: number | null = null) => {
     e.preventDefault()
     setDragOverGroup(groupId)
     setDragOverTaskId(taskId)
   }
 
   // Handle drop
-  const handleDrop = (e, targetGroupId, targetTaskId = null) => {
+  const handleDrop = (e: React.DragEvent, targetGroupId: string, targetTaskId: number | null = null) => {
     e.preventDefault()
 
     if (!draggedTask) return
@@ -237,7 +246,7 @@ export default function BacklogPage() {
     }
 
     // Create a new state object
-    const newBacklogData = {
+    const newBacklogData: Task = {
       id,
       title,
       description,
@@ -245,7 +254,7 @@ export default function BacklogPage() {
       status,
       priority,
       assigneeName,
-      groupId: targetGroupId,
+      stage: status,
     }
 
     // Remove the task from the source group
@@ -291,6 +300,59 @@ export default function BacklogPage() {
     })
   }
 
+  if (initialLoading) {
+    return (
+      <div className="p-4 md:p-6 w-full animate-fade-in">
+        {/* Header skeleton */}
+        <div className="mb-6">
+          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-32 mb-2 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-64 animate-pulse"></div>
+        </div>
+        
+        {/* Filters skeleton */}
+        <div className="mb-6 flex flex-col sm:flex-row gap-4">
+          <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded flex-1 animate-pulse"></div>
+          <div className="flex gap-2">
+            <div className="h-10 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+            <div className="h-10 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+            <div className="h-10 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+          </div>
+        </div>
+        
+        {/* Task groups skeleton */}
+        <div className="space-y-6">
+          {[1, 2, 3].map((index) => (
+            <div key={index} className="bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
+              <div className="p-4 border-b">
+                <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-40 animate-pulse"></div>
+              </div>
+              <div className="p-4 space-y-3">
+                {[1, 2, 3].map((taskIndex) => (
+                  <div key={taskIndex} className="h-16 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 md:p-6 w-full">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">Error loading backlog</h3>
+            <p className="text-gray-500 mb-4">{error}</p>
+            <Button onClick={() => fetchAllData(true)}>Try Again</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 md:p-6 w-full animate-fade-in anti-flicker">
       {/* Header Section */}
@@ -325,6 +387,12 @@ export default function BacklogPage() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
+                {loading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="animate-spin h-4 w-4 border-2 border-violet-600 border-t-transparent rounded-full"></div>
+                    <span>Loading...</span>
+                  </div>
+                )}
                 <Select value={filters.type} onValueChange={(value) => setFilters({ ...filters, type: value })}>
                   <SelectTrigger className="w-[130px] h-9">
                     <SelectValue placeholder="Type" />
@@ -451,9 +519,9 @@ export default function BacklogPage() {
                         </div>
                       ) : (
                         <div className="divide-y">
-                          {filteredTasks.map((task, index) => {
-                            const PriorityIcon = priorityLevels[task.priority]?.icon || Clock
-                            const priorityColor = priorityLevels[task.priority]?.color || "text-gray-500"
+                          {filteredTasks.map((task, index: number) => {
+                            const PriorityIcon = priorityLevels[task.priority as keyof typeof priorityLevels]?.icon || Clock
+                            const priorityColor = priorityLevels[task.priority as keyof typeof priorityLevels]?.color || "text-gray-500"
 
                             return (
                               <div
@@ -475,14 +543,6 @@ export default function BacklogPage() {
                                 <div className="flex-grow min-w-0">
                                   <div className="flex items-start justify-between mb-1">
                                     <div className="font-medium truncate mr-2">{task.title}</div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                      <Badge className={taskTypes[task.type]?.color || "bg-gray-100"}>
-                                        {taskTypes[task.type]?.label || "Task"}
-                                      </Badge>
-                                      <Badge className={statusTypes[task.status]?.color || "bg-gray-100"}>
-                                        {statusTypes[task.status]?.label || "Open"}
-                                      </Badge>
-                                    </div>
                                   </div>
 
                                   <div className="flex items-center justify-between text-sm">
@@ -564,15 +624,15 @@ export default function BacklogPage() {
             id: Math.floor(Math.random() * 10000),
             title: newTask.title,
             description: newTask.description || "",
-            type: newTask.labels?.find((l) => l?.name === "Feature")
+            type: newTask.labels?.find((l: any) => l?.name === "Feature")
               ? "feature"
-              : newTask.labels?.find((l) => l?.name === "Bug")
+              : newTask.labels?.find((l: any) => l?.name === "Bug")
                 ? "bug"
                 : "task",
             status: "Todo",
             priority: newTask.priority || 2,
             assigneeName: newTask.assigneeName,
-            groupId: columnId,
+            stage: "Todo",
             estimatedHours: newTask.estimatedHours,
           })
 

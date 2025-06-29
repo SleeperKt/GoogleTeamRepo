@@ -16,7 +16,6 @@ export function DynamicTitle() {
       if (path === "/profile") return "Profile" 
       if (path === "/billing") return "Billing"
       if (path === "/settings") return "Settings"
-      if (path === "/reports") return "Reports"
       if (path === "/backlog") return "Backlog"
       if (path === "/timeline") return "Timeline"
       if (path === "/" || path === "") return "Dashboard"

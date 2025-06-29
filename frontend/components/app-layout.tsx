@@ -78,16 +78,6 @@ interface NavItem {
 
 const baseNavItems: Omit<NavItem, "children">[] = [
   {
-    name: "Backlog",
-    href: "/backlog",
-    icon: ListTodo,
-  },
-  {
-    name: "Reports",
-    href: "/reports",
-    icon: BarChart3,
-  },
-  {
     name: "Settings",
     href: "/settings",
     icon: Cog,

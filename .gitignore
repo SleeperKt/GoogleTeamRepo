@@ -46,3 +46,21 @@ publish/
 
 *.db-shm
 *.db-wal
+
+*.pack
+*.gz
+*.db-journal
+*.db-lock
+*.db-trace
+*.db-trace.lock
+*.db-trace.lock.lock
+*.db-trace.lock.lock.lock
+*.db-trace.lock.lock.lock.lock
+
+
+*.pyc
+*.pyd
+venv/
+.venv/
+
+

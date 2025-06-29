@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useParams } from "next/navigation"
 import {
   AlertCircle,
@@ -97,6 +97,7 @@ export default function ProjectBacklogPage() {
   
   const [project, setProject] = useState<Project | null>(null)
   const [backlogData, setBacklogData] = useState<Task[]>(() => backlogCache.get(projectId) ?? [])
+  const [initialLoading, setInitialLoading] = useState(true)
   const [loading, setLoading] = useState(backlogCache.has(projectId) ? false : true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -143,8 +144,11 @@ export default function ProjectBacklogPage() {
         isInitial ? apiRequest<Project>(`/api/projects/public/${projectId}`) : Promise.resolve(project)
       ])
       
-      setBacklogData(data.tasks || [])
-      backlogCache.set(projectId, data.tasks || [])
+      setBacklogData(taskData.tasks || [])
+      backlogCache.set(projectId, taskData.tasks || [])
+      if (projectData) {
+        setProject(projectData)
+      }
       setError(null)
     } catch (err) {
       console.error('Error fetching backlog data:', err)
@@ -158,15 +162,12 @@ export default function ProjectBacklogPage() {
     }
   }, [projectId, searchQuery, filters, project])
 
-  // Initial data fetch and subsequent project changes
+  // Initial data fetch when project changes
   useEffect(() => {
     if (projectId) {
-      fetchProject()
-      if (!backlogCache.has(projectId)) {
-        fetchBacklogData()
-      }
+      fetchAllData(true)
     }
-  }, [projectId])
+  }, [projectId, fetchAllData])
 
   // Refetch when filters change, but skip the initial mount
   useEffect(() => {

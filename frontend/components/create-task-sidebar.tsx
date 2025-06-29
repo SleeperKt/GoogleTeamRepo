@@ -63,7 +63,15 @@ export function CreateTaskSidebar({
     applySuggestion,
     dismissSuggestion,
     regenerate,
-  } = useAIAssistant()
+  } = useAIAssistant({
+    projectId: projectPublicId,
+    taskType: formData.type,
+    priority: formData.priority,
+    labels: formData.labels,
+    dueDate: formData.dueDate?.toISOString(),
+    estimatedHours: formData.estimate,
+    currentDescription: formData.description
+  })
 
   // Fetch workflow stages
   const fetchWorkflowStages = useCallback(async () => {

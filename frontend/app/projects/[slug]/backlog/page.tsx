@@ -113,6 +113,8 @@ export default function ProjectBacklogPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
   const [pageLoaded, setPageLoaded] = useState(false)
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null)
+  const [dragOverTaskId, setDragOverTaskId] = useState<number | null>(null)
 
   // Use project participants hook
   const { teamMembers, isLoading: participantsLoading } = useProjectParticipants(projectId, true)
@@ -160,7 +162,7 @@ export default function ProjectBacklogPage() {
         setLoading(false)
       }
     }
-  }, [projectId, searchQuery, filters, project])
+  }, [projectId, searchQuery, filters])
 
   // Initial data fetch when project changes
   useEffect(() => {
@@ -274,22 +276,18 @@ export default function ProjectBacklogPage() {
   const filterTasks = (tasks: Task[]) => {
     return tasks.filter((task) => {
       // Search filter
-      const matchesSearch =
-        searchQuery === "" ||
+      const matchesSearch = !searchQuery || 
         task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (task.description && task.description.toLowerCase().includes(searchQuery.toLowerCase()))
+        task.description?.toLowerCase().includes(searchQuery.toLowerCase())
 
       // Type filter
-      const matchesType = filters.type === "all" || taskTypes[task.type as keyof typeof taskTypes]?.label === filters.type
+      const matchesType = filters.type === "all" || task.type === filters.type
 
       // Status filter
       const matchesStatus = filters.status === "all" || task.status === filters.status
 
       // Assignee filter
-      const matchesAssignee =
-        filters.assignee === "all" ||
-        (filters.assignee === "unassigned" && !task.assigneeName) ||
-        (task.assigneeName && task.assigneeName === filters.assignee)
+      const matchesAssignee = filters.assignee === "all" || task.assigneeName === filters.assignee
 
       // Priority filter
       const matchesPriority = filters.priority === "all" || task.priority.toString() === filters.priority
@@ -311,6 +309,7 @@ export default function ProjectBacklogPage() {
 
   // Handle task click
   const handleTaskClick = (task: Task) => {
+    if (draggedTask) return // Prevent opening while dragging
     setSelectedTask(task)
     setTaskDetailOpen(true)
   }
@@ -326,6 +325,113 @@ export default function ProjectBacklogPage() {
     setTaskDetailOpen(false)
     setSelectedTask(null)
     await fetchAllData(false) // Refresh the list
+  }
+
+  // Calculate position similar to board page for consistency
+  const calculateNewPosition = (targetTaskId: number | null, tasksInGroup: Task[]): number => {
+    const sorted = [...tasksInGroup].sort((a, b) => a.position - b.position)
+
+    // Dropped at the end of the list
+    if (targetTaskId === null || sorted.length === 0) {
+      return sorted.length > 0 ? sorted[sorted.length - 1].position + 1000 : 1000
+    }
+
+    const targetIndex = sorted.findIndex(t => t.id === targetTaskId)
+    if (targetIndex === -1) return 1000
+
+    if (targetIndex === 0) {
+      // Insert at the beginning
+      return sorted[0].position / 2
+    }
+
+    // Insert between two tasks
+    const prevTask = sorted[targetIndex - 1]
+    const nextTask = sorted[targetIndex]
+    return (prevTask.position + nextTask.position) / 2
+  }
+
+  // Optimistically reorder tasks locally
+  const applyLocalReorder = (taskId: number, newPosition: number, newAssigneeId?: string) => {
+    setBacklogData(prev => {
+      const updated = prev.map(t => t.id === taskId ? { 
+        ...t, 
+        position: newPosition,
+        assigneeId: newAssigneeId !== undefined ? (newAssigneeId === 'unassigned' ? undefined : newAssigneeId) : t.assigneeId,
+        assigneeName: newAssigneeId !== undefined ? 
+          (newAssigneeId === 'unassigned' ? undefined : teamMembers.find(m => m.id === newAssigneeId)?.name) : 
+          t.assigneeName
+      } : t)
+      // Sort by position
+      return [...updated].sort((a, b) => a.position - b.position)
+    })
+    backlogCache.set(projectId, backlogCache.get(projectId)?.map(t => t.id === taskId ? { 
+      ...t, 
+      position: newPosition,
+      assigneeId: newAssigneeId !== undefined ? (newAssigneeId === 'unassigned' ? undefined : newAssigneeId) : t.assigneeId,
+      assigneeName: newAssigneeId !== undefined ? 
+        (newAssigneeId === 'unassigned' ? undefined : teamMembers.find(m => m.id === newAssigneeId)?.name) : 
+        t.assigneeName
+    } : t) || [])
+  }
+
+  // Persist reorder to server
+  const reorderTask = async (taskId: number, newPosition: number, newAssigneeId?: string) => {
+    try {
+      const payload: any = { position: newPosition }
+      
+      // Add assignee change if needed
+      if (newAssigneeId !== undefined) {
+        payload.assigneeId = newAssigneeId === 'unassigned' ? null : newAssigneeId
+      }
+      
+      await apiRequest(`/api/projects/public/${projectId}/tasks/${taskId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      })
+    } catch (err) {
+      console.error('Failed to reorder task:', err)
+      // Optionally refetch
+      fetchAllData(false)
+    }
+  }
+
+  const handleDragStart = (e: React.DragEvent, task: Task) => {
+    setDraggedTask(task)
+    e.dataTransfer.effectAllowed = 'move'
+    e.currentTarget.classList.add('opacity-50')
+  }
+
+  const handleDragOver = (e: React.DragEvent, taskId: number | null) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverTaskId(taskId)
+  }
+
+  const handleDrop = (e: React.DragEvent, assigneeId: string, targetTaskId: number | null) => {
+    e.preventDefault()
+    if (!draggedTask) return
+
+    const tasksInGroup = backlogData.filter(t => {
+      if (assigneeId === 'unassigned') {
+        return !t.assigneeId
+      }
+      return t.assigneeId === assigneeId
+    })
+
+    const newPosition = calculateNewPosition(targetTaskId, tasksInGroup)
+    
+    // Check if assignee is changing
+    const currentAssigneeId = draggedTask.assigneeId || 'unassigned'
+    const isAssigneeChanging = currentAssigneeId !== assigneeId
+
+    // Optimistic UI update
+    applyLocalReorder(draggedTask.id, newPosition, isAssigneeChanging ? assigneeId : undefined)
+
+    // Persist
+    reorderTask(draggedTask.id, newPosition, isAssigneeChanging ? assigneeId : undefined)
+
+    setDraggedTask(null)
+    setDragOverTaskId(null)
   }
 
   if ((loading && backlogData.length === 0) || participantsLoading) {
@@ -552,7 +658,11 @@ export default function ProjectBacklogPage() {
                   </div>
 
                   {isExpanded && (
-                    <div className="border-t">
+                    <div
+                      className="border-t"
+                      onDragOver={(e) => handleDragOver(e, null)}
+                      onDrop={(e) => handleDrop(e, 'unassigned', null)}
+                    >
                       {filteredUnassignedTasks.length === 0 ? (
                         <div className="p-8 text-center text-gray-500">
                           <User className="h-12 w-12 mx-auto mb-3 opacity-20" />
@@ -577,8 +687,20 @@ export default function ProjectBacklogPage() {
                           return (
                             <div
                               key={task.id}
-                              className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] hover:shadow-sm"
+                              className={cn(
+                                "p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] hover:shadow-sm",
+                                selectedTask?.id === task.id && taskDetailOpen && "border-l-4 border-violet-600 bg-violet-50 dark:bg-violet-950/30 shadow-lg"
+                              )}
                               onClick={() => handleTaskClick(task)}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, task)}
+                              onDragOver={(e) => handleDragOver(e, task.id)}
+                              onDrop={(e) => handleDrop(e, 'unassigned', task.id)}
+                              onDragEnd={(e) => {
+                                setDraggedTask(null)
+                                setDragOverTaskId(null)
+                                e.currentTarget.classList.remove('opacity-50')
+                              }}
                             >
                               <div className="flex items-start gap-3">
                                 <GripVertical className="h-4 w-4 text-gray-400 mt-1 cursor-grab" />
@@ -686,7 +808,11 @@ export default function ProjectBacklogPage() {
                     </div>
 
                     {isExpanded && (
-                      <div className="border-t">
+                      <div
+                        className="border-t"
+                        onDragOver={(e) => handleDragOver(e, null)}
+                        onDrop={(e) => handleDrop(e, member.id, null)}
+                      >
                         {filteredMemberTasks.length === 0 ? (
                           <div className="p-8 text-center text-gray-500">
                             <Avatar className="h-12 w-12 mx-auto mb-3 opacity-20">
@@ -714,8 +840,20 @@ export default function ProjectBacklogPage() {
                             return (
                               <div
                                 key={task.id}
-                                className="p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] hover:shadow-sm"
+                                className={cn(
+                                  "p-4 border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] hover:shadow-sm",
+                                  selectedTask?.id === task.id && taskDetailOpen && "border-l-4 border-violet-600 bg-violet-50 dark:bg-violet-950/30 shadow-lg"
+                                )}
                                 onClick={() => handleTaskClick(task)}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, task)}
+                                onDragOver={(e) => handleDragOver(e, task.id)}
+                                onDrop={(e) => handleDrop(e, member.id, task.id)}
+                                onDragEnd={(e) => {
+                                  setDraggedTask(null)
+                                  setDragOverTaskId(null)
+                                  e.currentTarget.classList.remove('opacity-50')
+                                }}
                               >
                                 <div className="flex items-start gap-3">
                                   <GripVertical className="h-4 w-4 text-gray-400 mt-1 cursor-grab" />

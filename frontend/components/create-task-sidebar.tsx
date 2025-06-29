@@ -160,6 +160,16 @@ export function CreateTaskSidebar({
     return Boolean(formData.description && formData.description.trim().length > 0)
   }, [formData.description])
 
+  // NEW: Pre-select assignee when sidebar opens from a specific backlog/board column
+  useEffect(() => {
+    if (open) {
+      // If selectedColumnId is provided, use it as the default assignee
+      if (selectedColumnId) {
+        updateFormData({ assigneeId: selectedColumnId === "unassigned" ? undefined : selectedColumnId })
+      }
+    }
+  }, [open, selectedColumnId, updateFormData])
+
   // Convert priority number to string for display
   const getPriorityString = (priority: number) => {
     switch (priority) {

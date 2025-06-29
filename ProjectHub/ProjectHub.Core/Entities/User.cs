@@ -16,6 +16,9 @@ namespace ProjectHub.Core.Entities
         [Required]
         public string PasswordHash { get; set; } = string.Empty;
 
+        [MaxLength(500)]
+        public string? Bio { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.Now;
     }
 }

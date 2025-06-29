@@ -64,29 +64,56 @@ export default function ProjectsPage() {
 
   const [projectList, setProjectList] = useState<any[]>([])
 
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const { refreshProjects } = useProject()
   const searchParams = useSearchParams()
+
+  // Helper functions for starred projects persistence
+  const getStarredProjectsKey = () => `starred-projects-${user?.id || 'default'}`
+  
+  const getStarredProjects = (): string[] => {
+    if (typeof window === 'undefined') return []
+    try {
+      const stored = localStorage.getItem(getStarredProjectsKey())
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
+    }
+  }
+
+  const saveStarredProjects = (starredIds: string[]) => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem(getStarredProjectsKey(), JSON.stringify(starredIds))
+    } catch (err) {
+      console.error('Failed to save starred projects:', err)
+    }
+  }
 
   useEffect(() => {
     async function loadProjects() {
       try {
         const json = await apiRequest<any>("/api/projects") as any;
         const arr = Array.isArray(json) ? json : Array.isArray(json.$values) ? json.$values : [];
+        const starredIds = getStarredProjects();
+        
         setProjectList(
-          arr.map((p: any) => ({
-            id: p.publicId ?? p.id.toString(),
-            name: p.name,
-            description: p.description ?? "",
-            status: getStatusLabel(p.status || 1),
-            statusValue: p.status || 1,
-            priority: getPriorityLabel(p.priority || 2),
-            priorityValue: p.priority || 2,
-            lastUpdated: new Date(p.createdAt).toLocaleDateString(),
-            owner: "Me",
-            initials: p.name.slice(0, 2).toUpperCase(),
-            starred: false,
-          })),
+          arr.map((p: any) => {
+            const projectId = p.publicId ?? p.id.toString();
+            return {
+              id: projectId,
+              name: p.name,
+              description: p.description ?? "",
+              status: getStatusLabel(p.status || 1),
+              statusValue: p.status || 1,
+              priority: getPriorityLabel(p.priority || 2),
+              priorityValue: p.priority || 2,
+              lastUpdated: new Date(p.createdAt).toLocaleDateString(),
+              owner: "Me",
+              initials: p.name.slice(0, 2).toUpperCase(),
+              starred: starredIds.includes(projectId),
+            };
+          }),
         );
       } catch (err) {
         console.error("Failed to load projects", err)
@@ -96,7 +123,7 @@ export default function ProjectsPage() {
     if (token) {
       loadProjects()
     }
-  }, [token])
+  }, [token, user?.id])
 
   useEffect(() => {
     setShowEmptyState(projectList.length === 0)
@@ -120,20 +147,25 @@ export default function ProjectsPage() {
         try {
           const json = await apiRequest<any>("/api/projects") as any;
           const arr = Array.isArray(json) ? json : Array.isArray(json.$values) ? json.$values : [];
+          const starredIds = getStarredProjects();
+          
           setProjectList(
-            arr.map((p: any) => ({
-              id: p.publicId ?? p.id.toString(),
-              name: p.name,
-              description: p.description ?? "",
-              status: getStatusLabel(p.status || 1),
-              statusValue: p.status || 1,
-              priority: getPriorityLabel(p.priority || 2),
-              priorityValue: p.priority || 2,
-              lastUpdated: new Date(p.createdAt).toLocaleDateString(),
-              owner: "Me",
-              initials: p.name.slice(0, 2).toUpperCase(),
-              starred: false,
-            })),
+            arr.map((p: any) => {
+              const projectId = p.publicId ?? p.id.toString();
+              return {
+                id: projectId,
+                name: p.name,
+                description: p.description ?? "",
+                status: getStatusLabel(p.status || 1),
+                statusValue: p.status || 1,
+                priority: getPriorityLabel(p.priority || 2),
+                priorityValue: p.priority || 2,
+                lastUpdated: new Date(p.createdAt).toLocaleDateString(),
+                owner: "Me",
+                initials: p.name.slice(0, 2).toUpperCase(),
+                starred: starredIds.includes(projectId),
+              };
+            }),
           );
           
           // Clear the refresh parameter from URL after processing
@@ -151,8 +183,13 @@ export default function ProjectsPage() {
 
 
 
-  const toggleProjectStar = (projectId: number) => {
-    setProjectList(projectList.map((p) => (p.id === projectId ? { ...p, starred: !p.starred } : p)))
+  const toggleProjectStar = (projectId: string) => {
+    const updatedList = projectList.map((p) => (p.id === projectId ? { ...p, starred: !p.starred } : p))
+    setProjectList(updatedList)
+    
+    // Update localStorage with new starred state
+    const starredIds = updatedList.filter(p => p.starred).map(p => p.id)
+    saveStarredProjects(starredIds)
   }
 
   // Update the filtered projects to use projectList instead of projects
@@ -337,6 +374,17 @@ export default function ProjectsPage() {
                 }
                 setProjectList((prev) => [...prev, mapped])
                 setCreateProjectDialogOpen(false)
+                // Persist the new project as the active scope so that ProjectContext
+                // selects it when we refresh the list. This guarantees that the
+                // current project is switched to the newly created one across
+                // the entire app.
+                if (typeof window !== "undefined") {
+                  try {
+                    localStorage.setItem("currentProjectId", created.id.toString())
+                  } catch (_) {
+                    /* noop */
+                  }
+                }
                 // Refresh projects in all contexts
                 refreshProjects()
               } catch (err: any) {
@@ -407,7 +455,7 @@ function ProjectCard({
   onToggleStar,
 }: {
   project: any
-  onToggleStar: (projectId: number) => void
+  onToggleStar: (projectId: string) => void
 }) {
   const router = useRouter()
 

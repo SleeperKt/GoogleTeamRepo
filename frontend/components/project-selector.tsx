@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { Check, ChevronDown, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,7 @@ export function ProjectSelector() {
   const { isHydrated, token } = useAuth()
   const [open, setOpen] = useState(false)
   const router = useRouter()
+  const pathname = usePathname()
 
   // Handle auto-selecting first project when available
   useEffect(() => {
@@ -30,6 +31,41 @@ export function ProjectSelector() {
       setCurrentProject(projects[0])
     }
   }, [isHydrated, currentProject, projects, setCurrentProject])
+
+  // Handle project switching with proper navigation
+  const handleProjectSwitch = (project: any) => {
+    setCurrentProject(project)
+    setOpen(false)
+    
+    // Extract current page type from pathname and build new URL
+    const getPageType = (path: string) => {
+      if (path === "/projects") return "projects"
+      if (path.includes("/board")) return "board"
+      if (path.includes("/backlog")) return "backlog"
+      if (path.includes("/reports")) return "reports"
+      if (path.includes("/activities")) return "activities"
+      if (path.includes("/timeline")) return "timeline"
+      if (path.includes("/settings")) return "settings"
+      
+      // Handle project detail page (just the project slug)
+      const projectMatch = path.match(/^\/projects\/([^\/]+)$/)
+      if (projectMatch) return "overview"
+      
+      return "overview" // default fallback
+    }
+
+    const pageType = getPageType(pathname)
+    
+    // Navigate to equivalent page in new project
+    if (pageType === "projects") {
+      // Stay on projects page
+      return
+    } else if (pageType === "overview") {
+      router.push(`/projects/${project.publicId}`)
+    } else {
+      router.push(`/projects/${project.publicId}/${pageType}`)
+    }
+  }
 
   // Handle empty state - no projects available (prioritize this over loading)
   if (isHydrated && projects.length === 0) {
@@ -109,10 +145,7 @@ export function ProjectSelector() {
             <DropdownMenuItem
               key={project.id}
               className="flex items-center gap-2 p-3 cursor-pointer"
-              onClick={() => {
-                setCurrentProject(project)
-                setOpen(false)
-              }}
+              onClick={() => handleProjectSwitch(project)}
             >
               <Avatar className="h-8 w-8">
                 <AvatarFallback className={cn("text-xs font-medium", project.color)}>{project.avatar}</AvatarFallback>

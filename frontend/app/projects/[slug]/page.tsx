@@ -395,13 +395,6 @@ export default function ProjectDetailPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-violet-50 to-white">
         <div className="container mx-auto px-4 py-8">
-          <Button variant="ghost" size="sm" asChild className="mb-6">
-            <Link href="/projects">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to projects
-            </Link>
-          </Button>
-          
           <div className="text-center mt-20">
             <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
               {error ? (
@@ -437,13 +430,6 @@ export default function ProjectDetailPage() {
         {/* Navigation */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-4">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/projects">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to projects
-              </Link>
-            </Button>
-            <div className="h-6 w-px bg-gray-300"></div>
             <div className="text-sm text-gray-500">
               Projects / <span className="text-gray-900 font-medium">{project.name}</span>
             </div>

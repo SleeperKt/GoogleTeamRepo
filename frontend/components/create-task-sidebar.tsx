@@ -63,7 +63,15 @@ export function CreateTaskSidebar({
     applySuggestion,
     dismissSuggestion,
     regenerate,
-  } = useAIAssistant()
+  } = useAIAssistant({
+    projectId: projectPublicId,
+    taskType: formData.type,
+    priority: formData.priority,
+    labels: formData.labels,
+    dueDate: formData.dueDate?.toISOString(),
+    estimatedHours: formData.estimate,
+    currentDescription: formData.description
+  })
 
   // Fetch workflow stages
   const fetchWorkflowStages = useCallback(async () => {
@@ -92,11 +100,13 @@ export function CreateTaskSidebar({
         }
         setWorkflowStages(stagesArray.sort((a: WorkflowStage, b: WorkflowStage) => a.order - b.order))
       } else {
+        console.warn(`Workflow stages API returned ${response.status}: ${response.statusText}`)
         // Fallback to default stages if API fails
         setWorkflowStages([])
       }
     } catch (error) {
-      console.error('Error fetching workflow stages:', error)
+      console.warn('Error fetching workflow stages, using fallback:', error)
+      // Silently fallback to default stages - don't throw the error
       setWorkflowStages([])
     } finally {
       setLoadingStages(false)

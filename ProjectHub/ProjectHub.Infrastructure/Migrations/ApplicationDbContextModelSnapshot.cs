@@ -128,6 +128,7 @@ namespace ProjectHub.Infrastructure.Migrations
                     b.ToTable("ProjectLabels");
                 });
 
+
             modelBuilder.Entity("ProjectHub.Core.Entities.ProjectParticipant", b =>
                 {
                     b.Property<int>("Id")
@@ -381,6 +382,10 @@ namespace ProjectHub.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Bio")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -429,6 +434,8 @@ namespace ProjectHub.Infrastructure.Migrations
 
                     b.Navigation("Project");
                 });
+
+
 
             modelBuilder.Entity("ProjectHub.Core.Entities.TaskActivity", b =>
                 {

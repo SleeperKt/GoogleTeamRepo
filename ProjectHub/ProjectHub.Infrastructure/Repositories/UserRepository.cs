@@ -34,6 +34,12 @@ namespace ProjectHub.Infrastructure.Repositories
             await context.Users.AddAsync(user);
         }
 
+        public Task UpdateUserAsync(User user)
+        {
+            context.Users.Update(user);
+            return Task.CompletedTask;
+        }
+
         public async Task SaveChangesAsync()
         {
             await context.SaveChangesAsync();

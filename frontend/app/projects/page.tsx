@@ -374,6 +374,17 @@ export default function ProjectsPage() {
                 }
                 setProjectList((prev) => [...prev, mapped])
                 setCreateProjectDialogOpen(false)
+                // Persist the new project as the active scope so that ProjectContext
+                // selects it when we refresh the list. This guarantees that the
+                // current project is switched to the newly created one across
+                // the entire app.
+                if (typeof window !== "undefined") {
+                  try {
+                    localStorage.setItem("currentProjectId", created.id.toString())
+                  } catch (_) {
+                    /* noop */
+                  }
+                }
                 // Refresh projects in all contexts
                 refreshProjects()
               } catch (err: any) {

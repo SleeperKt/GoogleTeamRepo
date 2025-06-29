@@ -155,6 +155,16 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("currentProjectId", projects[0].id.toString())
   }, [isHydrated, projects, pathname])
 
+  // Reset current project when the user has no projects left (e.g., after deletion)
+  useEffect(() => {
+    if (isHydrated && projects.length === 0) {
+      setCurrentProjectState(null)
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("currentProjectId")
+      }
+    }
+  }, [isHydrated, projects])
+
   const setCurrentProject = (project: Project) => {
     setCurrentProjectState(project)
     if (typeof window !== "undefined") {

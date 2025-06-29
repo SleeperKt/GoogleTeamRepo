@@ -1502,6 +1502,7 @@ function DangerZoneTab({ projectId, projectPublicId, projectName, permissions }:
   const [isTransferring, setIsTransferring] = useState(false)
   const [participants, setParticipants] = useState<Participant[]>([])
   const { token } = useAuth()
+  const { refreshProjects } = useProject()
 
   // Only show if user is owner
   if (!permissions.canDeleteProject) {
@@ -1633,6 +1634,19 @@ function DangerZoneTab({ projectId, projectPublicId, projectName, permissions }:
         title: "Success",
         description: "Project deleted successfully",
       })
+      
+      // Clear any stored reference to the now-deleted project so that the
+      // ProjectContext falls back to an empty/default state.
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("currentProjectId")
+        } catch (_) {
+          /* noop */
+        }
+      }
+      
+      // Refresh global project list so other components update immediately
+      refreshProjects()
       
       // Small delay to show the success message before redirecting
       setTimeout(() => {

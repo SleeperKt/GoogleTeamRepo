@@ -7,10 +7,11 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies
+# Install system dependencies including curl for health checks
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
+        curl \
         && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies

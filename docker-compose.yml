@@ -6,15 +6,41 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "7001:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
     volumes:
       - ./data:/app/data
+    networks:
+      - projecthub-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/swagger/index.html"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s 
+
+  projecthub-ai:
+    build:
+      context: ./llm_service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - BACKEND_API_URL=http://projecthub-api:8080
+    depends_on:
+      - projecthub-api
+    networks:
+      - projecthub-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s 
+
+networks:
+  projecthub-network:
+    driver: bridge 

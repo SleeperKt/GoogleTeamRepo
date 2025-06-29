@@ -144,22 +144,63 @@ namespace ProjectHub.Core.Services
             return await _participantRepository.GetUserRoleInProjectAsync(projectId, user.UserId);
         }        public async Task UpdateParticipantRoleAsync(int projectId, Guid userId, ParticipantRole newRole, string requestingUserId)
         {
-            if (!await IsUserOwnerAsync(projectId, requestingUserId))
+            // Resolve the requester and ensure they are part of the project
+            var requester = await FindUserByIdOrEmailAsync(requestingUserId);
+            if (requester == null)
             {
-                throw new UnauthorizedAccessException("Only project owner can update participant roles.");
+                throw new UnauthorizedAccessException("Requesting user not found.");
             }
 
+            var requesterParticipant = await _participantRepository.GetByProjectAndUserAsync(projectId, requester.UserId);
+            if (requesterParticipant == null)
+            {
+                throw new UnauthorizedAccessException("Requesting user is not a participant in this project.");
+            }
+
+            var requesterRole = requesterParticipant.Role;
+
+            // Only Owners or Admins can attempt to update roles
+            if (requesterRole != ParticipantRole.Owner && requesterRole != ParticipantRole.Admin)
+            {
+                throw new UnauthorizedAccessException("Only project owner or admin can update participant roles.");
+            }
+
+            // Retrieve the participant whose role is to be updated
             var participant = await _participantRepository.GetByProjectAndUserAsync(projectId, userId);
             if (participant == null)
             {
                 throw new InvalidOperationException("Participant not found.");
             }
 
+            // Prevent changing the owner's role via this endpoint (requires ownership transfer)
             if (participant.Role == ParticipantRole.Owner && newRole != ParticipantRole.Owner)
             {
                 throw new InvalidOperationException("Cannot change owner role. Transfer ownership instead.");
             }
 
+            // Additional restrictions for Admins (Owners are unrestricted apart from the rule above)
+            if (requesterRole == ParticipantRole.Admin)
+            {
+                // Admins cannot change their own role
+                if (requester.UserId == userId)
+                {
+                    throw new UnauthorizedAccessException("Admins cannot change their own role.");
+                }
+
+                // Admins cannot modify roles of other Admins or Owners
+                if (participant.Role == ParticipantRole.Admin || participant.Role == ParticipantRole.Owner)
+                {
+                    throw new UnauthorizedAccessException("Admins cannot change roles of other admins or owners.");
+                }
+
+                // Admins cannot assign the Owner or Admin role
+                if (newRole == ParticipantRole.Owner || newRole == ParticipantRole.Admin)
+                {
+                    throw new UnauthorizedAccessException("Admins cannot assign the selected role.");
+                }
+            }
+
+            // Apply the new role
             participant.Role = newRole;
             await _participantRepository.UpdateAsync(participant);
         }

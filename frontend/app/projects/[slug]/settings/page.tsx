@@ -131,7 +131,7 @@ const getRoleIcon = (role: ParticipantRole) => {
     case ParticipantRole.Admin:
       return <Shield className="h-4 w-4 text-red-600" />
     case ParticipantRole.Editor:
-      return <Eye className="h-4 w-4 text-blue-600" />
+      return <Edit className="h-4 w-4 text-blue-600" />
     case ParticipantRole.Viewer:
       return <Eye className="h-4 w-4 text-gray-600" />
     default:
@@ -177,7 +177,7 @@ interface MembersAndAccessTabProps {
 }
 
 function MembersAndAccessTab({ projectId, projectPublicId, permissions }: MembersAndAccessTabProps) {
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const [participants, setParticipants] = useState<Participant[]>([])
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([])
   const [loading, setLoading] = useState(true)
@@ -387,79 +387,90 @@ function MembersAndAccessTab({ projectId, projectPublicId, permissions }: Member
           )}
           
           <div className="space-y-3">
-            {participants.map((participant) => (
-              <div key={participant.userId} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${participant.userName}`} />
-                    <AvatarFallback>
-                      {participant.userName?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <p className="font-medium">{participant.userName}</p>
-                      {getRoleIcon(participant.role)}
+            {participants.map((participant) => {
+              // Determine if current user can edit this participant's role
+              const isSelf = participant.userId === user?.id
+              const isAdminRequester = permissions.role === ParticipantRole.Admin
+              const canEditParticipant = permissions.canManageProject &&
+                participant.role !== ParticipantRole.Owner &&
+                !(isAdminRequester && (isSelf || participant.role === ParticipantRole.Admin))
+
+              return (
+                <div key={participant.userId} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${participant.userName}`} />
+                      <AvatarFallback>
+                        {participant.userName?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-medium">{participant.userName}</p>
+                        {getRoleIcon(participant.role)}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{participant.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Joined {new Date(participant.joinedAt).toLocaleDateString()}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">{participant.email}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Joined {new Date(participant.joinedAt).toLocaleDateString()}
-                    </p>
                   </div>
-                                </div>
-                <div className="flex items-center space-x-2">
-                  {permissions.canManageProject && participant.role !== ParticipantRole.Owner && (
-                        <div className="flex items-center space-x-2">
-                          {/* Role Selector */}
-                          <Select
-                            value={participant.role.toString()}
-                            onValueChange={(value) => handleRoleChange(participant, parseInt(value) as ParticipantRole)}
-                          >
-                            <SelectTrigger className="w-24 h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
+                  <div className="flex items-center space-x-2">
+                    {canEditParticipant && (
+                      <div className="flex items-center space-x-2">
+                        {/* Role Selector */}
+                        <Select
+                          value={participant.role.toString()}
+                          onValueChange={(value) => handleRoleChange(participant, parseInt(value) as ParticipantRole)}
+                        >
+                          <SelectTrigger className="w-24 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {permissions.role === ParticipantRole.Owner && (
                               <SelectItem value={ParticipantRole.Admin.toString()}>
                                 Admin
                               </SelectItem>
-                              <SelectItem value={ParticipantRole.Editor.toString()}>
-                                Editor
-                              </SelectItem>
-                              <SelectItem value={ParticipantRole.Viewer.toString()}>
-                                Viewer
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                          
-                          {/* More Actions */}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem 
-                                onClick={() => handleRemoveParticipant(participant)}
-                                className="text-red-600"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Remove from project
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      )}
-                      
-                      {/* Show role badge for non-editable roles */}
-                      {(!permissions.canManageProject || participant.role === ParticipantRole.Owner) && (
-                        <Badge variant={getRoleBadgeVariant(participant.role)}>
-                          {getRoleLabel(participant.role)}
-                        </Badge>
-                      )}
+                            )}
+                            <SelectItem value={ParticipantRole.Editor.toString()}>
+                              Editor
+                            </SelectItem>
+                            <SelectItem value={ParticipantRole.Viewer.toString()}>
+                              Viewer
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        
+                        {/* More Actions */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={() => handleRemoveParticipant(participant)}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Remove from project
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
+                    
+                    {/* Show role badge for non-editable roles */}
+                    {(!canEditParticipant) && (
+                      <Badge variant={getRoleBadgeVariant(participant.role)}>
+                        {getRoleLabel(participant.role)}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
             
             {participants.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
@@ -550,7 +561,7 @@ function MembersAndAccessTab({ projectId, projectPublicId, permissions }: Member
             </div>
                          <Separator />
             <div className="flex items-start space-x-3">
-              <Eye className="h-5 w-5 text-blue-600 mt-0.5" />
+              <Edit className="h-5 w-5 text-blue-600 mt-0.5" />
               <div>
                 <p className="font-medium">Editor</p>
                 <p className="text-sm text-muted-foreground">

@@ -75,11 +75,19 @@ export async function apiRequest<T = unknown>(
         const json = await response.json();
         console.log("Server error response:", json);
         if (json && typeof json === "object") {
-            if ("message" in json && typeof json.message === 'string') {
-                message = json.message;
+            if ("code" in json && "message" in json) {
+                message = `${(json as { code: string; message: string }).code}: ${(json as { message: string }).message}`;
+                if ((json as { details?: unknown }).details) {
+                    try {
+                        message += ` - ${JSON.stringify((json as { details?: unknown }).details)}`;
+                    } catch {
+                        /* ignore stringify errors */
+                    }
+                }
+            } else if ("message" in json && typeof (json as { message: unknown }).message === 'string') {
+                message = (json as { message: string }).message;
             } else {
-                // Handle ASP.NET validation error format
-                message = JSON.stringify(json.errors || json);
+                message = JSON.stringify((json as { errors?: unknown }).errors || json);
             }
         } else if (typeof json === 'string') {
             message = json;

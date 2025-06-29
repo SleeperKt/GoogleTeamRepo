@@ -11,152 +11,198 @@ using ProjectHub.Infrastructure.Repositories;
 using ProjectHub.Infrastructure.Services;
 using System.Text;
 using System.Text.Json.Serialization;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+// Early initialization of Serilog
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
 
-// DbContext и SQLite
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<PasswordService>();
-builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-
-// Регистрация сервисов и репозиториев для проектов
-builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
-builder.Services.AddScoped<IProjectService, ProjectService>();
-
-// Регистрация сервисов и репозиториев для участников проектов
-builder.Services.AddScoped<IProjectParticipantRepository, ProjectParticipantRepository>();
-builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService>();
-
-// Регистрация сервисов и репозиториев для задач
-builder.Services.AddScoped<ITaskRepository, TaskRepository>();
-builder.Services.AddScoped<ITaskService, TaskService>();
-
-// Регистрация сервисов и репозиториев для комментариев и активности задач
-builder.Services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
-builder.Services.AddScoped<ITaskActivityRepository, TaskActivityRepository>();
-
-// Регистрация сервисов и репозиториев для настроек проектов
-builder.Services.AddScoped<IProjectSettingsRepository, ProjectSettingsRepository>();
-builder.Services.AddScoped<IProjectLabelRepository, ProjectLabelRepository>();
-builder.Services.AddScoped<IProjectWorkflowRepository, ProjectWorkflowRepository>();
-builder.Services.AddScoped<IProjectSettingsService, ProjectSettingsService>();
-
-// Регистрация сервисов и репозиториев для приглашений
-builder.Services.AddScoped<IProjectInvitationRepository, ProjectInvitationRepository>();
-builder.Services.AddScoped<IProjectInvitationService, ProjectInvitationService>();
-
-
-
-builder.Services.AddControllers().AddJsonOptions(options =>
+try
 {
-    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-});
+    Log.Information("Starting ProjectHub API application");
 
-builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>();
-builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
-builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
-builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
-builder.Services.AddScoped<IValidator<TaskReorderRequest>, TaskReorderRequestValidator>();
-builder.Services.AddScoped<IValidator<CreateTaskCommentRequest>, CreateTaskCommentRequestValidator>();
+    var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddEndpointsApiExplorer();
-var jwtKey = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
-    throw new InvalidOperationException("JWT secret key must be configured and at least 32 characters long.");
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new() { Title = "Auth API", Version = "v1" });
+    // Configure Serilog
+    builder.Host.UseSerilog((context, services, configuration) =>
+        configuration.ReadFrom.Configuration(context.Configuration)
+                     .ReadFrom.Services(services)
+                     .Enrich.FromLogContext());
 
-    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    // DbContext и SQLite
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<PasswordService>();
+    builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+    // Регистрация сервисов и репозиториев для проектов
+    builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
+    builder.Services.AddScoped<IProjectService, ProjectService>();
+
+    // Регистрация сервисов и репозиториев для участников проектов
+    builder.Services.AddScoped<IProjectParticipantRepository, ProjectParticipantRepository>();
+    builder.Services.AddScoped<IProjectParticipantService, ProjectParticipantService>();
+
+    // Регистрация сервисов и репозиториев для задач
+    builder.Services.AddScoped<ITaskRepository, TaskRepository>();
+    builder.Services.AddScoped<ITaskService, TaskService>();
+
+    // Регистрация сервисов и репозиториев для комментариев и активности задач
+    builder.Services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
+    builder.Services.AddScoped<ITaskActivityRepository, TaskActivityRepository>();
+
+    // Регистрация сервисов и репозиториев для настроек проектов
+    builder.Services.AddScoped<IProjectSettingsRepository, ProjectSettingsRepository>();
+    builder.Services.AddScoped<IProjectLabelRepository, ProjectLabelRepository>();
+    builder.Services.AddScoped<IProjectWorkflowRepository, ProjectWorkflowRepository>();
+    builder.Services.AddScoped<IProjectSettingsService, ProjectSettingsService>();
+
+    // Регистрация сервисов и репозиториев для приглашений
+    builder.Services.AddScoped<IProjectInvitationRepository, ProjectInvitationRepository>();
+    builder.Services.AddScoped<IProjectInvitationService, ProjectInvitationService>();
+
+    builder.Services.AddControllers().AddJsonOptions(options =>
     {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Enter JWT token :"
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
-    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    builder.Services.AddScoped<IValidator<RegisterRequest>, UserRegisterValidator>();
+    builder.Services.AddScoped<IValidator<LoginRequest>, UserLoginValidator>();
+    builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
+    builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
+    builder.Services.AddScoped<IValidator<TaskReorderRequest>, TaskReorderRequestValidator>();
+    builder.Services.AddScoped<IValidator<CreateTaskCommentRequest>, CreateTaskCommentRequestValidator>();
+
+    builder.Services.AddEndpointsApiExplorer();
+    var jwtKey = builder.Configuration["Jwt:Key"];
+    if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+        throw new InvalidOperationException("JWT secret key must be configured and at least 32 characters long.");
+    builder.Services.AddSwaggerGen(c =>
     {
+        c.SwaggerDoc("v1", new() { Title = "Auth API", Version = "v1" });
+
+        c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
         {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            Name = "Authorization",
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+            Description = "Enter JWT token :"
+        });
+
+        c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+        {
             {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                 {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
+                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                    {
+                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
     });
-});
-builder.Services.AddAuthentication("Bearer")
-    .AddJwtBearer("Bearer", options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
+    builder.Services.AddAuthentication("Bearer")
+        .AddJwtBearer("Bearer", options =>
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-            ClockSkew = TimeSpan.Zero
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+                ValidAudience = builder.Configuration["Jwt:Audience"],
+                IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+                ClockSkew = TimeSpan.Zero
+            };
+        });
+
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("Frontend", policy =>
+        {
+            policy.WithOrigins("http://localhost:3000")
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials();
+        });
+    });
+
+    var app = builder.Build();
+
+    // Configure Serilog request logging
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+        options.GetLevel = (httpContext, elapsed, ex) => ex != null
+            ? Serilog.Events.LogEventLevel.Error
+            : httpContext.Response.StatusCode > 499
+                ? Serilog.Events.LogEventLevel.Error
+                : Serilog.Events.LogEventLevel.Information;
+        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        {
+            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+            diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
+            diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.FirstOrDefault());
         };
     });
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Frontend", policy =>
+    // Apply pending migrations and expose Swagger UI only in Development
+    if (app.Environment.IsDevelopment())
     {
-        policy.WithOrigins("http://localhost:3000")
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
-    });
-});
+        using var scope = app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        context.Database.Migrate();
 
-var app = builder.Build();
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "Auth API V1");
+            c.RoutePrefix = string.Empty;
+        });
 
-// Apply pending migrations and expose Swagger UI only in Development
-if (app.Environment.IsDevelopment())
-{
-    using var scope = app.Services.CreateScope();
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    context.Database.Migrate();
+        Log.Information("Development environment detected. Swagger UI enabled.");
+    }
 
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Auth API V1");
-        c.RoutePrefix = string.Empty;
-    });
+    app.UseRouting();
+
+    // Register global exception handler
+    app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+    app.UseCors("Frontend");
+
+    // Use Middlewares
+    app.UseWhen(context =>
+        context.Request.Path.StartsWithSegments("/api/auth/register") &&
+        context.Request.Method == "POST",
+        appBuilder => appBuilder.UseMiddleware<RegisterValidationMiddleware>());
+
+    app.UseWhen(context =>
+        context.Request.Path.StartsWithSegments("/api/auth/login") &&
+        context.Request.Method == "POST",
+        appBuilder => appBuilder.UseMiddleware<LoginValidationMiddleware>());
+
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.MapControllers();
+
+    Log.Information("ProjectHub API application started successfully");
+    app.Run();
 }
-
-app.UseRouting();
-
-app.UseCors("Frontend");
-
-// Use Middlewares
-app.UseWhen(context =>
-    context.Request.Path.StartsWithSegments("/api/auth/register") &&
-    context.Request.Method == "POST",
-    appBuilder => appBuilder.UseMiddleware<RegisterValidationMiddleware>());
-
-app.UseWhen(context =>
-    context.Request.Path.StartsWithSegments("/api/auth/login") &&
-    context.Request.Method == "POST",
-    appBuilder => appBuilder.UseMiddleware<LoginValidationMiddleware>());
-
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "ProjectHub API application terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

@@ -48,6 +48,8 @@ builder.Services.AddScoped<IProjectSettingsService, ProjectSettingsService>();
 builder.Services.AddScoped<IProjectInvitationRepository, ProjectInvitationRepository>();
 builder.Services.AddScoped<IProjectInvitationService, ProjectInvitationService>();
 
+
+
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;

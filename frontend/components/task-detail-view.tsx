@@ -44,6 +44,7 @@ import { apiRequest } from "@/lib/api"
 import { useProjectLabels } from "@/hooks/use-project-labels"
 import { useProjectWorkflowStages } from "@/hooks/use-project-workflow-stages"
 import { useUserPermissions } from "@/hooks/use-user-permissions"
+import { AIService } from "@/lib/ai-service"
 import React from "react"
 
 // Unified team member type used in this component
@@ -795,57 +796,28 @@ const TaskDetailViewComponent = function TaskDetailView({
   }
 
   // Generate AI description
-  const generateAIDescription = () => {
+  const generateAIDescription = async () => {
     setIsGeneratingAI(true)
 
-    // Simulate AI generation
-    setTimeout(() => {
-      // Generate description based on title and stage
-      let aiDesc = ""
-
-      if (title.toLowerCase().includes("authentication")) {
-        aiDesc = `Implement a secure user authentication flow that includes:
-
-1. Login form with email/username and password fields
-2. Registration process with email verification
-3. Password reset functionality
-4. OAuth integration with Google and GitHub
-5. Session management with JWT tokens
-6. Rate limiting to prevent brute force attacks
-
-This task is critical for system security and should follow OWASP security best practices.`
-      } else if (title.toLowerCase().includes("navigation")) {
-        aiDesc = `Fix the responsive navigation menu on mobile devices by addressing the following issues:
-
-1. Menu doesn't close properly after selection on small screens
-2. Dropdown submenus are cut off on certain device widths
-3. Hamburger icon animation is inconsistent
-4. Touch targets are too small on mobile devices
-
-Test on iOS and Android devices with various screen sizes to ensure consistent behavior.`
-      } else if (stage === "In Progress") {
-        aiDesc = `This task is currently in development. Key implementation details:
-
-1. Follow the design specifications in the attached mockups
-2. Ensure responsive behavior across all device sizes
-3. Implement proper error handling and loading states
-4. Write unit tests for all new functionality
-5. Document any API changes or new components
-6. Consider accessibility requirements throughout implementation`
-      } else {
-        aiDesc = `This task involves ${title.toLowerCase()}. Based on the current stage (${stage}), the following should be considered:
-
-1. Define clear acceptance criteria and expected outcomes
-2. Identify dependencies on other tasks or systems
-3. Document any technical requirements or constraints
-4. Consider potential edge cases and error scenarios
-5. Estimate effort required for implementation
-6. Plan for testing and validation steps`
-      }
-
-      setAiSuggestion(aiDesc)
+    try {
+      const result = await AIService.generateDescription({
+        title,
+        stage,
+        projectId: projectPublicId,
+        taskType: task?.type || 'task',
+        priority: priority === 'low' ? 1 : priority === 'medium' ? 2 : priority === 'high' ? 3 : priority === 'critical' ? 4 : 1,
+        labels: selectedLabels.map(id => labels.find(l => l.id === id)?.name).filter(Boolean) as string[],
+        dueDate: dueDate?.toISOString(),
+        estimatedHours: estimate,
+        description: description
+      })
+      setAiSuggestion(result)
+    } catch (error) {
+      console.error('Failed to generate AI description:', error)
+      setAiSuggestion('Failed to generate AI description. Please try again or check your internet connection.')
+    } finally {
       setIsGeneratingAI(false)
-    }, 1500)
+    }
   }
 
   // Apply AI suggestion
@@ -853,6 +825,7 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
     if (aiSuggestion) {
       setDescription(aiSuggestion)
       setAiSuggestion(null)
+      setHasUnsavedChanges(true)
     }
   }
 
@@ -868,48 +841,37 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
   }
 
   // Shorten description with AI
-  const shortenDescription = () => {
+  const shortenDescription = async () => {
     if (!description) return
 
     setIsGeneratingAI(true)
 
-    // Simulate AI shortening
-    setTimeout(() => {
-      const shortened =
-        description.split("\n\n")[0] +
-        "\n\nKey points:\n" +
-        description
-          .split("\n")
-          .filter((line: string) => line.trim().length > 0 && !line.startsWith("Key points:"))
-          .slice(1, 4)
-          .map((line: string) => (line.length > 40 ? line.substring(0, 40) + "..." : line))
-          .join("\n")
-
-      setAiSuggestion(shortened)
+    try {
+      const result = await AIService.shortenDescription(description)
+      setAiSuggestion(result)
+    } catch (error) {
+      console.error('Failed to shorten description:', error)
+      setAiSuggestion('Failed to shorten description. Please try again.')
+    } finally {
       setIsGeneratingAI(false)
-    }, 1000)
+    }
   }
 
   // Expand description with AI
-  const expandDescription = () => {
+  const expandDescription = async () => {
     if (!description) return
 
     setIsGeneratingAI(true)
 
-    // Simulate AI expansion
-    setTimeout(() => {
-      const expanded =
-        description +
-        "\n\nAdditional considerations:\n" +
-        "1. Ensure cross-browser compatibility\n" +
-        "2. Consider performance implications\n" +
-        "3. Document any API changes\n" +
-        "4. Add appropriate error handling\n" +
-        "5. Include accessibility features"
-
-      setAiSuggestion(expanded)
+    try {
+      const result = await AIService.expandDescription(description)
+      setAiSuggestion(result)
+    } catch (error) {
+      console.error('Failed to expand description:', error)
+      setAiSuggestion('Failed to expand description. Please try again.')
+    } finally {
       setIsGeneratingAI(false)
-    }, 1000)
+    }
   }
 
   // Animation state management
@@ -953,7 +915,10 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
           <Input
             ref={titleInputRef}
             value={title}
-            onChange={permissions.canEdit ? (e) => setTitle(e.target.value) : undefined}
+            onChange={permissions.canEdit ? (e) => {
+              setTitle(e.target.value)
+              setHasUnsavedChanges(true)
+            } : undefined}
             className={cn(
               "text-base font-medium border-0 p-0 h-7 focus-visible:ring-0 focus-visible:ring-offset-0",
               !permissions.canEdit && "opacity-60 cursor-not-allowed"
@@ -1007,7 +972,10 @@ Test on iOS and Android devices with various screen sizes to ensure consistent b
               <Textarea
                 id="description"
                 value={description}
-                onChange={permissions.canEdit ? (e) => setDescription(e.target.value) : undefined}
+                onChange={permissions.canEdit ? (e) => {
+                  setDescription(e.target.value)
+                  setHasUnsavedChanges(true)
+                } : undefined}
                 placeholder="Add a detailed description..."
                 className={cn(
                   "min-h-[100px] resize-y text-sm",

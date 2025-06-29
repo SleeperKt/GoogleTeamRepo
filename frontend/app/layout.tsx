@@ -10,9 +10,16 @@ import { AuthProvider } from "@/contexts/auth-context"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "ProjectFlow - Project Management Made Simple",
-  description: "Streamline your workflow, collaborate with your team, and deliver projects on time.",
-    generator: 'v0.dev'
+  title: "ProjectHub",
+  description: "Streamline your workflow, collaborate with your team, and deliver projects on time with ProjectHub.",
+  generator: 'Next.js',
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/favicon.ico',
+  },
 }
 
 export default function RootLayout({

@@ -50,7 +50,7 @@ export function SendInvitationDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState<CreateInvitationRequest>({
     inviteeEmail: "",
-    role: ParticipantRole.Editor,
+    role: ParticipantRole.Viewer,
     message: ""
   })
 
@@ -89,7 +89,7 @@ export function SendInvitationDialog({
       // Reset form
       setFormData({
         inviteeEmail: "",
-        role: ParticipantRole.Editor,
+        role: ParticipantRole.Viewer,
         message: ""
       })
       
@@ -172,11 +172,11 @@ export function SendInvitationDialog({
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ParticipantRole.Editor.toString()}>
+                  {getRoleLabel(ParticipantRole.Editor)} - Can manage tasks
+                </SelectItem>
                 <SelectItem value={ParticipantRole.Viewer.toString()}>
                   {getRoleLabel(ParticipantRole.Viewer)} - Can view project
-                </SelectItem>
-                <SelectItem value={ParticipantRole.Editor.toString()}>
-                  {getRoleLabel(ParticipantRole.Editor)} - Can edit tasks and content
                 </SelectItem>
                 <SelectItem value={ParticipantRole.Admin.toString()}>
                   {getRoleLabel(ParticipantRole.Admin)} - Can manage project and members

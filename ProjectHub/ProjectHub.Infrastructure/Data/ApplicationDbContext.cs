@@ -257,6 +257,8 @@ namespace ProjectHub.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(pi => pi.InviteeId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+
         }
     }
 }

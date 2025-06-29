@@ -5,7 +5,7 @@ import { API_BASE_URL } from "@/lib/api"
 
 interface AuthContextType {
   token: string | null
-  user: { id: string; username: string; email: string } | null
+  user: { id: string; username: string; email: string; bio?: string } | null
   isLoading: boolean
   isHydrated: boolean
   login: (token: string) => void
@@ -16,7 +16,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null)
-  const [user, setUser] = useState<{ id: string; username: string; email: string } | null>(null)
+  const [user, setUser] = useState<{ id: string; username: string; email: string; bio?: string } | null>(null)
   const [isLoading, setIsLoading] = useState(false) // Start as false to prevent hydration mismatch
   const [isHydrated, setIsHydrated] = useState(false) // Track if we've hydrated
 
@@ -52,13 +52,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchUser = async (jwt: string) => {
     try {
+      console.log("🔍 Attempting to fetch user with token:", jwt ? `${jwt.substring(0, 20)}...` : 'null')
+      console.log("🌐 Making request to:", `${API_BASE_URL}/api/user/me`)
+      
       const res = await fetch(`${API_BASE_URL}/api/user/me`, {
-        headers: { Authorization: `Bearer ${jwt}` },
+        headers: { 
+          Authorization: `Bearer ${jwt}`,
+          'Content-Type': 'application/json'
+        },
       })
+      
+      console.log("📡 Response status:", res.status, res.statusText)
       
       if (!res.ok) {
         if (res.status === 401) {
-          console.log("Token expired or invalid, logging out")
+          console.log("❌ Token expired or invalid, logging out")
+          console.log("🔑 Token that failed:", jwt ? `${jwt.substring(0, 20)}...` : 'null')
           logout()
           return
         }
@@ -69,18 +78,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       const data = await res.json()
+      console.log("✅ User data received:", data)
       
       const userData = { 
         id: data.userId || data.UserId || '', 
         username: data.userName || data.UserName || '', 
-        email: data.email || data.Email || '' 
+        email: data.email || data.Email || '',
+        bio: data.bio || data.Bio || ''
       }
+      console.log("👤 Processed user data:", userData)
       setUser(userData)
     } catch (err) {
-      console.error('Error fetching user:', err)
+      console.error('💥 Error fetching user:', err)
       // On network error, still try to set user with token for offline usage
       if (jwt) {
-        console.log("Network error but token exists, proceeding...")
+        console.log("🔄 Network error but token exists, proceeding...")
       }
     } finally {
       // Always ensure loading is set to false

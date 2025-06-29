@@ -2106,6 +2106,19 @@ export default function ProjectGeneralSettingsPage() {
     }
   }
 
+  // Helper function to format dates for HTML date inputs
+  const formatDateForInput = (dateString?: string): string => {
+    if (!dateString) return ''
+    try {
+      // Parse the date and format as YYYY-MM-DD
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) return ''
+      return date.toISOString().split('T')[0]
+    } catch {
+      return ''
+    }
+  }
+
   // Fetch project data
   const fetchProject = async () => {
     if (!token || !projectId) return null
@@ -2534,8 +2547,8 @@ export default function ProjectGeneralSettingsPage() {
   const projectSettings = {
     name: project?.name || '',
     description: project?.description || '',
-    startDate: settings?.startDate || '',
-    endDate: settings?.endDate || '',
+    startDate: formatDateForInput(settings?.startDate),
+    endDate: formatDateForInput(settings?.endDate),
     timezone: settings?.timezone || '',
     enableNotifications: settings?.enableNotifications ?? true,
     enableCommentsNotifications: settings?.enableCommentsNotifications ?? true,

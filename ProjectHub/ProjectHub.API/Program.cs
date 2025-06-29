@@ -156,21 +156,26 @@ try
         };
     });
 
-    // Apply pending migrations and expose Swagger UI only in Development
-    if (app.Environment.IsDevelopment())
+    // Apply pending migrations in Development and Docker environments
+    if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docker")
     {
         using var scope = app.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         context.Database.Migrate();
+        Log.Information("Database migrations applied successfully.");
+    }
 
+    // Expose Swagger UI in Development and Docker environments
+    if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docker")
+    {
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
             c.SwaggerEndpoint("/swagger/v1/swagger.json", "Auth API V1");
-            c.RoutePrefix = string.Empty;
+            c.RoutePrefix = "swagger";
         });
 
-        Log.Information("Development environment detected. Swagger UI enabled.");
+        Log.Information("Swagger UI enabled at /swagger");
     }
 
     app.UseRouting();

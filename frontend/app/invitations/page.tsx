@@ -48,6 +48,8 @@ const getRoleBadge = (role: ParticipantRole) => {
       return <Badge variant="default" className="bg-violet-100 text-violet-800">Owner</Badge>
     case ParticipantRole.Admin:
       return <Badge variant="secondary">Admin</Badge>
+    case ParticipantRole.Editor:
+      return <Badge variant="secondary">Editor</Badge>
     case ParticipantRole.Viewer:
       return <Badge variant="outline" className="bg-gray-50">Viewer</Badge>
   }

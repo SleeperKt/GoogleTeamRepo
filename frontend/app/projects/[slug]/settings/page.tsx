@@ -115,6 +115,8 @@ const getRoleLabel = (role: ParticipantRole): string => {
       return "Owner"
     case ParticipantRole.Admin:
       return "Admin"
+    case ParticipantRole.Editor:
+      return "Editor"
     case ParticipantRole.Viewer:
       return "Viewer"
     default:
@@ -128,6 +130,8 @@ const getRoleIcon = (role: ParticipantRole) => {
       return <Crown className="h-4 w-4 text-yellow-600" />
     case ParticipantRole.Admin:
       return <Shield className="h-4 w-4 text-red-600" />
+    case ParticipantRole.Editor:
+      return <Eye className="h-4 w-4 text-blue-600" />
     case ParticipantRole.Viewer:
       return <Eye className="h-4 w-4 text-gray-600" />
     default:
@@ -141,6 +145,8 @@ const getRoleBadgeVariant = (role: ParticipantRole) => {
       return "default" // Gold-like
     case ParticipantRole.Admin:
       return "destructive" // Red
+    case ParticipantRole.Editor:
+      return "secondary" // Blue-ish
     case ParticipantRole.Viewer:
       return "outline" // Gray
     default:
@@ -416,6 +422,9 @@ function MembersAndAccessTab({ projectId, projectPublicId, permissions }: Member
                               <SelectItem value={ParticipantRole.Admin.toString()}>
                                 Admin
                               </SelectItem>
+                              <SelectItem value={ParticipantRole.Editor.toString()}>
+                                Editor
+                              </SelectItem>
                               <SelectItem value={ParticipantRole.Viewer.toString()}>
                                 Viewer
                               </SelectItem>
@@ -540,6 +549,16 @@ function MembersAndAccessTab({ projectId, projectPublicId, permissions }: Member
               </div>
             </div>
                          <Separator />
+            <div className="flex items-start space-x-3">
+              <Eye className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div>
+                <p className="font-medium">Editor</p>
+                <p className="text-sm text-muted-foreground">
+                  Can create, update, and delete tasks but cannot change project settings or invite members
+                </p>
+              </div>
+            </div>
+            <Separator />
             <div className="flex items-start space-x-3">
               <Eye className="h-5 w-5 text-gray-600 mt-0.5" />
               <div>

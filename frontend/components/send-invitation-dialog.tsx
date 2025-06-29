@@ -32,6 +32,8 @@ const getRoleLabel = (role: ParticipantRole): string => {
       return "Owner"
     case ParticipantRole.Admin:
       return "Admin"
+    case ParticipantRole.Editor:
+      return "Editor"
     case ParticipantRole.Viewer:
       return "Viewer"
     default:
@@ -170,6 +172,9 @@ export function SendInvitationDialog({
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ParticipantRole.Editor.toString()}>
+                  {getRoleLabel(ParticipantRole.Editor)} - Can manage tasks
+                </SelectItem>
                 <SelectItem value={ParticipantRole.Viewer.toString()}>
                   {getRoleLabel(ParticipantRole.Viewer)} - Can view project
                 </SelectItem>

@@ -54,32 +54,53 @@ jobs:
     needs: build
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Setup .NET
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-version: '8.0.x'
 
       - name: Restore test dependencies
         run: |
           cd ProjectHub/NUnitTests
           dotnet restore
 
-      - name: Build and Test
+      - name: Build backend (for test)
+        run: |
+          cd ProjectHub/ProjectHub.API
+          dotnet build --configuration Release
+
+      - name: Build backend (for test)
+        run: |
+          cd ProjectHub/NUnitTests
+          dotnet build --configuration Release
+
+      - name: Run API and tests
         run: |
           cd ProjectHub/ProjectHub.API
           dotnet run --urls=http://localhost:7001 > api.log 2>&1 &
           API_PID=$!
+          echo "Waiting for API to start..."
           for i in {1..10}; do
             if curl -s http://localhost:7001 > /dev/null; then
+              echo "API is up!"
               break
             fi
             sleep 3
           done
-          cd ../../NUnitTests
-          dotnet test --no-restore
-          kill $API_PID || true
+
+          if ! curl -s http://localhost:7001 > /dev/null; then
+            echo "API did not start in time"
+            cat api.log
+            kill $API_PID
+            exit 1
+          fi
+
+          cd ../NUnitTests
+          dotnet test --no-restore --logger "console;verbosity=detailed"
+          kill $API_PID
 
   docker:
     name: Docker Build and Push

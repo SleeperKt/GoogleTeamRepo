@@ -132,31 +132,28 @@ jobs:
           docker push ${{ env.AI_IMAGE }}
 
   deploy:
-    name: Deploy to Azure
     runs-on: ubuntu-latest
-    needs: docker
-
+    needs: build
     steps:
-      - name: Deploy API to Azure
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Backend API
         uses: azure/webapps-deploy@v2
         with:
           app-name: projecthub-api-app
-          slot-name: production
-          publish-profile: ${{ secrets.AZURE_API_PROFILE }}
-          images: ${{ env.BACKEND_IMAGE }}
+          images: maksimsh20/projecthub-api
 
-      - name: Deploy Frontend to Azure
+      - name: Deploy Frontend
         uses: azure/webapps-deploy@v2
         with:
           app-name: projecthub-frontend-app
-          slot-name: production
-          publish-profile: ${{ secrets.AZURE_FE_PROFILE }}
-          images: ${{ env.FRONTEND_IMAGE }}
+          images: maksimsh20/projecthub-frontend
 
-      - name: Deploy AI Service to Azure
+      - name: Deploy AI Service
         uses: azure/webapps-deploy@v2
         with:
           app-name: projecthub-ai-app
-          slot-name: production
-          publish-profile: ${{ secrets.AZURE_AI_PROFILE }}
-          images: ${{ env.AI_IMAGE }}
+          images: maksimsh20/projecthub-ai

@@ -25,9 +25,40 @@ namespace NUnitTests.Helpers
             return await _client.PostAsync(url, content);
         }
 
+        public static async Task<HttpResponseMessage> PostAsync(string url, object body, string token)
+        {
+            var json = JsonConvert.SerializeObject(body);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = content
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return await _client.SendAsync(request);
+        }
+
         public static async Task<HttpResponseMessage> GetAsync(string url, string token)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return await _client.SendAsync(request);
+        }
+
+        public static async Task<HttpResponseMessage> PutAsync(string url, object body, string token)
+        {
+            var json = JsonConvert.SerializeObject(body);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var request = new HttpRequestMessage(HttpMethod.Put, url)
+            {
+                Content = content
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return await _client.SendAsync(request);
+        }
+
+        public static async Task<HttpResponseMessage> DeleteAsync(string url, string token)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Delete, url);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             return await _client.SendAsync(request);
         }

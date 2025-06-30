@@ -4,6 +4,7 @@ using NUnitTests.Tools;
 using NUnit.Framework;
 using System;
 using System.Threading.Tasks;
+using ProjectHub.Core.Entities;
 
 namespace NUnitTests
 {

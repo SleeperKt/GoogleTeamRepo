@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  # Frontend Next.js application - Production overrides
+  projecthub-frontend:
+    build:
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=https://projecthub-api-app-d5dwe8gnhyetdtch.eastus-01.azurewebsites.net
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=https://projecthub-api-app-d5dwe8gnhyetdtch.eastus-01.azurewebsites.net
+      - BACKEND_API_URL=https://projecthub-api-app-d5dwe8gnhyetdtch.eastus-01.azurewebsites.net
+
+  # Python LLM Service - Production overrides
+  projecthub-ai:
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - BACKEND_API_URL=https://projecthub-api-app-d5dwe8gnhyetdtch.eastus-01.azurewebsites.net 

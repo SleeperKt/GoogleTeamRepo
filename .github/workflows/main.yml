@@ -120,7 +120,7 @@ jobs:
         run: docker build -t ${{ env.BACKEND_IMAGE }} -f Dockerfile .
 
       - name: Build frontend image
-        run: docker build -t ${{ env.FRONTEND_IMAGE }} ./frontend
+        run: docker build -t ${{ env.FRONTEND_IMAGE }} --build-arg NEXT_PUBLIC_API_BASE_URL=https://projecthub-api-app-d5dwe8gnhyetdtch.eastus-01.azurewebsites.net ./frontend
 
       - name: Build AI image
         run: docker build -t ${{ env.AI_IMAGE }} ./llm_service
@@ -140,17 +140,47 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Configure Backend API Environment Variables
+        run: |
+          az webapp config appsettings set \
+            --name projecthub-api-app \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              ASPNETCORE_ENVIRONMENT=Production \
+              "Jwt__Key=${{ secrets.JWT_SECRET_KEY }}" \
+              "Jwt__Issuer=ProjectHub" \
+              "Jwt__Audience=ProjectHub.API" \
+              "Jwt__ExpireMinutes=60"
+
       - name: Deploy Backend API
         uses: azure/webapps-deploy@v2
         with:
           app-name: projecthub-api-app
           images: maksimsh20/projecthub-api
 
+      - name: Configure Frontend Environment Variables
+        run: |
+          az webapp config appsettings set \
+            --name projecthub-frontend-app \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              NODE_ENV=production \
+              NEXT_PUBLIC_API_BASE_URL=https://projecthub-api-app-d5dwe8gnhyetdtch.eastus-01.azurewebsites.net
+
       - name: Deploy Frontend
         uses: azure/webapps-deploy@v2
         with:
           app-name: projecthub-frontend-app
           images: maksimsh20/projecthub-frontend
+
+      - name: Configure AI Service Environment Variables
+        run: |
+          az webapp config appsettings set \
+            --name projecthub-ai-app \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" \
+              BACKEND_API_URL=https://projecthub-api-app-d5dwe8gnhyetdtch.eastus-01.azurewebsites.net
 
       - name: Deploy AI Service
         uses: azure/webapps-deploy@v2

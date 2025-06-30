@@ -4,10 +4,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=http://projecthub-api:8080
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=http://projecthub-api:8080
       - BACKEND_API_URL=http://projecthub-api:8080
     depends_on:
       - projecthub-api

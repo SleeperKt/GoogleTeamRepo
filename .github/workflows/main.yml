@@ -1,0 +1,141 @@
+name: ProjectHub CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '18'
+  BACKEND_IMAGE: maksimsh20/projecthub-api:latest
+  FRONTEND_IMAGE: maksimsh20/projecthub-frontend:latest
+  AI_IMAGE: maksimsh20/projecthub-ai:latest
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Restore backend dependencies
+        run: |
+          cd ProjectHub/ProjectHub.API
+          dotnet restore
+
+      - name: Build backend
+        run: |
+          cd ProjectHub/ProjectHub.API
+          dotnet build --configuration Release
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore test dependencies
+        run: |
+          cd ProjectHub/NUnitTests
+          dotnet restore
+
+      - name: Build and Test
+        run: |
+          cd ProjectHub/ProjectHub.API
+          dotnet run --urls=http://localhost:7001 > api.log 2>&1 &
+          API_PID=$!
+          for i in {1..10}; do
+            if curl -s http://localhost:7001 > /dev/null; then
+              break
+            fi
+            sleep 3
+          done
+          cd ../../NUnitTests
+          dotnet test --no-restore
+          kill $API_PID || true
+
+  docker:
+    name: Docker Build and Push
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Docker Login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build backend image
+        run: docker build -t ${{ env.BACKEND_IMAGE }} -f Dockerfile .
+
+      - name: Build frontend image
+        run: docker build -t ${{ env.FRONTEND_IMAGE }} ./frontend
+
+      - name: Build AI image
+        run: docker build -t ${{ env.AI_IMAGE }} ./llm_service
+
+      - name: Push images
+        run: |
+          docker push ${{ env.BACKEND_IMAGE }}
+          docker push ${{ env.FRONTEND_IMAGE }}
+          docker push ${{ env.AI_IMAGE }}
+
+  deploy:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    needs: docker
+
+    steps:
+      - name: Deploy API to Azure
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: projecthub-api-app
+          slot-name: production
+          publish-profile: ${{ secrets.AZURE_API_PROFILE }}
+          images: ${{ env.BACKEND_IMAGE }}
+
+      - name: Deploy Frontend to Azure
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: projecthub-frontend-app
+          slot-name: production
+          publish-profile: ${{ secrets.AZURE_FE_PROFILE }}
+          images: ${{ env.FRONTEND_IMAGE }}
+
+      - name: Deploy AI Service to Azure
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: projecthub-ai-app
+          slot-name: production
+          publish-profile: ${{ secrets.AZURE_AI_PROFILE }}
+          images: ${{ env.AI_IMAGE }}

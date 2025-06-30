@@ -2,9 +2,9 @@ name: ProjectHub CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ tests ]
   pull_request:
-    branches: [ main ]
+    branches: [ tests ]
 
 env:
   DOTNET_VERSION: '8.0.x'

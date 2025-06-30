@@ -41,7 +41,7 @@ namespace NUnitTests
 
         [Test]
         [TestCaseSource(typeof(ProjectTestData), nameof(ProjectTestData.ValidInvitations))]
-        public async Task CreateProjectInvitation_ShouldSucceed(string inviteeEmail, ParticipantRole role, string? message = null)
+        public async Task CreateProjectInvitation_ShouldSucceed(string inviteeEmail, ProjectHub.Core.Entities.ParticipantRole role, string? message = null)
         {
             var createRequest = ProjectRequestFactory.CreateInvitationRequest(inviteeEmail, role, message);
             var response = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest, _authToken!);
@@ -58,7 +58,7 @@ namespace NUnitTests
         public async Task GetProjectInvitations_ShouldReturnInvitations()
         {
             // First create an invitation
-            var createRequest = ProjectRequestFactory.CreateInvitationRequest("test@example.com", ParticipantRole.Editor, "Please join our project");
+            var createRequest = ProjectRequestFactory.CreateInvitationRequest("test@example.com", ProjectHub.Core.Entities.ParticipantRole.Editor, "Please join our project");
             var createResponse = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest, _authToken!);
             Assert.IsTrue(createResponse.IsSuccessStatusCode, "Invitation creation failed");
 
@@ -76,7 +76,7 @@ namespace NUnitTests
         [Test]
         public async Task CreateInvitationWithDifferentRoles_ShouldSucceed()
         {
-            var roles = new[] { ParticipantRole.Editor, ParticipantRole.Viewer };
+            var roles = new[] { ProjectHub.Core.Entities.ParticipantRole.Editor, ProjectHub.Core.Entities.ParticipantRole.Viewer };
             var emails = new[] { "editor@example.com", "viewer@example.com" };
 
             for (int i = 0; i < roles.Length; i++)
@@ -93,7 +93,7 @@ namespace NUnitTests
         [Test]
         public async Task CreateInvitationWithInvalidEmail_ShouldFail()
         {
-            var createRequest = ProjectRequestFactory.CreateInvitationRequest("invalid-email", ParticipantRole.Editor);
+            var createRequest = ProjectRequestFactory.CreateInvitationRequest("invalid-email", ProjectHub.Core.Entities.ParticipantRole.Editor);
             var response = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest, _authToken!);
 
             SerilogLogger.Logger.Information("Create Invitation with Invalid Email StatusCode: {0}", response.StatusCode);
@@ -105,7 +105,7 @@ namespace NUnitTests
         [Test]
         public async Task CreateInvitationToSelf_ShouldFail()
         {
-            var createRequest = ProjectRequestFactory.CreateInvitationRequest("invitationtest@example.com", ParticipantRole.Editor);
+            var createRequest = ProjectRequestFactory.CreateInvitationRequest("invitationtest@example.com", ProjectHub.Core.Entities.ParticipantRole.Editor);
             var response = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest, _authToken!);
 
             SerilogLogger.Logger.Information("Create Invitation to Self StatusCode: {0}", response.StatusCode);
@@ -120,12 +120,12 @@ namespace NUnitTests
             var email = "duplicate@example.com";
             
             // Create first invitation
-            var createRequest1 = ProjectRequestFactory.CreateInvitationRequest(email, ParticipantRole.Editor);
+            var createRequest1 = ProjectRequestFactory.CreateInvitationRequest(email, ProjectHub.Core.Entities.ParticipantRole.Editor);
             var response1 = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest1, _authToken!);
             Assert.IsTrue(response1.IsSuccessStatusCode, "First invitation creation failed");
 
             // Try to create duplicate invitation
-            var createRequest2 = ProjectRequestFactory.CreateInvitationRequest(email, ParticipantRole.Viewer);
+            var createRequest2 = ProjectRequestFactory.CreateInvitationRequest(email, ProjectHub.Core.Entities.ParticipantRole.Viewer);
             var response2 = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest2, _authToken!);
 
             SerilogLogger.Logger.Information("Create Duplicate Invitation StatusCode: {0}", response2.StatusCode);
@@ -138,7 +138,7 @@ namespace NUnitTests
         public async Task GetInvitationById_ShouldReturnInvitation()
         {
             // First create an invitation
-            var createRequest = ProjectRequestFactory.CreateInvitationRequest("getbyid@example.com", ParticipantRole.Editor);
+            var createRequest = ProjectRequestFactory.CreateInvitationRequest("getbyid@example.com", ProjectHub.Core.Entities.ParticipantRole.Editor);
             var createResponse = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest, _authToken!);
             Assert.IsTrue(createResponse.IsSuccessStatusCode, "Invitation creation failed");
 
@@ -161,7 +161,7 @@ namespace NUnitTests
         public async Task RespondToInvitation_ShouldSucceed()
         {
             // First create an invitation
-            var createRequest = ProjectRequestFactory.CreateInvitationRequest("respond@example.com", ParticipantRole.Editor);
+            var createRequest = ProjectRequestFactory.CreateInvitationRequest("respond@example.com", ProjectHub.Core.Entities.ParticipantRole.Editor);
             var createResponse = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest, _authToken!);
             Assert.IsTrue(createResponse.IsSuccessStatusCode, "Invitation creation failed");
 
@@ -182,7 +182,7 @@ namespace NUnitTests
         public async Task DeleteInvitation_ShouldSucceed()
         {
             // First create an invitation
-            var createRequest = ProjectRequestFactory.CreateInvitationRequest("delete@example.com", ParticipantRole.Editor);
+            var createRequest = ProjectRequestFactory.CreateInvitationRequest("delete@example.com", ProjectHub.Core.Entities.ParticipantRole.Editor);
             var createResponse = await ApiClient.PostAsync($"/api/Projects/public/{_testProjectId}/invitations", createRequest, _authToken!);
             Assert.IsTrue(createResponse.IsSuccessStatusCode, "Invitation creation failed");
 
